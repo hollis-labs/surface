@@ -89,8 +89,9 @@ npx surface-ui add theme --for @hollis-labs/surface-page   # the theme, and ever
 npx surface-ui add card-choice                      # anything else the app's own views use
 ```
 
-`add` ends by listing the npm packages the installed components import that `package.json` lacks; install
-them (`flexlayout-react`, `react-markdown` and `remark-gfm` at the exact versions it gives). The lock it writes:
+`add` ends with one `npm install --save-exact` line naming every package the installed components import
+that `package.json` lacks, each at the version the registry was built with; run it as given. `add --all`
+installs every item the registry has at the lock's ref (the Components gallery needs them all). The lock it writes:
 
 ```json
 {

@@ -3,7 +3,7 @@
   "name": "card-prompt",
   "title": "Card Prompt",
   "dependencies": [
-    "lucide-react"
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/button",

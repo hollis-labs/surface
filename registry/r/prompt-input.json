@@ -4,8 +4,8 @@
   "title": "Prompt Input",
   "description": "Where a chat message is written: a growing textarea (Enter sends) and a send button that is a stop button while the agent answers.",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/input-group"

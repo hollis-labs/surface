@@ -4,8 +4,8 @@
   "title": "Conversation",
   "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@hollis-labs/surface-chat's useStickToBottom).",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/button"

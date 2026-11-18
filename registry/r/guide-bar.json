@@ -4,7 +4,7 @@
   "title": "Guide Bar",
   "description": "A guide's caption, progress and controls (back, next or skip, pause or resume, stop). Draws only; the caller owns the guide.",
   "dependencies": [
-    "cn"
+    "cn@0.5.2"
   ],
   "registryDependencies": [
     "@surface/button",

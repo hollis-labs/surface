@@ -3,8 +3,8 @@
   "name": "card-frame",
   "title": "Card Frame",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/badge",

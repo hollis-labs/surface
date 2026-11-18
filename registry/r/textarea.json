@@ -3,7 +3,7 @@
   "name": "textarea",
   "title": "Textarea",
   "dependencies": [
-    "cn"
+    "cn@0.5.2"
   ],
   "files": [
     {

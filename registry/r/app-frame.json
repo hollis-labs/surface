@@ -4,7 +4,7 @@
   "title": "App Frame",
   "description": "An app's frame: optional bar, rail and resizable side panel around the content. Layout only.",
   "dependencies": [
-    "cn"
+    "cn@0.5.2"
   ],
   "registryDependencies": [
     "@surface/resizable"

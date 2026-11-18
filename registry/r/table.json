@@ -3,7 +3,7 @@
   "name": "table",
   "title": "Table",
   "dependencies": [
-    "cn"
+    "cn@0.5.2"
   ],
   "files": [
     {

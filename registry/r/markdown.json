@@ -4,7 +4,7 @@
   "title": "Markdown",
   "description": "Markdown as a model writes it, set in the theme; drawn block by block so a streaming message re-parses only its last block.",
   "dependencies": [
-    "cn",
+    "cn@0.5.2",
     "react-markdown@10.1.0",
     "remark-gfm@4.0.1"
   ],

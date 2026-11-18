@@ -26,6 +26,12 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+      # Components are copied from the @surface registry and never edited in place.
+      - name: Registry is built and the page's components match it
+        run: |
+          node scripts/ui.mjs build
+          git diff --exit-code -- registry
+          node scripts/ui.mjs verify
       # The wiring is generated and committed; a manifest edited without regenerating fails here.
       - name: Generated wiring is current
         run: |

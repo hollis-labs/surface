@@ -30,6 +30,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      "@": resolve(root, "src"),
       "@surface/sdk": resolve(root, "src/sdk/index.ts"),
       "@surface/app": generated,
     },

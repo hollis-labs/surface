@@ -1,5 +1,9 @@
 /** The core's own windows: Settings, Layouts and Marks. They are views like any module's. */
 import { useCallback, useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
 import { app, deleteLayout, deskState, type LayoutDef, listLayouts, loadLayout, saveLayout } from "./store"
@@ -42,21 +46,27 @@ function Settings(_: ViewProps) {
                 </span>
                 <span className="sf-setting-control">
                   {e.type === "bool" && (
-                    <input type="checkbox" checked={!!e.value} onChange={(ev) => change(e, ev.target.checked)} />
+                    <Switch checked={!!e.value} onCheckedChange={(on) => change(e, on)} aria-label={e.title} />
                   )}
                   {e.type === "enum" && (
-                    <select className="sf-input" value={String(e.value)} onChange={(ev) => change(e, ev.target.value)}>
-                      {e.options?.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={String(e.value)} onValueChange={(v) => change(e, v)}>
+                      <SelectTrigger size="sm" aria-label={e.title}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {e.options?.map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                   {e.type === "int" && (
-                    <input
-                      className="sf-input sf-input-num"
+                    <Input
+                      className="w-24"
                       type="number"
+                      aria-label={e.title}
                       value={Number(e.value)}
                       onChange={(ev) => {
                         const n = Number.parseInt(ev.target.value, 10)
@@ -65,8 +75,9 @@ function Settings(_: ViewProps) {
                     />
                   )}
                   {e.type === "string" && (
-                    <input
-                      className="sf-input"
+                    <Input
+                      className="w-64"
+                      aria-label={e.title}
                       defaultValue={String(e.value ?? "")}
                       key={String(e.value)}
                       onBlur={(ev) => {
@@ -75,9 +86,9 @@ function Settings(_: ViewProps) {
                     />
                   )}
                   {e.set && (
-                    <button type="button" className="sf-link" title="Back to the default" onClick={() => reset(e)}>
+                    <Button variant="link" size="xs" title="Back to the default" onClick={() => reset(e)}>
                       reset
-                    </button>
+                    </Button>
                   )}
                 </span>
               </div>
@@ -116,15 +127,15 @@ function Layouts(_: ViewProps) {
           if (name.trim()) save(name.trim())
         }}
       >
-        <input
-          className="sf-input sf-grow"
+        <Input
+          className="flex-1"
           placeholder="Save the desk as it is now, as…"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="sf-btn" data-kind="primary" disabled={!name.trim()}>
+        <Button type="submit" disabled={!name.trim()}>
           Save
-        </button>
+        </Button>
       </form>
       {error && <p className="sf-error">{error}</p>}
       {layouts.length === 0 && <p className="sf-dim">No saved layouts yet.</p>}
@@ -135,25 +146,20 @@ function Layouts(_: ViewProps) {
             <strong>{l.name}</strong>
             {l.name === active && <span className="sf-chip">in use</span>}
             <span className="sf-grow" />
-            <button type="button" className="sf-btn" onClick={() => void loadLayout(l.name)}>
+            <Button variant="outline" size="sm" onClick={() => void loadLayout(l.name)}>
               Arrange
-            </button>
-            <button
-              type="button"
-              className="sf-btn"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               title="Replace it with the desk as it is now"
               onClick={() => save(l.name)}
             >
               Update
-            </button>
-            <button
-              type="button"
-              className="sf-btn"
-              data-kind="danger"
-              onClick={() => void deleteLayout(l.name).then(refresh)}
-            >
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void deleteLayout(l.name).then(refresh)}>
               Delete
-            </button>
+            </Button>
           </div>
           {l.about && <p className="sf-card-about">{l.about}</p>}
           <p className="sf-dim">
@@ -204,9 +210,9 @@ function MarkCard({ mark }: { mark: Mark }) {
           {mark.ref}
         </code>
         <span className="sf-grow" />
-        <button type="button" className="sf-link" onClick={() => void resolveMark(mark.id)}>
+        <Button variant="link" size="xs" onClick={() => void resolveMark(mark.id)}>
           resolve
-        </button>
+        </Button>
       </div>
       {mark.quote && <blockquote>{mark.quote}</blockquote>}
       <p>{mark.body}</p>
@@ -222,12 +228,7 @@ function MarkCard({ mark }: { mark: Mark }) {
           if (reply.trim()) void replyMark(mark.id, reply.trim()).then(() => setReply(""))
         }}
       >
-        <input
-          className="sf-input sf-grow"
-          placeholder="Reply…"
-          value={reply}
-          onChange={(e) => setReply(e.target.value)}
-        />
+        <Input className="flex-1" placeholder="Reply…" value={reply} onChange={(e) => setReply(e.target.value)} />
       </form>
     </div>
   )

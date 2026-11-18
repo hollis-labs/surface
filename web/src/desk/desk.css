@@ -1,5 +1,5 @@
 /* The desk: bar, canvas, windows, palette, and the small set of classes (sf-*) that the
- * core's windows and the modules' views share. Colours are the design tokens'. */
+ * core's windows and the modules' views share. Colours come from the theme (registry/theme/surface.css). */
 
 :root {
   --sf-bar-h: 34px;
@@ -8,23 +8,33 @@
   --sf-accent: var(--color-primary);
   --sf-mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
-:root[data-surface-theme="dusk"] {
-  --hl-bg: #15141b;
-  --hl-bg-elevated: #1c1a26;
-  --hl-surface: #2d2b38;
-  --hl-surface-hover: #383547;
-  --hl-border: #2d2b38;
-  --hl-border-subtle: #242230;
-  --hl-fg: #edecee;
-  --hl-fg-secondary: #b9b7c4;
-  --hl-primary: #a277ff;
-  --hl-primary-hover: #b594ff;
-  --hl-primary-muted: rgba(162, 119, 255, 0.18);
-  --hl-primary-fg: #15141b;
-  --sf-desk: #0f0e15;
-}
-:root[data-mode="light"] {
-  --sf-desk: color-mix(in srgb, var(--color-bg) 92%, #000);
+/*
+ * The bridge. The desk's own stylesheet and the modules' were written against an earlier
+ * set of token names. Until each is rebuilt from @surface components, those names are
+ * defined here from the theme's, so everything follows one theme.
+ */
+:root {
+  --color-bg: var(--background);
+  --color-bg-elevated: var(--card);
+  --color-surface: var(--secondary);
+  --color-surface-hover: color-mix(in oklab, var(--secondary) 80%, var(--foreground));
+  --color-fg: var(--foreground);
+  --color-fg-secondary: color-mix(in oklab, var(--foreground) 78%, var(--background));
+  --color-fg-muted: var(--muted-foreground);
+  --color-fg-faint: color-mix(in oklab, var(--muted-foreground) 78%, var(--background));
+  --color-border: var(--border);
+  --color-border-subtle: color-mix(in oklab, var(--border) 60%, transparent);
+  --color-primary: var(--primary);
+  --color-primary-hover: color-mix(in oklab, var(--primary) 85%, var(--background));
+  --color-primary-muted: color-mix(in oklab, var(--primary) 14%, transparent);
+  --color-primary-fg: var(--primary-foreground);
+  --color-danger: var(--destructive);
+  --color-danger-muted: color-mix(in oklab, var(--destructive) 14%, transparent);
+  --color-warning: var(--warning);
+  --color-warning-muted: color-mix(in oklab, var(--warning) 14%, transparent);
+  --color-success: var(--success);
+  --color-success-muted: color-mix(in oklab, var(--success) 14%, transparent);
+  --color-info: var(--info);
 }
 
 .sf-boot {

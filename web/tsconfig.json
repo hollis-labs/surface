@@ -17,7 +17,8 @@
     "baseUrl": ".",
     "paths": {
       "@surface/sdk": ["src/sdk/index.ts"],
-      "@surface/app": ["src/generated/desk.ts"]
+      "@surface/app": ["src/generated/desk.ts"],
+      "@/*": ["src/*"]
     }
   },
   "include": ["src", "../modules/*/web"]

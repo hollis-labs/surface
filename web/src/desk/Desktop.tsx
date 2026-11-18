@@ -53,8 +53,7 @@ export function Desktop({ modules }: DesktopProps) {
   // The theme is a live setting: changing it redraws the desk at once, with no reload.
   useEffect(() => {
     const root = document.documentElement
-    root.dataset.mode = theme === "light" ? "light" : "dark"
-    root.dataset.surfaceTheme = theme
+    root.classList.toggle("dark", theme !== "light")
   }, [theme])
 
   useEffect(() => {

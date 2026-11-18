@@ -18,6 +18,20 @@ What exists, what is checked, and what is deliberately not there yet.
 | Live app config | done | settings in the database; a change reaches the page and the module with no restart; `core/internal/config` tests |
 | Second app with the Interaction Builder | done | `studio`: describe a flow, the agent arranges and saves it, refine it as versions |
 
+## In progress: the interface standard
+
+Surface is becoming the place every app's interface is built, on stock shadcn through the `@surface` registry
+(`registry/README.md`).
+
+| | State |
+|---|---|
+| Theme, registry, sync and drift check, lint rule | done; the page runs on the theme, and the core's Settings, Layouts, Marks and confirm dialog are built from registry components |
+| The desk's chrome and the six modules' views | still on `sf-*` classes through a bridge; moved onto components file by file |
+| A plain frame for apps that are not a desk | not started |
+| Chat on shared behaviour and registry components | not started; the panel is still `ade-react`'s |
+| Cards, generated UI, the ADE overlays | not started |
+| A baseline palette | undecided; the theme holds shadcn's neutral defaults |
+
 ## Not there yet
 
 - **Nanite's embeddable package.** It does not exist yet; the agent runs on `libs/agent/host` behind the

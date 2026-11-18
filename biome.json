@@ -2,12 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "web/**",
-      "modules/**",
-      "!web/src/generated",
-      "!**/dist"
-    ]
+    "includes": ["web/**", "modules/**", "!web/src/generated", "!**/dist", "!web/src/components/ui"]
   },
   "formatter": {
     "enabled": true,
@@ -46,5 +41,27 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["web/src/desk/coreViews.tsx", "web/src/desk/Confirm.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noRestrictedElements": {
+              "level": "error",
+              "options": {
+                "elements": {
+                  "button": "Use Button from @/components/ui/button: views are built from @surface components, never raw controls.",
+                  "input": "Use Input from @/components/ui/input: views are built from @surface components, never raw controls.",
+                  "select": "Use Select from @/components/ui/select: views are built from @surface components, never raw controls.",
+                  "textarea": "Use Textarea from @/components/ui/textarea: views are built from @surface components, never raw controls."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

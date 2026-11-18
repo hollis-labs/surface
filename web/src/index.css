@@ -1,14 +1,13 @@
 @import "tailwindcss";
-@import "@hollis-labs/design-tokens/design-tokens.css";
-@import "@hollis-labs/design-components/source.css";
+@import "../../registry/theme/surface.css";
 @import "./desk/desk.css";
 
 /* Native controls (checkboxes, selects, scrollbars) follow the app's theme, not the OS's. */
 :root {
-  color-scheme: dark;
-}
-:root[data-mode="light"] {
   color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
 }
 html,
 body,
@@ -17,8 +16,6 @@ body,
   margin: 0;
 }
 body {
-  background: var(--color-bg);
-  color: var(--color-fg);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   overflow: hidden;

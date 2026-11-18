@@ -24,8 +24,13 @@ function Boot() {
       live = false
     }
   }, [])
-  if (error) return <div className="sf-boot">The app's server did not answer: {error}</div>
-  if (!ready) return <div className="sf-boot">…</div>
+  if (error)
+    return (
+      <div className="grid h-full place-items-center text-muted-foreground">
+        The app's server did not answer: {error}
+      </div>
+    )
+  if (!ready) return <div className="grid h-full place-items-center text-muted-foreground">…</div>
   return <Desktop modules={{ ...modules, surface: coreWeb }} />
 }
 

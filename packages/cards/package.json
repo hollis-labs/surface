@@ -1,11 +1,39 @@
 {
-  "name": "@surface/cards",
-  "private": true,
+  "name": "@hollis-labs/surface-cards",
   "version": "0.1.0",
+  "description": "Cards without any styling: the outcome a card reports and the status it reads back, a lifecycle engine that decides where each card shows, a form compiled from a JSON Schema subset, and a table of renderers by kind and version. Visuals are the Surface registry's card components.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-labs/surface.git",
+    "directory": "packages/cards"
+  },
+  "homepage": "https://github.com/hollis-labs/surface/tree/main/packages/cards#readme",
+  "bugs": {
+    "url": "https://github.com/hollis-labs/surface/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
-  "description": "Cards without any styling: the outcome a card reports and the status it reads back, a lifecycle engine that decides where each card shows, a form compiled from a JSON Schema subset, and a table of renderers by kind and version. Visuals are the @surface registry's card components.",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "react": ">=19"

@@ -8,7 +8,7 @@
   },
   "conversation": {
     "title": "Conversation",
-    "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@surface/chat's useStickToBottom)."
+    "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@hollis-labs/surface-chat's useStickToBottom)."
   },
   "markdown": {
     "title": "Markdown",
@@ -41,5 +41,9 @@
   "app-frame": {
     "title": "App Frame",
     "description": "An app's frame: optional bar, rail and resizable side panel around the content. Layout only."
+  },
+  "theme": {
+    "title": "Theme",
+    "description": "Every colour, radius and font a component may name, in light and dark. Import it once, after Tailwind; an app restyles by overriding its variables, never a component."
   }
 }

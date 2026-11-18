@@ -15,7 +15,7 @@ import {
   useEvent,
   useMarks,
   type ViewProps,
-} from "@surface/sdk"
+} from "@hollis-labs/surface-page/sdk"
 import {
   Check,
   FilePlus2,

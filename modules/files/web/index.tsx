@@ -3,7 +3,14 @@
  * window's args, so they survive a reload and a saved layout, and the agent can take the
  * window somewhere by setting them.
  */
-import { Icon, type ModuleAPI, type ModuleWeb, useEvent, useSetting, type ViewProps } from "@surface/sdk"
+import {
+  Icon,
+  type ModuleAPI,
+  type ModuleWeb,
+  useEvent,
+  useSetting,
+  type ViewProps,
+} from "@hollis-labs/surface-page/sdk"
 import { type ComponentProps, type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   Breadcrumb,

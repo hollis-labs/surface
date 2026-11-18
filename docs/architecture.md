@@ -28,7 +28,7 @@ main ─▶ app.Main ─▶ Substrate boot (config, logging, health, database, c
 | `core/internal/api` | The HTTP API, the event stream, the MCP endpoint, the page. |
 | `core/internal/agent`, `slots`, `router`, `reflex` | The embedded agent and what shapes it ([agent.md](agent.md)). |
 | `modules/<id>/` | A module: Go, and its views under `web/`. |
-| `web/src/sdk` | `@surface/sdk`: the page's side of the contract. `web/src/desk`: the desktop. `web/src/agent`: the agent panel. |
+| `web/src/sdk` | `@hollis-labs/surface-page/sdk`: the page's side of the contract. `web/src/desk`: the desktop. `web/src/agent`: the agent panel. |
 | `app/` | The body of a generated main: Substrate boot, serve, and the client commands. |
 | `cmd/surface` | The generator. |
 

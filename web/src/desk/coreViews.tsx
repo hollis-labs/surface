@@ -1,4 +1,8 @@
-/** The core's own windows: Settings, Layouts, Marks and Cards. They are views like any module's. */
+/**
+ * The core's own windows: Settings, Layouts, Marks and Cards. They are views like any module's.
+ * The Components window (surface/gallery) is separate (../gallery) because it draws every
+ * registry component, and an app outside this repository installs only the ones it uses.
+ */
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -6,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { CardsWindow } from "../cards/views"
-import { Gallery } from "../gallery/Gallery"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
 import { app, deleteLayout, deskState, type LayoutDef, listLayouts, loadLayout, saveLayout } from "./store"
@@ -252,6 +255,5 @@ export const coreWeb: ModuleWeb = {
     "surface/layouts": Layouts,
     "surface/marks": Marks,
     "surface/cards": CardsWindow,
-    "surface/gallery": Gallery,
   },
 }

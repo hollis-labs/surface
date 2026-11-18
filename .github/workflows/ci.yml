@@ -26,6 +26,9 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+      # What npm would get: build and pack every package, install the tarballs elsewhere, use them.
+      - name: Packages build, pack and work from their tarballs
+        run: npm run pack-check
       # Components are copied from the @surface registry and never edited in place.
       - name: Registry is built and the page's components match it
         run: |

@@ -1,49 +1,6 @@
 import { modules } from "@surface/app"
-import { StrictMode, useEffect, useState } from "react"
-import { createRoot } from "react-dom/client"
-import { CardHost } from "./cards/views"
-import { coreWeb } from "./desk/coreViews"
-import { Desktop } from "./desk/Desktop"
-import { loadManifest } from "./desk/store"
-import { call, connect, loadSettings } from "./sdk/runtime"
+import { mountPage } from "./boot"
+import { galleryViews } from "./gallery"
 import "./index.css"
 
-function Boot() {
-  const [ready, setReady] = useState(false)
-  const [error, setError] = useState("")
-  useEffect(() => {
-    let live = true
-    Promise.all([loadManifest(), loadSettings()])
-      .then(() => {
-        if (!live) return
-        connect()
-        setReady(true)
-        void call("POST", "/api/events", { topic: "page.ready", data: {} }).catch(() => {})
-      })
-      .catch((err: Error) => live && setError(err.message))
-    return () => {
-      live = false
-    }
-  }, [])
-  if (error)
-    return (
-      <div className="grid h-full place-items-center text-muted-foreground">
-        The app's server did not answer: {error}
-      </div>
-    )
-  if (!ready) return <div className="grid h-full place-items-center text-muted-foreground">…</div>
-  return (
-    <>
-      <Desktop modules={{ ...modules, surface: coreWeb }} />
-      <CardHost />
-    </>
-  )
-}
-
-const root = document.getElementById("root")
-if (!root) throw new Error("root element #root not found")
-createRoot(root).render(
-  <StrictMode>
-    <Boot />
-  </StrictMode>,
-)
+mountPage({ modules, core: galleryViews })

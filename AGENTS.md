@@ -8,8 +8,9 @@ Not: a place for app-specific code (that is a module), an agent runtime (the age
 - `module/` — the contract. The ONLY Surface package a module imports: `Module`, `Manifest` (views, commands, tools, store, settings, slots) and `Host` (desk, store, config, events, marks, routes).
 - `core/` — the public assembly (`core.New`). Everything else is under `core/internal/`: `kernel` (assembles modules, hosts, the desk's own tools and commands), `desk` (the window manager and saved layouts; the state lives in the server), `config` (live settings in the database), `events`, `marks`, `storage`, `api` (HTTP, SSE, MCP), `agent`, `slots`, `router`, `reflex`.
 - `modules/<id>/` — one module: Go at the top, its views in `web/index.tsx`. `modules/scratch` is the template.
+- `packages/` — the npm packages (`@hollis-labs/surface-*`): `chat`, `cards`, `genui` (behaviour, no styling), `page` (the page core, built from `web/src`) and `ui` (the `ui` tool; `scripts/ui.mjs` runs it here). One version for everything; `docs/releasing.md`.
 - `registry/` — the `@surface` component registry and the theme (`registry/README.md`). Installed copies are in `web/src/components/ui`; `ui.lock.json` records them.
-- `web/` — the page's core (`src/desk`, `src/agent`, `src/sdk`). A module's web code imports only `@surface/sdk`. Packages are installed at the repository root so `modules/*/web` resolves them.
+- `web/` — the page's core (`src/desk`, `src/agent`, `src/sdk`). A module's web code imports only `@hollis-labs/surface-page/sdk` (published from `packages/page`). Packages are installed at the repository root so `modules/*/web` resolves them.
 - `apps/<name>/surface.yaml` — an app: its modules. Everything else in the directory is GENERATED (`make generate`); do not edit it.
 - `cmd/surface` — the generator. `app/` — the generated main's body (Substrate boot, serve, the client CLI).
 - `docs/architecture.md` first, then `docs/writing-a-module.md`.
@@ -23,6 +24,7 @@ make test vet lint                  # go test -race, go vet, golangci-lint
 npm run typecheck && npm run lint   # the page
 make ui-build ui-verify             # regenerate the registry; check the page's copies match it
 make scan                           # secrets / hosts / private paths, tree and history
+make pack-check                     # pack the npm packages, install the tarballs elsewhere, use them
 SURFACE_APP=desk npm run dev        # the page with hot reload, against a running bin/desk
 ```
 

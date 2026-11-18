@@ -1,0 +1,19 @@
+{
+  "extends": "../../web/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/types",
+    "rootDir": "../../web/src",
+    "baseUrl": "../../web",
+    "paths": {
+      "@hollis-labs/surface-page/sdk": ["src/sdk/index.ts"],
+      "@hollis-labs/surface-chat": ["../packages/chat/dist/index.d.ts"],
+      "@hollis-labs/surface-cards": ["../packages/cards/dist/index.d.ts"],
+      "@hollis-labs/surface-genui": ["../packages/genui/dist/src/index.d.ts"],
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["../../web/src/index.ts", "../../web/src/sdk/index.ts", "../../web/src/gallery/index.ts"]
+}

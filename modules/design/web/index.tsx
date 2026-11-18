@@ -66,6 +66,7 @@ interface Job {
   task_checked?: string
   inbox_checked?: string
   approved_head?: string
+  approved_pr?: string
   approved_at?: string
   latest_head?: string
   head_differs?: boolean
@@ -424,6 +425,7 @@ function JobPane({ win, desk, api }: ViewProps) {
                 disabled={
                   busy !== "" ||
                   !job.head_sha ||
+                  !job.pr_url ||
                   job.status === "approved" ||
                   job.status === "merged" ||
                   job.status === "closed"
@@ -435,10 +437,10 @@ function JobPane({ win, desk, api }: ViewProps) {
             </div>
             <p className="text-xs text-muted-foreground">
               {job.approved_head
-                ? `Approved at ${job.approved_head.slice(0, 7)}${job.head_differs ? `; a new commit ${job.latest_head?.slice(0, 7)} came after the approval` : ""}`
+                ? `Approved: ${job.approved_pr?.replace(/^https:\/\/github\.com\//, "") ?? ""} at ${job.approved_head.slice(0, 7)}${job.head_differs ? `; a new commit ${job.latest_head?.slice(0, 7)} came after the approval` : ""}`
                 : job.head_sha
                   ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
-                  : "Nothing to approve until the Designer names a head"}
+                  : "Nothing to approve until the Designer names a head and a pull request"}
               {job.update_received ? " · an update came back without a preview" : ""}
             </p>
             {job.merge_warning && <p className="text-xs font-medium text-destructive">{job.merge_warning}</p>}

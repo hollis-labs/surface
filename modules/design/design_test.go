@@ -332,7 +332,8 @@ func TestNotesGoOutAsFeedbackAndApprovalSendsTheGoAhead(t *testing.T) {
 
 	// Approval: the card is raised for the recorded head; the owner's answer settles it.
 	head := "b600fc99dffb1c895c4b6d908e988378f632a467"
-	if _, err = m.st.update(ctx, j.ID, Change{HeadSHA: &head}); err != nil {
+	pr := "https://github.com/hollis-labs/surface/pull/9"
+	if _, err = m.st.update(ctx, j.ID, Change{HeadSHA: &head, PRURL: &pr}); err != nil {
 		t.Fatal(err)
 	}
 	card, err := m.askApproval(ctx, j.ID, 60e9)
@@ -351,7 +352,7 @@ func TestNotesGoOutAsFeedbackAndApprovalSendsTheGoAhead(t *testing.T) {
 	if err != nil || ok["approved"] != true || ok["status"] != StatusApproved {
 		t.Fatalf("approve: %v %v", ok, err)
 	}
-	if last := rec.sent[len(rec.sent)-1]; last.Kind != "notice" || !strings.Contains(last.Body, "Merge the pull request") || !strings.Contains(last.Body, "\napproved-head: "+head+"\n") {
+	if last := rec.sent[len(rec.sent)-1]; last.Kind != "notice" || !strings.Contains(last.Body, "Merge that pull request") || !strings.Contains(last.Body, "\napproved-head: "+head+"\n") {
 		t.Fatalf("go-ahead: %+v", last)
 	}
 	if again, _ := m.askApproval(ctx, j.ID, 60e9); again != nil {
@@ -389,7 +390,8 @@ func TestProgressFromTheBranch(t *testing.T) {
 	if advance(StatusApproved, merged) != StatusApproved || advance(StatusRequested, merged) != StatusRequested {
 		t.Fatal("advance read a merged pull request")
 	}
-	if ok, _ := mergedOnGitHub(Job{Status: StatusApproved, ApprovedHead: "abc"}, merged.PR); !ok {
+	merged.PR.URL = "https://github.com/o/r/pull/7"
+	if ok, _ := mergedOnGitHub(Job{Status: StatusApproved, ApprovedHead: "abc", ApprovedPR: "https://github.com/o/r/pull/7"}, merged.PR, nil); !ok {
 		t.Fatal("the approved commit merged is not merged")
 	}
 	if advance(StatusRequested, Progress{}) != StatusRequested {

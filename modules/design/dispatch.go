@@ -312,16 +312,7 @@ func approvedMessage(j Job) Message {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Design job %s (%s) is approved at commit %s.\n\n", j.ID, j.Title, j.ApprovedHead)
 	fmt.Fprintf(&b, "job: %s\napproved-head: %s\n", j.ID, j.ApprovedHead)
-	if j.PRURL != "" {
-		fmt.Fprintf(&b, "pr: %s\n", j.PRURL)
-	}
-	fmt.Fprintf(&b, "\nThis approval covers commit %s only. Merge the pull request%s only if its head is exactly that commit; a later commit is not approved and needs a new round. When it is in, reply with a line merged: <the full SHA you merged> (or closed: <why> if it will not be merged).\n", j.ApprovedHead, prSuffix(j))
+	fmt.Fprintf(&b, "pr: %s\n", j.ApprovedPR)
+	fmt.Fprintf(&b, "\nThis approval covers pull request %s at commit %s only. Merge that pull request, and only if its head is exactly that commit; another pull request, or a later commit, is not approved and needs a new round. When it is in, reply with a line merged: <the full SHA you merged> (or closed: <why> if it will not be merged).\n", j.ApprovedPR, j.ApprovedHead)
 	return Message{Kind: "notice", Subject: "Design job " + j.ID + ": approved at " + short(j.ApprovedHead) + ", merge that commit", Body: b.String(), Thread: "design-" + j.ID}
-}
-
-func prSuffix(j Job) string {
-	if j.PRURL != "" {
-		return " " + j.PRURL
-	}
-	return " from " + j.Branch
 }

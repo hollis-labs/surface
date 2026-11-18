@@ -13,7 +13,7 @@ if (!existsSync(generated)) {
   throw new Error(`no ${generated}: run \`go run ./cmd/surface generate -f apps/${app}/surface.yaml\` first`)
 }
 const outDir = process.env.SURFACE_OUT ?? resolve(root, `../apps/${app}/webui/dist`)
-const api = process.env.SURFACE_API ?? "http://127.0.0.1:8090"
+const api = process.env.SURFACE_API ?? "http://127.0.0.1:8190"
 
 export default defineConfig({
   root,
@@ -34,6 +34,7 @@ export default defineConfig({
       "@surface/sdk": resolve(root, "src/sdk/index.ts"),
       "@surface/chat": resolve(root, "../packages/chat/src/index.ts"),
       "@surface/cards": resolve(root, "../packages/cards/src/index.ts"),
+      "@surface/genui": resolve(root, "../packages/genui/src/index.ts"),
       "@surface/app": generated,
     },
     dedupe: ["react", "react-dom"],

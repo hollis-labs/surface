@@ -8,7 +8,7 @@ import (
 
 // The embedded agent: one for the whole desk, with context slots fed by the modules.
 func init() {
-	serviceFactories = append(serviceFactories, func(ctx context.Context, a *App) (service, error) {
+	lateServiceFactories = append(lateServiceFactories, func(ctx context.Context, a *App) (service, error) {
 		s, err := agent.New(a.k)
 		if err != nil {
 			return nil, err

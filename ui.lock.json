@@ -84,7 +84,7 @@
     },
     "card-progress": {
       "files": {
-        "web/src/components/ui/card-progress.tsx": "a6b97d34b60e6a5fe7a54f939cce0b0dd938b3c2070fbe1e8c3e9179fc5b83de"
+        "web/src/components/ui/card-progress.tsx": "eea716dffc84eb892e1b88cbed8b53a7850aabe920a7ebbe1460d990c371c745"
       }
     },
     "card-prompt": {
@@ -135,6 +135,11 @@
     "field": {
       "files": {
         "web/src/components/ui/field.tsx": "8e54d2838051eeb741f6925863b690c98928b25bbb26f3cd26a5b75121d06acb"
+      }
+    },
+    "genui-surface": {
+      "files": {
+        "web/src/components/ui/genui-surface.tsx": "a597f65297c04752a4f8f8ea0603102d1c8cacd936ffaedc6b9b44bc9bb38a18"
       }
     },
     "guide-bar": {
@@ -274,7 +279,7 @@
     },
     "window-manager": {
       "files": {
-        "web/src/components/ui/window-manager.tsx": "620398b1e596dc855e8f5bcfa780e78d8493a4325389a5b21d955c5ae6c26798",
+        "web/src/components/ui/window-manager.tsx": "c65da3273b72b0bcf0ccd49a4e3ae4015032789b9725b1370f58c249fe04907a",
         "web/src/components/ui/window-manager.css": "9ba9a3ff0f655313037669008f0d406a59d7e2473623f70c0e377f2bb3d93fcf"
       }
     }

@@ -491,6 +491,31 @@
       ]
     },
     {
+      "name": "genui-surface",
+      "type": "registry:ui",
+      "title": "Genui Surface",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/badge",
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/field",
+        "@surface/input",
+        "@surface/spinner",
+        "@surface/switch",
+        "@surface/textarea"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/genui-surface.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "guide-bar",
       "type": "registry:ui",
       "title": "Guide Bar",

@@ -21,6 +21,7 @@ import { CardNotice } from "@/components/ui/card-notice"
 import { CardPlan, type CardPlanStep } from "@/components/ui/card-plan"
 import { CardProgress } from "@/components/ui/card-progress"
 import { CardPrompt } from "@/components/ui/card-prompt"
+import { GenuiCard } from "../genui/card"
 import { isStale, respond, type ServerCard } from "./store"
 
 /** What a renderer is handed: the card, and how to answer it. */
@@ -161,6 +162,9 @@ registerCard("progress", "1", ({ card }) => (
   />
 ))
 registerCard("plan", "1", ({ card }) => <CardPlan title={card.title} steps={list<CardPlanStep>(card.payload?.steps)} />)
+
+// A generated surface is a card too: decoded, checked and driven by @surface/genui.
+registerCard("genui", "1", GenuiCard)
 
 /** A renderer that throws takes down its own card, not what is around it. */
 class Boundary extends Component<{ card: ServerCard; children: ReactNode }, { error: Error | null }> {

@@ -1,0 +1,13 @@
+{
+  "name": "@surface/genui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Generated UI without any styling: the reviewed GenUI contract (strict decoding and validation of surfaces, calls and outcomes) and the controller that takes one surface through an action, a confirmation and recovery. Visuals are the @surface registry's genui-surface component.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ajv": "8.17.1"
+  }
+}

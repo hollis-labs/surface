@@ -1,7 +1,7 @@
 import { CircleCheckIcon, CircleXIcon } from "lucide-react"
 
 import { CardFrame } from "@/components/ui/card-frame"
-import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress"
+import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 
 /** How far long work has got. With no value it only says the work is going. Surface's own. */
@@ -29,11 +29,7 @@ function CardProgress({ title, label, value, max = 100, status = "running", deta
     >
       {title && label && <p className="text-sm">{label}</p>}
       {percent !== null && (
-        <Progress value={percent} aria-label={label ?? title ?? "Progress"}>
-          <ProgressTrack>
-            <ProgressIndicator />
-          </ProgressTrack>
-        </Progress>
+        <Progress value={percent} aria-label={label ?? title ?? "Progress"} />
       )}
       {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
     </CardFrame>

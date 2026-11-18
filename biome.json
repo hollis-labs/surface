@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["web/**", "modules/**", "packages/**", "!web/src/generated", "!**/dist", "!web/src/components/ui"]
+    "includes": ["web/**", "modules/**", "packages/**", "!web/src/generated", "!**/dist", "!web/src/components/ui", "!packages/genui/src/validators.js", "!packages/genui/src/generated.ts", "!packages/genui/contract"]
   },
   "formatter": {
     "enabled": true,

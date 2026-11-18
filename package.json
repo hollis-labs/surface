@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --config web/vite.config.ts",
     "build": "vite build --config web/vite.config.ts",
-    "typecheck": "tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p packages/chat/tsconfig.json && tsc --noEmit -p packages/cards/tsconfig.json",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p packages/chat/tsconfig.json && tsc --noEmit -p packages/cards/tsconfig.json && tsc --noEmit -p packages/genui/tsconfig.json",
     "lint": "biome check web modules packages",
     "test": "node --test packages/*/src/*.test.ts",
     "lint:fix": "biome check --write web modules packages"
@@ -15,6 +15,7 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@hollis-labs/ade-core": "0.1.0",
+    "ajv": "8.17.1",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.2",

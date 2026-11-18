@@ -72,11 +72,44 @@ function ShownCard({ item }: { item: ToolItem }) {
   )
 }
 
+/**
+ * A generated surface the agent showed. While it is up it is docked above the composer;
+ * afterwards it is drawn here, closed, when this page still holds it, and otherwise as a
+ * line saying what was shown and what came of it.
+ */
+function GeneratedSurface({ item }: { item: ToolItem }) {
+  const input = (item.input ?? {}) as { pattern?: string; params?: { title?: string } }
+  let result: { id?: string; status?: string } = {}
+  try {
+    if (item.result) result = JSON.parse(item.result)
+  } catch {
+    // Not the tool's JSON (an error message): the plain row shows it.
+  }
+  const live = useCard(result.id ?? "")
+  if (item.status === "error") return <ToolRow item={item} />
+  const title = input.params?.title
+  if (item.status === "running") {
+    return (
+      <MessageNotice className="flex items-center gap-1.5">
+        <Spinner className="size-3" /> Showing you{title ? `: ${title}` : " something"}
+      </MessageNotice>
+    )
+  }
+  if (live) return <CardView card={live} />
+  return (
+    <MessageNotice>
+      Showed you{title ? `: ${title}` : " a generated surface"}
+      {result.status ? ` (${result.status})` : ""}
+    </MessageNotice>
+  )
+}
+
 /** Tool name → the card that draws its calls. */
 export const toolCards: Record<string, ComponentType<{ item: ToolItem }>> = {
   card_ask: AskedCard,
   card_show: ShownCard,
   card_update: ShownCard,
+  genui_show: GeneratedSurface,
 }
 
 function ToolRow({ item }: { item: ToolItem }) {

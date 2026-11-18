@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { CardsWindow } from "../cards/views"
+import { Gallery } from "../gallery/Gallery"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
 import { app, deleteLayout, deskState, type LayoutDef, listLayouts, loadLayout, saveLayout } from "./store"
@@ -251,5 +252,6 @@ export const coreWeb: ModuleWeb = {
     "surface/layouts": Layouts,
     "surface/marks": Marks,
     "surface/cards": CardsWindow,
+    "surface/gallery": Gallery,
   },
 }

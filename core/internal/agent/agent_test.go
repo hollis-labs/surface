@@ -87,6 +87,7 @@ func (k *fakeKernel) Log() *slog.Logger           { return slog.New(slog.NewText
 func (k *fakeKernel) Desk() module.Desk           { return k.desk }
 func (k *fakeKernel) Events() module.Events       { return k.bus }
 func (k *fakeKernel) Marks() module.Marks         { return nil }
+func (k *fakeKernel) Cards() module.Cards         { return nil }
 func (k *fakeKernel) Config(string) module.Config { return nil }
 func (k *fakeKernel) Tools() []kernel.BoundTool   { return k.tools }
 func (k *fakeKernel) Slots() []kernel.BoundSlot   { return k.slots }

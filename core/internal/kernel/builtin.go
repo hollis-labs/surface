@@ -27,6 +27,8 @@ var coreViews = []module.View{
 	{ID: "surface.layouts", Title: "Layouts", Icon: "layout-dashboard", Width: 520, Height: 560, Menu: true, Render: module.Component("surface/layouts")},
 	{ID: "surface.marks", Title: "Marks", Icon: "message-square-quote", Width: 480, Height: 600, Menu: true, Render: module.Component("surface/marks")},
 	{ID: "surface.cards", Title: "Cards", Icon: "gallery-vertical-end", Width: 480, Height: 640, Menu: true, Render: module.Component("surface/cards")},
+	// Every registry component in its variants and states, for design work and screenshots.
+	{ID: "surface.gallery", Title: "Components", Icon: "swatch-book", Width: 960, Height: 760, Menu: true, Render: module.Component("surface/gallery")},
 }
 
 func schema(s string) json.RawMessage { return json.RawMessage(s) }

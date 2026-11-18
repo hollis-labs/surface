@@ -131,7 +131,8 @@ function toFlex(tree: WindowTree, windows: WindowInfo[], focus: string | undefin
     subLayouts[f.id] = {
       type: "float",
       rect: { x: f.rect.x, y: f.rect.y, width: f.rect.w, height: f.rect.h },
-      layout: toFlexNode(f.root, titles, focus) as IJsonRowNode,
+      // A float holds a row; a bare stack is wrapped in one.
+      layout: toFlexNode(f.root.type === "row" ? f.root : { type: "row", children: [f.root] }, titles, focus) as IJsonRowNode,
     }
   }
   return { global: GLOBAL, layout: toFlexNode(tree.root, titles, focus) as IJsonRowNode, subLayouts }

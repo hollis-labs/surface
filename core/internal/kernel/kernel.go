@@ -25,6 +25,7 @@ type Kernel interface {
 	Desk() module.Desk
 	Events() module.Events
 	Marks() module.Marks
+	Cards() module.Cards
 	// Config is the live settings of one scope ("agent", or a module id).
 	Config(scope string) module.Config
 

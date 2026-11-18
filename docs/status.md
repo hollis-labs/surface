@@ -31,7 +31,7 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 | The ADE overlays | done: `attention-layer` and `guide-bar` in the registry, `@hollis-labs/ade-core`'s hub in the page, and the agent's `ade_*` tools (point, spotlight, arrow, guide) on the server; views declare anchors with `useAnchor` |
 | Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Typing redraws only the composer, a token only its message, and the thread is read on one stated policy (`packages/chat/README.md`) |
 | Cards | done | server-held cards (`core/internal/cards`): show, update, answer once, lapse by the server's clock; modules through `Host.Cards()`, the agent through `card_show`, `card_ask` (waits for the answer) and `card_update`; `packages/cards` (engine, outcome contract, form subset, renderer table) and ten `card-*` registry components; the agent's cards dock in its panel, others pop up, a blocking one takes the middle, all in the Cards window |
-| Generated UI | not started | |
+| Generated UI | done | Substrate's GenUI contract and gateway with Surface as the host (`core/internal/genui`): three reviewed patterns (approval, form, list with detail), surfaces kept as immutable snapshots, actions journaled and executed once, a second step for a high-risk choice; shown as cards; the agent's `genui_show`; `packages/genui` (contract, strict decoding, controller) and the registry's `genui-surface`; end-to-end test through the real gateway |
 | A baseline palette | undecided; the theme holds shadcn's neutral defaults |
 
 ## Not there yet

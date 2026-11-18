@@ -3,8 +3,12 @@
 @import "@hollis-labs/design-components/source.css";
 @import "./desk/desk.css";
 
+/* Native controls (checkboxes, selects, scrollbars) follow the app's theme, not the OS's. */
 :root {
-  color-scheme: dark light;
+  color-scheme: dark;
+}
+:root[data-mode="light"] {
+  color-scheme: light;
 }
 html,
 body,

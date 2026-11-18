@@ -1,10 +1,13 @@
 /** Scratch's window: a box to jot into and the list of what was jotted. */
-
 import { Icon, type ModuleWeb, useEvent, useSetting, type ViewProps } from "@surface/sdk"
 import { useCallback, useEffect, useRef, useState } from "react"
-import "./scratch.css"
+import { Button } from "@/components/ui/button"
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
+import { Input } from "@/components/ui/input"
+import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Textarea } from "@/components/ui/textarea"
 
-interface Item {
+interface ScratchItem {
   id: string
   text: string
   kind: "note" | "todo" | "idea" | "followup"
@@ -12,7 +15,7 @@ interface Item {
   created: string
 }
 
-const KIND_ICON: Record<Item["kind"], string> = {
+const KIND_ICON: Record<ScratchItem["kind"], string> = {
   note: "sticky-note",
   todo: "square-check",
   idea: "lightbulb",
@@ -20,7 +23,7 @@ const KIND_ICON: Record<Item["kind"], string> = {
 }
 
 function Scratch({ win, desk, api }: ViewProps) {
-  const [items, setItems] = useState<Item[]>([])
+  const [items, setItems] = useState<ScratchItem[]>([])
   const [text, setText] = useState("")
   const [filter, setFilter] = useState("")
   const [error, setError] = useState("")
@@ -29,7 +32,7 @@ function Scratch({ win, desk, api }: ViewProps) {
 
   const load = useCallback(() => {
     api
-      .get<Item[]>(`items${filter ? `?q=${encodeURIComponent(filter)}` : ""}`)
+      .get<ScratchItem[]>(`items${filter ? `?q=${encodeURIComponent(filter)}` : ""}`)
       .then(setItems)
       .catch((e: Error) => setError(e.message))
   }, [api, filter])
@@ -57,14 +60,15 @@ function Scratch({ win, desk, api }: ViewProps) {
       .catch((e: Error) => setError(e.message))
   }
 
+  const open = items.filter((i) => !i.done).length
   return (
-    <div className="scratch">
-      <div className="scratch-compose">
-        <textarea
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-col gap-2 border-b p-3">
+        <Textarea
           ref={box}
-          className="sf-input"
           rows={2}
           value={text}
+          aria-label="Jot something down"
           placeholder="Jot something down. Start with “todo:”, “idea:” or “followup:” to file it."
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -74,44 +78,61 @@ function Scratch({ win, desk, api }: ViewProps) {
             }
           }}
         />
-        <div className="sf-row">
-          <input
-            className="sf-input sf-grow"
+        <div className="flex items-center gap-2">
+          <Input
+            className="flex-1"
             placeholder="Filter…"
+            aria-label="Filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
-          <button type="button" className="sf-btn" data-kind="primary" disabled={!text.trim()} onClick={add}>
+          <Button disabled={!text.trim()} onClick={add}>
             Keep
-          </button>
+          </Button>
         </div>
-        {error && <p className="sf-error">{error}</p>}
+        {error && <p className="text-destructive">{error}</p>}
       </div>
-      <ul className="scratch-list">
-        {items.length === 0 && <li className="sf-dim scratch-none">Nothing here{filter ? " matches" : " yet"}.</li>}
+      <div className="min-h-0 flex-1 overflow-auto p-1.5">
+        {items.length === 0 && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyDescription>Nothing here{filter ? " matches" : " yet"}.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
         {items.map((it) => (
-          <li key={it.id} className="scratch-item" data-done={it.done}>
-            <button
-              type="button"
-              className="scratch-tick"
-              title={it.done ? "Open again" : "Done"}
-              onClick={() => void api.put(`items/${it.id}`, { done: !it.done })}
-            >
-              <Icon name={it.done ? "circle-check" : "circle"} size={16} />
-            </button>
-            <span className="scratch-kind" title={it.kind}>
-              <Icon name={KIND_ICON[it.kind]} size={13} />
-            </span>
-            <span className="scratch-text">{it.text}</span>
-            <button type="button" className="scratch-x" title="Put away" onClick={() => void api.del(`items/${it.id}`)}>
-              <Icon name="x" size={13} />
-            </button>
-          </li>
+          <Item key={it.id} size="sm">
+            <ItemMedia>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title={it.done ? "Open again" : "Done"}
+                aria-pressed={it.done}
+                onClick={() => void api.put(`items/${it.id}`, { done: !it.done })}
+              >
+                <Icon name={it.done ? "circle-check" : "circle"} />
+              </Button>
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>
+                <Icon name={KIND_ICON[it.kind]} size={13} className="shrink-0 text-muted-foreground" />
+                <span
+                  className={`whitespace-pre-wrap break-words ${it.done ? "text-muted-foreground line-through" : ""}`}
+                >
+                  {it.text}
+                </span>
+              </ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <Button variant="ghost" size="icon-xs" title="Put away" onClick={() => void api.del(`items/${it.id}`)}>
+                <Icon name="x" />
+              </Button>
+            </ItemActions>
+          </Item>
         ))}
-      </ul>
-      <footer className="scratch-foot sf-dim">
-        {items.filter((i) => !i.done).length} open
-        {showDone ? ` · ${items.filter((i) => i.done).length} done` : " · finished items hidden"}
+      </div>
+      <footer className="border-t px-3 py-1.5 text-muted-foreground text-xs">
+        {open} open{showDone ? ` · ${items.length - open} done` : " · finished items hidden"}
       </footer>
     </div>
   )

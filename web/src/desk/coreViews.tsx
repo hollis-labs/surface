@@ -1,5 +1,6 @@
 /** The core's own windows: Settings, Layouts and Marks. They are views like any module's. */
 import { useCallback, useEffect, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,24 +28,26 @@ function Settings(_: ViewProps) {
   const title = (scope: string) =>
     scope === "surface" ? "Desk" : (app().modules.find((m) => m.id === scope)?.title ?? scope)
   return (
-    <div className="sf-pane">
-      <p className="sf-note">
+    <div className="flex flex-col gap-3 p-4">
+      <p className="text-muted-foreground">
         Settings are kept in the app's database and take effect as you change them. Nothing restarts.
       </p>
-      {error && <p className="sf-error">{error}</p>}
+      {error && <p className="text-destructive">{error}</p>}
       {scopes.map((scope) => (
-        <section key={scope} className="sf-group">
-          <h3>{title(scope)}</h3>
+        <section key={scope} className="flex flex-col">
+          <h3 className="pt-2 pb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+            {title(scope)}
+          </h3>
           {entries
             .filter((e) => e.scope === scope)
             .map((e) => (
-              <div key={e.full_key} className="sf-setting">
-                <span className="sf-setting-text">
-                  <span className="sf-setting-title">{e.title}</span>
-                  {e.about && <span className="sf-setting-about">{e.about}</span>}
-                  <code className="sf-setting-key">{e.full_key}</code>
+              <div key={e.full_key} className="flex items-center justify-between gap-4 border-t py-2.5">
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-medium">{e.title}</span>
+                  {e.about && <span className="text-muted-foreground text-xs">{e.about}</span>}
+                  <code className="font-mono text-muted-foreground text-xs">{e.full_key}</code>
                 </span>
-                <span className="sf-setting-control">
+                <span className="flex shrink-0 items-center gap-2">
                   {e.type === "bool" && (
                     <Switch checked={!!e.value} onCheckedChange={(on) => change(e, on)} aria-label={e.title} />
                   )}
@@ -115,13 +118,13 @@ function Layouts(_: ViewProps) {
       .catch((err: Error) => setError(err.message))
   }
   return (
-    <div className="sf-pane">
-      <p className="sf-note">
+    <div className="flex flex-col gap-3 p-4">
+      <p className="text-muted-foreground">
         A layout is an arrangement you can come back to: which windows are open, how they sit, and the setup that goes
         with them (your mode, the agent's standing instructions, the reflexes that are on).
       </p>
       <form
-        className="sf-row"
+        className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           if (name.trim()) save(name.trim())
@@ -137,15 +140,19 @@ function Layouts(_: ViewProps) {
           Save
         </Button>
       </form>
-      {error && <p className="sf-error">{error}</p>}
-      {layouts.length === 0 && <p className="sf-dim">No saved layouts yet.</p>}
+      {error && <p className="text-destructive">{error}</p>}
+      {layouts.length === 0 && <p className="text-muted-foreground text-xs">No saved layouts yet.</p>}
       {layouts.map((l) => (
-        <div key={l.name} className="sf-card" data-on={l.name === active}>
-          <div className="sf-card-head">
+        <div
+          key={l.name}
+          className="flex flex-col gap-2 rounded-lg border bg-card p-3 data-[on=true]:border-ring"
+          data-on={l.name === active}
+        >
+          <div className="flex items-center gap-2">
             <Icon name="layout-dashboard" size={15} />
             <strong>{l.name}</strong>
-            {l.name === active && <span className="sf-chip">in use</span>}
-            <span className="sf-grow" />
+            {l.name === active && <Badge variant="secondary">in use</Badge>}
+            <span className="flex-1" />
             <Button variant="outline" size="sm" onClick={() => void loadLayout(l.name)}>
               Arrange
             </Button>
@@ -161,12 +168,12 @@ function Layouts(_: ViewProps) {
               Delete
             </Button>
           </div>
-          {l.about && <p className="sf-card-about">{l.about}</p>}
-          <p className="sf-dim">
+          {l.about && <p className="text-muted-foreground">{l.about}</p>}
+          <p className="text-muted-foreground text-xs">
             {l.mode} · {l.windows.map((w) => w.title || w.view).join(", ") || "no windows"}
           </p>
           {l.setup && Object.keys(l.setup).length > 0 && (
-            <dl className="sf-setup">
+            <dl className="grid gap-1 text-xs [&_dd]:text-muted-foreground [&_div]:flex [&_div]:gap-2 [&_dt]:w-24 [&_dt]:shrink-0 [&_dt]:text-muted-foreground">
               {Object.entries(l.setup).map(([k, v]) => (
                 <div key={k}>
                   <dt>{k}</dt>
@@ -187,12 +194,12 @@ function Marks(_: ViewProps) {
   useEffect(refresh, [refresh])
   useEvent("marks.changed", refresh)
   return (
-    <div className="sf-pane">
-      <p className="sf-note">
+    <div className="flex flex-col gap-3 p-4">
+      <p className="text-muted-foreground">
         Marks are notes pinned to a part of something, by you or the agent. These are the open ones, across every
         module.
       </p>
-      {marks.length === 0 && <p className="sf-dim">No open marks.</p>}
+      {marks.length === 0 && <p className="text-muted-foreground text-xs">No open marks.</p>}
       {marks.map((m) => (
         <MarkCard key={m.id} mark={m} />
       ))}
@@ -203,26 +210,29 @@ function Marks(_: ViewProps) {
 function MarkCard({ mark }: { mark: Mark }) {
   const [reply, setReply] = useState("")
   return (
-    <div className="sf-card sf-mark" data-author={mark.author}>
-      <div className="sf-card-head">
+    <div
+      className="flex flex-col gap-2 rounded-lg border bg-card p-3 data-[author=agent]:border-l-2 data-[author=agent]:border-l-primary"
+      data-author={mark.author}
+    >
+      <div className="flex items-center gap-2">
         <Icon name={mark.author === "agent" ? "bot" : "user"} size={14} />
-        <code className="sf-mark-ref" title={mark.ref}>
+        <code className="truncate font-mono text-muted-foreground text-xs" title={mark.ref}>
           {mark.ref}
         </code>
-        <span className="sf-grow" />
+        <span className="flex-1" />
         <Button variant="link" size="xs" onClick={() => void resolveMark(mark.id)}>
           resolve
         </Button>
       </div>
-      {mark.quote && <blockquote>{mark.quote}</blockquote>}
+      {mark.quote && <blockquote className="border-l-2 pl-2.5 text-muted-foreground italic">{mark.quote}</blockquote>}
       <p>{mark.body}</p>
       {mark.replies?.map((r) => (
-        <p key={r.created + r.body} className="sf-mark-reply">
+        <p key={r.created + r.body} className="flex items-center gap-1.5 pl-2 text-muted-foreground">
           <Icon name={r.author === "agent" ? "bot" : "user"} size={12} /> {r.body}
         </p>
       ))}
       <form
-        className="sf-row"
+        className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           if (reply.trim()) void replyMark(mark.id, reply.trim()).then(() => setReply(""))

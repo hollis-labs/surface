@@ -4,6 +4,17 @@
  * owner does into actions.
  */
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Kbd } from "@/components/ui/kbd"
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { isConnected, onConnection } from "../sdk/runtime"
@@ -117,113 +128,106 @@ export function Desktop({ modules }: DesktopProps) {
   const menuViews = manifest.views.filter((v) => v.menu)
 
   return (
-    <div className="sf-desk" data-layout={state.layout}>
-      <header className="sf-bar">
-        <div className="sf-bar-side">
-          <button type="button" className="sf-bar-btn sf-bar-brand" onClick={() => setMenu((m) => !m)} title="Apps">
-            <Icon name="layout-grid" size={14} />
-            <span>{manifest.title}</span>
-          </button>
-          {menu && (
-            <>
-              <div className="sf-scrim" onClick={() => setMenu(false)} />
-              <div className="sf-menu" role="menu">
-                {menuViews.map((v) => (
-                  <button
-                    type="button"
-                    key={v.id}
-                    role="menuitem"
-                    className="sf-menu-item"
-                    onClick={() => {
-                      setMenu(false)
-                      void desk.open(v.id)
-                    }}
-                  >
-                    <Icon name={v.icon} size={15} />
-                    <span>{v.title}</span>
-                    <span className="sf-menu-mod">{v.module === "surface" ? "" : v.module}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="sf-tabs">
+    <div className="fixed inset-0 flex flex-col bg-background text-sm" data-layout={state.layout}>
+      <header className="flex h-9 shrink-0 select-none items-center justify-between gap-3 border-b bg-background px-2">
+        <div className="flex h-full min-w-0 items-center gap-1">
+          <DropdownMenu open={menu} onOpenChange={setMenu}>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="sm" title="Apps">
+                  <Icon name="layout-grid" />
+                  <span className="font-semibold">{manifest.title}</span>
+                </Button>
+              }
+            />
+            <DropdownMenuContent className="min-w-56">
+              {menuViews.map((v) => (
+                <DropdownMenuItem key={v.id} onClick={() => void desk.open(v.id)}>
+                  <Icon name={v.icon} />
+                  <span>{v.title}</span>
+                  {v.module !== "surface" && <DropdownMenuShortcut>{v.module}</DropdownMenuShortcut>}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="ml-1 flex min-w-0 gap-0.5 overflow-hidden">
             {state.wins.map((w) => (
-              <button
-                type="button"
+              <Button
                 key={w.id}
-                className="sf-tab"
-                data-focused={w.id === state.focus}
-                data-min={w.minimized}
-                title={w.title}
+                variant={w.id === state.focus ? "secondary" : "ghost"}
+                size="sm"
+                className="min-w-0 max-w-44 shrink"
+                title={w.minimized ? `${w.title} (hidden)` : w.title}
+                aria-pressed={w.id === state.focus}
                 onClick={() => void act({ type: "focus", id: w.id })}
                 onAuxClick={(e) => {
                   if (e.button === 1) void closeWindow(w.id)
                 }}
               >
-                <Icon name={viewById(w.view)?.icon} size={13} />
-                <span>{w.dirty ? `● ${w.title}` : w.title}</span>
-              </button>
+                <Icon name={w.minimized ? "minus" : viewById(w.view)?.icon} />
+                <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
+              </Button>
             ))}
           </div>
         </div>
-        <div className="sf-bar-side sf-bar-end">
+        <div className="flex h-full shrink-0 items-center gap-1">
           {state.active && (
-            <button
-              type="button"
-              className="sf-bar-btn"
+            <Button
+              variant="ghost"
+              size="sm"
               title="The saved layout in use"
               onClick={() => void desk.open("surface.layouts")}
             >
-              <Icon name="layout-dashboard" size={13} />
+              <Icon name="layout-dashboard" />
               <span>{state.active}</span>
-            </button>
+            </Button>
           )}
           {state.mode && (
-            <span className="sf-chip" title="Your mode">
+            <Badge variant="secondary" title="Your mode">
               {state.mode}
-            </span>
+            </Badge>
           )}
-          <button
-            type="button"
-            className="sf-bar-btn"
+          <Button
+            variant="ghost"
+            size="sm"
             title="Switch between tiling and floating"
             onClick={() => void runCommand("layout.toggle")}
           >
-            <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} size={13} />
+            <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
             <span>{state.layout}</span>
-          </button>
-          <button
-            type="button"
-            className="sf-bar-btn"
-            title={`Command palette ${showKeys("cmd+k")}`}
-            onClick={() => setPalette(true)}
-          >
-            <Icon name="search" size={13} />
-            <span>{showKeys("cmd+k")}</span>
-          </button>
-          <button
-            type="button"
-            className="sf-bar-btn"
-            data-on={agentOpen}
+          </Button>
+          <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
+            <Icon name="search" />
+            <Kbd>{showKeys("cmd+k")}</Kbd>
+          </Button>
+          <Button
+            variant={agentOpen ? "secondary" : "ghost"}
+            size="icon-sm"
             title={`Agent ${showKeys("cmd+j")}`}
+            aria-pressed={agentOpen}
             onClick={() => toggleAgent()}
           >
-            <Icon name="bot" size={14} />
-          </button>
-          <span className="sf-live" data-up={up} title={up ? "Connected" : "Reconnecting…"} />
+            <Icon name="bot" />
+          </Button>
+          <span
+            className={`mx-1.5 size-2 rounded-full ${up ? "bg-success" : "bg-warning"}`}
+            title={up ? "Connected" : "Reconnecting…"}
+          />
         </div>
       </header>
 
-      <div className="sf-main">
-        <div className="sf-canvas" ref={canvasRef}>
+      <div className="flex min-h-0 flex-1">
+        {/* isolate: the windows' stacking order stays inside the canvas, under the bar and the overlays. */}
+        <div className="relative isolate min-w-0 flex-1 overflow-hidden bg-muted/40" ref={canvasRef}>
           {state.wins.length === 0 && (
-            <div className="sf-empty">
-              <p>{manifest.title}</p>
-              <p className="sf-empty-hint">
-                Open something from the menu, press {showKeys("cmd+k")} for the palette, or ask the agent.
-              </p>
-            </div>
+            <Empty className="absolute inset-0">
+              <EmptyHeader>
+                <EmptyTitle>{manifest.title}</EmptyTitle>
+                <EmptyDescription>
+                  Open something from the menu, press <Kbd>{showKeys("cmd+k")}</Kbd> for the palette, or ask the agent.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
           {state.wins.map((w) => {
             const p = placed.get(w.id)
@@ -234,13 +238,16 @@ export function Desktop({ modules }: DesktopProps) {
           })}
         </div>
         {agentOpen && (
-          <aside className="sf-panel" style={{ width: panelWidth }}>
+          <aside
+            className="flex min-h-0 max-w-[60vw] shrink-0 flex-col overflow-hidden border-l bg-background"
+            style={{ width: panelWidth }}
+          >
             <AgentPanel desk={desk} title="Agent" />
           </aside>
         )}
       </div>
 
-      {palette && <Palette commands={commands} onClose={() => setPalette(false)} />}
+      <Palette open={palette} onOpenChange={setPalette} commands={commands} />
       <ConfirmHost />
     </div>
   )
@@ -302,7 +309,7 @@ function WindowFrame({ win, placed, focused, area, modules }: FrameProps) {
 
   return (
     <section
-      className="sf-win"
+      className="group absolute flex flex-col overflow-hidden rounded-lg border bg-background shadow-md transition-[left,top,width,height] duration-150 data-[dragging=true]:select-none data-[dragging=true]:transition-none data-[focused=true]:border-ring data-[focused=true]:shadow-xl data-[focused=true]:ring-1 data-[focused=true]:ring-ring"
       data-focused={focused}
       data-tiled={placed.tiled}
       data-dragging={!!drag}
@@ -318,39 +325,62 @@ function WindowFrame({ win, placed, focused, area, modules }: FrameProps) {
       }}
     >
       <header
-        className="sf-win-title"
+        className="flex h-8 shrink-0 select-none items-center gap-2 border-b bg-card pr-1 pl-3 text-muted-foreground text-xs group-data-[tiled=false]:cursor-grab group-data-[focused=true]:text-foreground"
         onPointerDown={(e) => start(e, "move")}
         onDoubleClick={() => void act({ type: "maximize", id: win.id })}
       >
         <Icon name={view?.icon} size={13} />
-        <span className="sf-win-name">{win.dirty ? `● ${win.title}` : win.title}</span>
-        <span className="sf-win-btns" onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" title="Float or re-tile" onClick={() => void act({ type: "float", id: win.id })}>
-            <Icon name={win.floating ? "pin" : "picture-in-picture-2"} size={12} />
-          </button>
-          <button type="button" title="Hide" onClick={() => void act({ type: "minimize", id: win.id })}>
-            <Icon name="minus" size={12} />
-          </button>
-          <button type="button" title="Maximize or restore" onClick={() => void act({ type: "maximize", id: win.id })}>
-            <Icon name={win.maximized ? "minimize-2" : "maximize-2"} size={12} />
-          </button>
-          <button type="button" title="Close" className="sf-win-close" onClick={() => void closeWindow(win.id)}>
-            <Icon name="x" size={13} />
-          </button>
+        <span className="min-w-0 flex-1 truncate">{win.dirty ? `● ${win.title}` : win.title}</span>
+        <span className="flex" onPointerDown={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title="Float or re-tile"
+            onClick={() => void act({ type: "float", id: win.id })}
+          >
+            <Icon name={win.floating ? "pin" : "picture-in-picture-2"} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title="Hide"
+            onClick={() => void act({ type: "minimize", id: win.id })}
+          >
+            <Icon name="minus" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title="Maximize or restore"
+            onClick={() => void act({ type: "maximize", id: win.id })}
+          >
+            <Icon name={win.maximized ? "minimize-2" : "maximize-2"} />
+          </Button>
+          <Button variant="ghost" size="icon-xs" title="Close" onClick={() => void closeWindow(win.id)}>
+            <Icon name="x" />
+          </Button>
         </span>
       </header>
-      <div className="sf-win-body" data-bare={!!view?.bare}>
+      <div
+        className="relative min-h-0 flex-1 overflow-auto data-[bare=true]:flex data-[bare=true]:flex-col data-[bare=true]:overflow-hidden"
+        data-bare={!!view?.bare}
+      >
         <Boundary key={win.view}>
           {Cmp ? (
             <Cmp win={pub} desk={desk} api={api} />
           ) : (
-            <div className="sf-missing">
+            <p className="p-4 text-muted-foreground">
               This app's page was built without the view “{win.view}”. Rebuild the page with the module's web entry.
-            </div>
+            </p>
           )}
         </Boundary>
       </div>
-      {!placed.tiled && !win.maximized && <div className="sf-win-grip" onPointerDown={(e) => start(e, "resize")} />}
+      {!placed.tiled && !win.maximized && (
+        <div
+          className="absolute right-0 bottom-0 size-4 cursor-nwse-resize"
+          onPointerDown={(e) => start(e, "resize")}
+        />
+      )}
     </section>
   )
 }
@@ -364,12 +394,12 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
   render() {
     if (this.state.error) {
       return (
-        <div className="sf-missing">
+        <div className="flex flex-col items-start gap-3 p-4">
           <p>This window failed to draw.</p>
-          <pre>{this.state.error.message}</pre>
-          <button type="button" className="sf-btn" onClick={() => this.setState({ error: null })}>
+          <pre className="whitespace-pre-wrap text-destructive text-xs">{this.state.error.message}</pre>
+          <Button variant="outline" size="sm" onClick={() => this.setState({ error: null })}>
             Try again
-          </button>
+          </Button>
         </div>
       )
     }

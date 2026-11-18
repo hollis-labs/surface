@@ -87,7 +87,10 @@ func (m *mod) tools() []module.Tool {
 				}
 				return m.feedback(ctx, id, a.Text)
 			}},
-		{Name: "design_approve", Level: module.LevelWrite,
+		// Act level on purpose: the approval card this tool raises is the owner's decision. At
+		// write level the chat would ask first and the card again, two asks for one decision. What
+		// leaves the app on approve (the go-ahead) is only sent once the owner approves the card.
+		{Name: "design_approve", Level: module.LevelAct,
 			Description: "Ask the owner to approve a design job with an approval card and wait for the answer. On approve the job is approved and the Design team is told to merge; Surface never merges. Defaults to the job in front.",
 			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"timeout_seconds":{"type":"integer","description":"How long to wait for the owner. Default 600, at most 3600."}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {

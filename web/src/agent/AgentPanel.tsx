@@ -3,7 +3,7 @@
  * <context> block the next message will carry) above the conversation with the embedded
  * agent.
  *
- * The conversation is @surface/chat's store, drawn with the registry's chat components. Each
+ * The conversation is @hollis-labs/surface-chat's store, drawn with the registry's chat components. Each
  * part subscribes to its own slice, so typing redraws only the composer and a streamed token
  * redraws only the message it belongs to. In development the list, each row and the composer
  * count their own commits in window.__chatRenders, which is how that is checked.
@@ -21,7 +21,7 @@ import {
   useChatIds,
   useChatItem,
   useStickToBottom,
-} from "@surface/chat"
+} from "@hollis-labs/surface-chat"
 import { Bot, Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
 import { type FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -62,7 +62,8 @@ export function agentSession(): ChatStore {
  */
 function useCommits(id: string) {
   useLayoutEffect(() => {
-    if (!import.meta.env.DEV) return
+    // Optional chaining: outside Vite (another bundler, a test) import.meta.env may not exist.
+    if (!import.meta.env?.DEV) return
     const w = window as unknown as { __chatRenders?: Record<string, number> }
     w.__chatRenders ??= {}
     w.__chatRenders[id] = (w.__chatRenders[id] ?? 0) + 1

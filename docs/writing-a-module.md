@@ -1,7 +1,7 @@
 # Writing a module
 
 A module is a Go package, plus a web entry when it has views. It imports one Surface package,
-[`module`](../module), and one web package, `@surface/sdk`. [`modules/scratch`](../modules/scratch) is the
+[`module`](../module), and one web package, `@hollis-labs/surface-page/sdk`. [`modules/scratch`](../modules/scratch) is the
 smallest complete example; read it beside this page.
 
 ```
@@ -130,7 +130,7 @@ hold everything at once. `Views` (and later `Modes`) say when it applies; `Tools
 
 ```tsx
 // modules/scratch/web/index.tsx
-import { type ModuleWeb, useEvent, useSetting, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useEvent, useSetting, type ViewProps } from "@hollis-labs/surface-page/sdk"
 
 function Scratch({ win, desk, api }: ViewProps) {
   const [items, setItems] = useState<Item[]>([])

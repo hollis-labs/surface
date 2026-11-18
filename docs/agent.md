@@ -246,7 +246,7 @@ The agent can point. `ade_point` rings a window or an anchor in one (`highlight`
 the owner can dismiss the note. `ade_guide_start` puts a short guide over the desk: each step says one thing, may
 point at windows or anchors, and waits for the owner's Next or for a view to be open or in front (`await`), then moves
 on by itself. `ade_guide_status` says where it stands; `ade_guide_stop` ends it. `ade_anchors` lists the windows and
-the anchors their views declared (`useAnchor` in `@surface/sdk`, docs/writing-a-module.md).
+the anchors their views declared (`useAnchor` in `@hollis-labs/surface-page/sdk`, docs/writing-a-module.md).
 
 The server keeps what is asked for (`core/internal/ade`) and the page draws it: a tool call publishes `ade.attention`
 or `ade.guide`, the page applies it to its attention hub (`@hollis-labs/ade-core`, with the desk as one surface whose

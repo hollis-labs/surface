@@ -1,9 +1,15 @@
 /**
  * The cards as the page knows them. The server holds each card and its state and streams
- * changes; the page keeps the latest of each, and the engine from @surface/cards decides
+ * changes; the page keeps the latest of each, and the engine from @hollis-labs/surface-cards decides
  * where each one shows, from rules that are data.
  */
-import { type CardOutcome, type CardRule, type CardViewModel, createCardEngine, type Surface } from "@surface/cards"
+import {
+  type CardOutcome,
+  type CardRule,
+  type CardViewModel,
+  createCardEngine,
+  type Surface,
+} from "@hollis-labs/surface-cards"
 import { useSyncExternalStore } from "react"
 import { ApiError, call, onEvent } from "../sdk/runtime"
 

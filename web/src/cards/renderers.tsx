@@ -9,7 +9,7 @@ import {
   compileFormSchema,
   createCardRegistry,
   validateForm,
-} from "@surface/cards"
+} from "@hollis-labs/surface-cards"
 import { Component, type ComponentType, type ReactNode, useMemo } from "react"
 import { CardApproval, type CardApprovalChange } from "@/components/ui/card-approval"
 import { CardChoice, type CardChoiceOption } from "@/components/ui/card-choice"
@@ -163,7 +163,7 @@ registerCard("progress", "1", ({ card }) => (
 ))
 registerCard("plan", "1", ({ card }) => <CardPlan title={card.title} steps={list<CardPlanStep>(card.payload?.steps)} />)
 
-// A generated surface is a card too: decoded, checked and driven by @surface/genui.
+// A generated surface is a card too: decoded, checked and driven by @hollis-labs/surface-genui.
 registerCard("genui", "1", GenuiCard)
 
 /** A renderer that throws takes down its own card, not what is around it. */

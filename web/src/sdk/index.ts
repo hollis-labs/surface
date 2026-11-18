@@ -1,5 +1,5 @@
 /**
- * @surface/sdk: everything a module's web code may import from Surface.
+ * @hollis-labs/surface-page/sdk: everything a module's web code may import from Surface.
  */
 
 export { useAnchor } from "./anchors"

@@ -1,11 +1,39 @@
 {
-  "name": "@surface/chat",
-  "private": true,
+  "name": "@hollis-labs/surface-chat",
   "version": "0.1.0",
+  "description": "A conversation with an agent host, without any styling: the agent-host/1 wire, the chatstream/v1 event reducer, a store whose messages update one at a time, and scroll-follow. Visuals are the Surface registry's chat components.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-labs/surface.git",
+    "directory": "packages/chat"
+  },
+  "homepage": "https://github.com/hollis-labs/surface/tree/main/packages/chat#readme",
+  "bugs": {
+    "url": "https://github.com/hollis-labs/surface/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
-  "description": "A conversation with an agent host, without any styling: the agent-host/1 wire, the chatstream/v1 event reducer, a store whose messages update one at a time, and scroll-follow. Visuals are the @surface registry's chat components.",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "react": ">=19"

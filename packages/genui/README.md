@@ -1,4 +1,4 @@
-# @surface/genui
+# @hollis-labs/surface-genui
 
 Generated UI without any styling. Something other than the app's own code (the agent, a
 module, an outside client) asks to show a small interface. It names one of three reviewed

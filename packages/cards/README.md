@@ -1,4 +1,4 @@
-# @surface/cards
+# @hollis-labs/surface-cards
 
 Cards without any styling. A card is something an app shows the user outside a window: a
 notice, a question, a request to approve, progress on work.

@@ -32,3 +32,6 @@ node_modules/
 *.local.json
 *.local.yaml
 .claude/
+
+# Built npm packages (packages/*/dist); published from a tag, never committed.
+/packages/*/dist/

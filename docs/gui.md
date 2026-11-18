@@ -87,10 +87,14 @@ All of this is in the Surface repository, whichever app prompted it.
 A registry change reaches an app when that app syncs.
 
 - **Apps in this repository** share one installed copy (`web/src/components/ui`), so step 3 above is all of it.
-- **An app in another repository** has a `ui.lock.json` naming this registry at a ref. In that app:
-  `node scripts/ui.mjs sync`, then `node scripts/ui.mjs verify`, then commit. If the lock pins a tag, move the
-  `ref` to the new tag first.
+- **An app in another repository** reaches it with a Surface release: the change is tagged (`vX.Y.Z`, one
+  version for the registry, the npm packages and the Go module), and the app moves to that tag. In the app:
+  set `ref` in `ui.lock.json` to the tag and the `@hollis-labs/surface-*` packages to the same version, run
+  `npx surface-ui sync` and `npx surface-ui verify`, then commit. Setting up such an app is in
+  `registry/README.md`, "An app in its own repository".
 - **To see who is behind:** `node scripts/ui.mjs report <app dir...> --registry <this repo>/registry/r`.
+- **A behaviour change** (`packages/*`, or the page core in `web/src`) reaches other apps the same way: in a
+  release, as the npm packages at the tag's version.
 
 ### If you are working in another app and the registry lacks what you need
 
@@ -138,7 +142,7 @@ engine or a server.
 | A card kind of a module's own | Draw it with a new or existing registry component; register the renderer with `registerCard(kind, version, component)` (`web/src/cards/renderers.tsx`); show it from Go with `Host.Cards().Show`. An unregistered kind is drawn as a plain "no renderer" card, never as nothing |
 | A custom drawing for one of the agent's tools in the conversation | Add it to `toolCards` in `web/src/agent/items.tsx` |
 | A generated-UI pattern | Not in an app. The three patterns are a reviewed contract owned by Substrate (`genui/`); a new one is a contract change there, then a catalog entry in `core/internal/genui` and a branch in `genui-surface` |
-| Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@surface/sdk` |
+| Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@hollis-labs/surface-page/sdk` |
 | A region of the page | A prop of `app-frame`; the frame does layout only |
 
 ## What is checked
@@ -152,7 +156,7 @@ engine or a server.
 | `make ui-shots` | Nothing yet by itself: it produces the images a comparison will use | by hand |
 | `ui.mjs report` | Apps behind or diverged | by hand |
 
-Screenshot comparison in CI, registry versions by tag, and automatic sync pull requests are planned and not
+Registry versions are Surface tags. Screenshot comparison in CI and automatic sync pull requests are planned and not
 built.
 
 ## Two design decisions that are open

@@ -1,6 +1,6 @@
 /**
  * A generated surface, as a card. The envelope the server sent is decoded and checked by
- * @surface/genui before anything is drawn; a surface that fails is shown as a card that
+ * @hollis-labs/surface-genui before anything is drawn; a surface that fails is shown as a card that
  * could not be drawn. The controller takes the owner's action to the host's gateway
  * (/api/genui), and the registry's GenuiSurface draws what the controller says.
  */
@@ -11,7 +11,7 @@ import {
   type GenuiTransport,
   type Input,
   parseRecovery,
-} from "@surface/genui"
+} from "@hollis-labs/surface-genui"
 import { useEffect, useMemo, useSyncExternalStore } from "react"
 import { type GenuiPattern, GenuiSurface } from "@/components/ui/genui-surface"
 import type { CardRendererProps } from "../cards/renderers"

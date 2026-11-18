@@ -16,7 +16,7 @@ import {
   useMarks,
   useSetting,
   type ViewProps,
-} from "@surface/sdk"
+} from "@hollis-labs/surface-page/sdk"
 import { type ComponentProps, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"

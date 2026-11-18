@@ -32,15 +32,15 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 | Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Typing redraws only the composer, a token only its message, and the thread is read on one stated policy (`packages/chat/README.md`) |
 | Cards | done | server-held cards (`core/internal/cards`): show, update, answer once, lapse by the server's clock; modules through `Host.Cards()`, the agent through `card_show`, `card_ask` (waits for the answer) and `card_update`; `packages/cards` (engine, outcome contract, form subset, renderer table) and ten `card-*` registry components; the agent's cards dock in its panel, others pop up, a blocking one takes the middle, all in the Cards window |
 | Generated UI | done | Substrate's GenUI contract and gateway with Surface as the host (`core/internal/genui`): three reviewed patterns (approval, form, list with detail), surfaces kept as immutable snapshots, actions journaled and executed once, a second step for a high-risk choice; shown as cards; the agent's `genui_show`; `packages/genui` (contract, strict decoding, controller) and the registry's `genui-surface`; end-to-end test through the real gateway |
+| Apps outside this repository | done: one version line (`vX.Y.Z` tags the registry, the Go module and the npm packages). `@hollis-labs/surface-page` (the page core, its sdk, a Vite plugin), `-chat`, `-cards`, `-genui` and `-ui` (the `ui` tool) build and pack; `make pack-check` (CI) installs the tarballs in an empty directory and uses them. Setup in `registry/README.md` |
 | A baseline palette | undecided; the theme holds shadcn's neutral defaults |
 
 ## Not there yet
 
 - **Nanite's embeddable package.** It does not exist yet; the agent runs on `libs/agent/host` behind the
   `Engine` seam ([substrate.md](substrate.md)).
-- **Apps outside this repository.** The generator builds apps under `apps/`. An app in its own repository
-  needs the page's core published as a package; until then a Folio preset for Surface apps has nothing to
-  scaffold against.
+- **Automatic update pull requests** for apps on an older Surface tag. `surface-ui report` shows who is behind;
+  nothing opens the pull request yet.
 - **Run-time loaded and generated modules.** The contract leaves room (`Render` kinds, a manifest that is plain
   data); nothing loads one.
 - **The later contract:** data and service dependencies, module-declared skills, reflexes and triggers, and

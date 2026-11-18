@@ -3,7 +3,7 @@
  * card of its own (an approval, a plan, progress) is drawn by the component `toolCards` names
  * for it, and every other tool by the plain row.
  */
-import type { ChatItem } from "@surface/chat"
+import type { ChatItem } from "@hollis-labs/surface-chat"
 import type { ComponentType } from "react"
 import { Markdown } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"

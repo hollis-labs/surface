@@ -406,7 +406,7 @@
       "name": "conversation",
       "type": "registry:ui",
       "title": "Conversation",
-      "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@surface/chat's useStickToBottom).",
+      "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@hollis-labs/surface-chat's useStickToBottom).",
       "dependencies": [
         "cn",
         "lucide-react"
@@ -970,6 +970,23 @@
         {
           "path": "registry/ui/window-manager.css",
           "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "theme",
+      "type": "registry:file",
+      "title": "Theme",
+      "description": "Every colour, radius and font a component may name, in light and dark. Import it once, after Tailwind; an app restyles by overriding its variables, never a component.",
+      "dependencies": [
+        "shadcn",
+        "tw-animate-css"
+      ],
+      "files": [
+        {
+          "path": "registry/theme/surface.css",
+          "type": "registry:file",
+          "target": "src/surface.css"
         }
       ]
     }

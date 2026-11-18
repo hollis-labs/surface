@@ -332,7 +332,7 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	}
 
 	// The reflexes.
-	prior := s.priorMessages(ctx)
+	prior := s.priorMessages(ctx, "")
 	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
 	res.Fired = out.Fired
 	if out.Halt != "" {

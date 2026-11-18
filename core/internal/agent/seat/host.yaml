@@ -1,0 +1,7 @@
+kind: embedded
+lifetime: application
+application_id: {{app}}
+runtime:
+  provider: anthropic
+permissions:
+  mode: default

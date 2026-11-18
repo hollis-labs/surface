@@ -318,18 +318,46 @@ library's handler under `/api/agent` and supplies what varies:
 | The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
 | Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
 
-It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`. Today the only runner is `scripted`, the
-library's test runner: it plays fixed scripts (`hello`, `tool`, `approval`, `confirm`, `reasoning`, `error`,
-`abort`, `length`, `hold`; anything else is echoed) and runs no tools. It is how the wire and the page are
-exercised until the real runner is wired in. With it, a turn starting `/no` is refused and one starting `/ping`
+It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`. With no runner chosen, nothing changes: the
+engine and the run-at-a-time wire serve the panel as before.
+
+### `nanite`: the app's agent as a Nanite agent
+
+`SURFACE_AGENT_RUNNER=nanite` opens the app's agent as a Nanite agent in the app's own process
+(`github.com/hollis-labs/nanite/chatrunner`, wired in `core/internal/agent/nanite.go`).
+
+| What | Where it comes from |
+|---|---|
+| Model, gateway, key | The app's agent config, as for the engine: `model`, `gateway_url`, `key_file`. The key is passed as a reference to the file and read by Nanite when it calls the gateway. The key file must be under the home directory, owned by the user and mode 0600. |
+| The agent's standing instructions | Its **agent directory**: `<agents.dir>/<app>/` with `agent.md` and `host.yaml`. `agents.dir` is `"agents": {"dir": "..."}` in the agent config (or `SURFACE_AGENTS_DIR`); the default is `agents/` beside the agent config file. Surface writes a starter the first time and never touches it again: it is the owner's to edit, and Nanite reads it at each turn. |
+| Run-time state | `<data dir>/agents/<app>/` (Nanite's conversations and lock) |
+| Tools | The app's tools, run in the app, with their levels. `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time and offers no standing choice. A level that is empty or unknown is `write`. |
+| Ask first | A routing rule that is not `auto` tells the agent what was asked; the call it then makes to that rule's tool asks the owner first, whatever the tool's level. |
+| Standing approvals | "Always" is kept in `agent_grants` and read before asking, so it holds across restarts and new conversations. |
+| Nanite's own tools | None by default. `"builtins": ["files-read", "skills", ...]` in the agent config turns groups on (`files-read`, `files-write`, `shell`, `background`, `subagents`, `skills`, `notes`, `questions`, or `all`). |
+| What is in front of the owner | The context block, as text, in the turn's context: Nanite places it in one slot for that turn only. Slot and layout instructions travel in it, so `agent.md` stays about who the agent is. The config's `system`, when set, leads the block. |
+| A turn the host answers (a halting reflex) | Shown on the stream like any turn and recorded in the agent's history, so the agent knows it happened. |
+| The reflexes' view of the conversation | Read from the agent's history. |
+
+The model is named in the app's agent config, not in `host.yaml`: Surface sets `NANITE_DEFAULT_MODEL` in
+its own process from the config, which Nanite uses when `host.yaml` names no model. A `model` written into
+`host.yaml` wins. To ask the owner something the agent uses `card_ask`; Nanite's `ask_user` is declined on
+this wire. `SURFACE_AGENT_DEBUG=1` logs each turn's context block and what the hook saw.
+
+### `scripted`: the library's test runner
+
+`scripted` plays fixed scripts (`hello`, `tool`, `approval`, `confirm`, `reasoning`, `error`,
+`abort`, `length`, `hold`; anything else is echoed) and runs no tools: it exercises the wire and the page
+without a model. With it, a turn starting `/no` is refused and one starting `/ping`
 is answered by the host, and `POST /api/agent/test/replace` replaces the agent's side (a generation bump).
-`SURFACE_AGENT_SCRIPT_DELAY` paces its events. With no runner chosen, nothing changes: the engine and the
-run-at-a-time wire serve the panel as before.
+`SURFACE_AGENT_SCRIPT_DELAY` paces its events.
 
 The page asks `GET /api/agent/setup`, which says `"wire": "conversation"` and the agent's name when the wire is
 on, and binds `@hollis-labs/surface-chat`'s conversation store instead of the run store
 (`web/src/agent/session.ts`). `?chat=viewer` attaches a page as a viewer and `?chat=committed` takes each part
 whole instead of as it is written.
 
-Not there yet: a runner that runs the app's tools (so tool levels, the ask-first rule and checking the grants
-before asking are not exercised), and the reflexes' view of the earlier conversation on this wire.
+Not there yet: the conversation wire is not the default (the engine still is, and still serves
+`/api/agent/thread` and the run-at-a-time routes), the agent config's `max_tokens`, `max_steps` and
+`compact_at` are not carried to Nanite (its `host.yaml` has its own), and a lease left by a page that was
+killed rather than closed is held until it lapses, a restart included.

@@ -228,3 +228,67 @@ test("the reducer ignores an event it has already taken, and a gap drops what wa
   assert.deepEqual(shown(s), ["note: Part of this conversation could not be replayed."])
   assert.equal(s.cursor, 4)
 })
+
+test("the Nanite runner's events draw a turn: steps, usage and slots change nothing, tools pair by call", () => {
+  // The shapes are the real runner's (nanite/chatrunner): a step is step.start, an assistant
+  // message, step.finish; a tool call's part is named by its call id and its result by
+  // "<call>#result"; a call to a tool that does not exist is still a call and an error result.
+  const run = "run_1"
+  let seq = 0
+  const ev = (verb: string, more: Record<string, unknown> = {}): StreamEvent =>
+    ({ v: "chatstream/v1", seq: ++seq, run_id: run, verb, ...more }) as StreamEvent
+  const events: StreamEvent[] = [
+    ev("run.start"),
+    ev("message.start", { role: "user", message_id: "msg_u", meta: { request_id: "r1" } }),
+    ev("part.start", { part_id: "part_u", kind: "text" }),
+    ev("part.end", { part_id: "part_u", final: { text: "what notes are there?" } }),
+    ev("message.end", { message_id: "msg_u" }),
+    ev("activity", { kind: "nanite.slots", value: { slots: [{ name: "agent", tokens: 331, changed: true }] } }),
+    ev("usage", { usage: { scope: "delta", uncached_input: 4, output: 0, total: 4 } }),
+    ev("step.start", { step_id: "step-1" }),
+    ev("message.start", { role: "assistant", message_id: "msg-1" }),
+    ev("part.start", { part_id: "msg-1.reasoning-1", kind: "reasoning" }),
+    ev("part.delta", { part_id: "msg-1.reasoning-1", text: "thinking" }),
+    ev("part.end", { part_id: "msg-1.reasoning-1", final: { text: "thinking" } }),
+    ev("part.start", { part_id: "toolu_1", kind: "tool_call", meta: { call_id: "toolu_1", name: "notes_list" } }),
+    ev("part.end", { part_id: "toolu_1", final: {} }),
+    ev("part.start", { part_id: "toolu_2", kind: "tool_call", meta: { call_id: "toolu_2", name: "no_such_tool" } }),
+    ev("part.end", { part_id: "toolu_2", final: { a: 1 } }),
+    ev("part.start", { part_id: "toolu_1#result", kind: "tool_result", meta: { call_id: "toolu_1", is_error: false } }),
+    ev("part.end", { part_id: "toolu_1#result", final: { text: '{"notes":[]}', is_error: false } }),
+    ev("part.start", { part_id: "toolu_2#result", kind: "tool_result", meta: { call_id: "toolu_2", is_error: true } }),
+    ev("part.end", { part_id: "toolu_2#result", final: { text: "unknown tool", is_error: true } }),
+    ev("message.end", { message_id: "msg-1" }),
+    ev("step.finish", { step_id: "step-1" }),
+    ev("activity", { kind: "nanite.compact", value: { state: "start", before: 9000 } }),
+    ev("activity", { kind: "nanite.compact", value: { state: "done", before: 9000, after: 1200 } }),
+    ev("activity", { kind: "nanite.subagent", value: { state: "start", id: "c1" } }),
+    ev("step.start", { step_id: "step-2" }),
+    ev("message.start", { role: "assistant", message_id: "msg-2" }),
+    ev("part.start", { part_id: "msg-2.text-1", kind: "text" }),
+    ev("part.delta", { part_id: "msg-2.text-1", text: "None " }),
+    ev("part.delta", { part_id: "msg-2.text-1", text: "yet." }),
+    ev("part.end", { part_id: "msg-2.text-1", final: { text: "None yet." } }),
+    ev("message.end", { message_id: "msg-2" }),
+    ev("step.finish", { step_id: "step-2" }),
+    ev("run.finish", { reason: "stop", usage: { scope: "final", total: 10 } }),
+  ]
+  let s: ChatState = initialState
+  const idsAt: number[] = []
+  for (const e of events) {
+    s = reduceConversation(s, e)
+    idsAt.push(s.ids.length)
+  }
+  assert.deepEqual(shown(s), [
+    "user: what notes are there?",
+    'tool notes_list: done ({"notes":[]})',
+    "tool no_such_tool: error (unknown tool)",
+    "note: The older part of this conversation was summarised for the model. Every message is still here.",
+    "agent: None yet.",
+  ])
+  assert.equal(s.run, null)
+  // Steps, usage, slots, reasoning and subagent activity add no row.
+  for (const i of [5, 6, 7, 9, 10, 11, 21, 24, 25]) assert.equal(idsAt[i], idsAt[i - 1], events[i].verb)
+  const call = s.items[`${run}:toolu_2`]
+  assert.deepEqual(call?.kind === "tool" && call.input, { a: 1 })
+})

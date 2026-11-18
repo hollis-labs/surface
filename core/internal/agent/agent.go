@@ -225,7 +225,17 @@ func (s *Service) Preview(ctx context.Context) slots.Assembly {
 
 // allTools is every tool the agent has: the app's and its own.
 func (s *Service) allTools() []kernel.BoundTool {
-	return append(append([]kernel.BoundTool(nil), s.k.Tools()...), s.ownTools()...)
+	out := append([]kernel.BoundTool(nil), s.k.Tools()...)
+	have := map[string]bool{}
+	for _, t := range out {
+		have[t.Name] = true
+	}
+	for _, t := range s.ownTools() {
+		if !have[t.Name] { // the kernel offers them too once the core has added them
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // layout returns the setup of the layout in use.

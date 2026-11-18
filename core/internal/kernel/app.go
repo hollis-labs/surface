@@ -364,6 +364,27 @@ func (a *App) DeclareSettings(scope string, s []module.Setting) error { return a
 // Tools is every tool in the app.
 func (a *App) Tools() []BoundTool { return append([]BoundTool(nil), a.tools...) }
 
+// AddTools adds a core service's own tools (the agent's: slots, reflexes, rules), so they
+// are offered at /api/tools and /mcp like every other. Call before serving. A name already
+// taken is an error.
+func (a *App) AddTools(tools ...BoundTool) error {
+	have := map[string]string{}
+	for _, t := range a.tools {
+		have[t.Name] = t.Module
+	}
+	for _, t := range tools {
+		if by, dup := have[t.Name]; dup {
+			return fmt.Errorf("surface: tool %q is declared by both %s and %s", t.Name, by, t.Module)
+		}
+		if t.Call == nil {
+			return fmt.Errorf("surface: tool %q of %s has no call", t.Name, t.Module)
+		}
+		have[t.Name] = t.Module
+	}
+	a.tools = append(a.tools, tools...)
+	return nil
+}
+
 // Slots is every module's slots.
 func (a *App) Slots() []BoundSlot { return append([]BoundSlot(nil), a.slots...) }
 

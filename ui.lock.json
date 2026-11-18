@@ -52,6 +52,11 @@
         "web/src/components/ui/context-menu.tsx": "e21f114b58310cb4d14e24932d228923ad2dfaea39587659236728d59a8fe548"
       }
     },
+    "conversation": {
+      "files": {
+        "web/src/components/ui/conversation.tsx": "6a314a6f92a2602c89a19a9410508e8b77e4119e7357e41dc1c4ced877e54b2b"
+      }
+    },
     "dialog": {
       "files": {
         "web/src/components/ui/dialog.tsx": "8081cc14ab4d744b75925706523192f60cc75863e05cb986aaf6a08677c83304"
@@ -97,6 +102,16 @@
         "web/src/components/ui/label.tsx": "86232709f634da7f357a8aaec0e815f3f562604bb67202c88997fae97659b450"
       }
     },
+    "markdown": {
+      "files": {
+        "web/src/components/ui/markdown.tsx": "69603aab5d27a5952f09e9328627490ac899afe1cf8aa4abb8ef522daff06aba"
+      }
+    },
+    "message": {
+      "files": {
+        "web/src/components/ui/message.tsx": "10821a75fa664e608b360a4e91324ea390281122f4e8660c911fa0d6bbc09902"
+      }
+    },
     "popover": {
       "files": {
         "web/src/components/ui/popover.tsx": "5fecff622f4eecc06e8be32bface11c59d529be5c0a1484c78c9e40530b2b7d0"
@@ -105,6 +120,11 @@
     "progress": {
       "files": {
         "web/src/components/ui/progress.tsx": "2c104695a495968e9ee426039e291abc4fb2ff32f36b5faa4e8b450c2a4cc14c"
+      }
+    },
+    "prompt-input": {
+      "files": {
+        "web/src/components/ui/prompt-input.tsx": "ac74ec278a0cbbca26ce7ae33be503ee48d29e9fe4bc7885e10ed19de9734ff5"
       }
     },
     "resizable": {
@@ -177,9 +197,20 @@
         "web/src/components/ui/toggle-group.tsx": "ea72fb41374a94a1585e282cc77b4c90de0c50715f912286646ec24f4c092c2d"
       }
     },
+    "tool": {
+      "files": {
+        "web/src/components/ui/tool.tsx": "4ac205b65307ed8d239f9c98817e0f9840f91261f31aeb2f04f4bfd49ebce029"
+      }
+    },
     "tooltip": {
       "files": {
         "web/src/components/ui/tooltip.tsx": "100101631756e1bebc1f1831e1642b26cd11a6a6c4affb6c638c42001dc14e83"
+      }
+    },
+    "window-manager": {
+      "files": {
+        "web/src/components/ui/window-manager.tsx": "620398b1e596dc855e8f5bcfa780e78d8493a4325389a5b21d955c5ae6c26798",
+        "web/src/components/ui/window-manager.css": "9ba9a3ff0f655313037669008f0d406a59d7e2473623f70c0e377f2bb3d93fcf"
       }
     }
   }

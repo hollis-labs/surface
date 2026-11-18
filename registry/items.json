@@ -1,0 +1,33 @@
+{
+  "window-manager": {
+    "title": "Window Manager",
+    "description": "A desk of windows that tile, tab together and float, arranged by a plain tree the caller owns.",
+    "pins": {
+      "flexlayout-react": "0.11.2"
+    }
+  },
+  "conversation": {
+    "title": "Conversation",
+    "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@surface/chat's useStickToBottom)."
+  },
+  "markdown": {
+    "title": "Markdown",
+    "description": "Markdown as a model writes it, set in the theme; drawn block by block so a streaming message re-parses only its last block.",
+    "pins": {
+      "react-markdown": "10.1.0",
+      "remark-gfm": "4.0.1"
+    }
+  },
+  "message": {
+    "title": "Message",
+    "description": "One chat message: the person's in a bubble, the agent's across the width, and a notice line."
+  },
+  "prompt-input": {
+    "title": "Prompt Input",
+    "description": "Where a chat message is written: a growing textarea (Enter sends) and a send button that is a stop button while the agent answers."
+  },
+  "tool": {
+    "title": "Tool",
+    "description": "A plain, folded row for a tool the agent called: its name and status; open, its input and result."
+  }
+}

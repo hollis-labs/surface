@@ -65,7 +65,7 @@ func coreCommands(a *App) []module.Command {
 		}
 	}
 	return []module.Command{
-		{ID: "layout.toggle", Title: "Switch between tiling and floating", Section: "Layout", Keys: "ctrl+alt+t",
+		{ID: "layout.toggle", Title: "Tile every window, or float them all", Section: "Layout", Keys: "ctrl+alt+t",
 			Run: func(ctx context.Context, _ module.Host, _ map[string]any) (any, error) {
 				_, err := a.desk.Apply(ctx, desk.Action{Type: "layout"})
 				return nil, err
@@ -87,15 +87,14 @@ func coreCommands(a *App) []module.Command {
 			}},
 		{ID: "window.close", Title: "Close window", Section: "Windows", Keys: "ctrl+alt+w", Run: onFocused("close")},
 		{ID: "window.maximize", Title: "Maximize or restore window", Section: "Windows", Keys: "ctrl+alt+return", Run: onFocused("maximize")},
-		{ID: "window.float", Title: "Float or re-tile window", Section: "Windows", Keys: "ctrl+alt+f", Run: onFocused("float")},
-		{ID: "window.master", Title: "Make window the master", Section: "Windows", Keys: "ctrl+alt+m", Run: onFocused("promote")},
-		{ID: "window.hide", Title: "Hide window", Section: "Windows", Keys: "ctrl+alt+h", Run: onFocused("minimize")},
-		{ID: "layout.grow", Title: "Grow the master", Section: "Layout", Keys: "ctrl+alt+right",
+		{ID: "window.float", Title: "Float or dock window", Section: "Windows", Keys: "ctrl+alt+f", Run: onFocused("float")},
+		{ID: "window.master", Title: "Move window to the first place", Section: "Windows", Keys: "ctrl+alt+m", Run: onFocused("promote")},
+		{ID: "layout.grow", Title: "Widen the first column", Section: "Layout", Keys: "ctrl+alt+right",
 			Run: func(ctx context.Context, _ module.Host, _ map[string]any) (any, error) {
 				_, err := a.desk.Apply(ctx, desk.Action{Type: "ratio", Ratio: a.desk.Snapshot().Ratio + 0.04})
 				return nil, err
 			}},
-		{ID: "layout.shrink", Title: "Shrink the master", Section: "Layout", Keys: "ctrl+alt+left",
+		{ID: "layout.shrink", Title: "Narrow the first column", Section: "Layout", Keys: "ctrl+alt+left",
 			Run: func(ctx context.Context, _ module.Host, _ map[string]any) (any, error) {
 				_, err := a.desk.Apply(ctx, desk.Action{Type: "ratio", Ratio: a.desk.Snapshot().Ratio - 0.04})
 				return nil, err
@@ -231,26 +230,28 @@ func coreTools(a *App) []module.Tool {
 				return "done", a.desk.Close(ctx, in.Window)
 			}},
 		{Name: "desk_window", Level: module.LevelAct,
-			Description: "Change how one window sits: float (toggle in or out of the tiling), maximize (toggle), minimize, master (make it the main tiled window), or move it with rect (floating windows).",
-			Input:       schema(`{"type":"object","required":["window","do"],"properties":{"window":{"type":"string"},"do":{"type":"string","enum":["float","maximize","minimize","master","rect"]},"rect":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"w":{"type":"integer"},"h":{"type":"integer"}}}}}`),
+			Description: "Change how one window sits: float (toggle in or out of the tiling), maximize (toggle; a tiled window covers the tiling), first (give it the first place in the tiling), tab (put it in the same stack as the window named in with, as a tab behind which that one sits), or rect (float it at a rectangle, or move it if it floats).",
+			Input:       schema(`{"type":"object","required":["window","do"],"properties":{"window":{"type":"string"},"do":{"type":"string","enum":["float","maximize","first","tab","rect"]},"with":{"type":"string"},"rect":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"w":{"type":"integer"},"h":{"type":"integer"}}}}}`),
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[struct {
 					Window string       `json:"window"`
 					Do     string       `json:"do"`
+					With   string       `json:"with"`
 					Rect   *module.Rect `json:"rect"`
 				}](raw)
 				if err != nil {
 					return nil, err
 				}
-				typ := map[string]string{"float": "float", "maximize": "maximize", "minimize": "minimize", "master": "promote", "rect": "rect"}[in.Do]
+				// "master" is the old word for "first"; a saved prompt or flow may still use it.
+				typ := map[string]string{"float": "float", "maximize": "maximize", "first": "promote", "master": "promote", "tab": "tab", "rect": "rect"}[in.Do]
 				if typ == "" {
-					return nil, fmt.Errorf("do must be float, maximize, minimize, master or rect")
+					return nil, fmt.Errorf("do must be float, maximize, first, tab or rect")
 				}
-				_, err = a.desk.Apply(ctx, desk.Action{Type: typ, ID: in.Window, Rect: in.Rect})
+				_, err = a.desk.Apply(ctx, desk.Action{Type: typ, ID: in.Window, Other: in.With, Rect: in.Rect})
 				return "done", err
 			}},
 		{Name: "desk_arrange", Level: module.LevelAct,
-			Description: "Arrange the whole desk at once: replace the open windows with the ones given, tiled (the first is the master, the rest stack beside it; ratio is the master's share of the width) or floating (each with a rect). setup goes with the arrangement: mode (the user's mode, a word like \"writing\"), instructions (standing guidance for the agent while this arrangement is in use), reflexes (names of reflexes to switch on). Windows holding unsaved work are kept. Give it a name to make it the layout in use; save it with desk_layout_save.",
+			Description: "Arrange the whole desk at once: replace the open windows with the ones given, tiled (the first takes the left, the rest stack on the right; ratio is the first one's share of the width) or floating (each with a rect). setup goes with the arrangement: mode (the user's mode, a word like \"writing\"), instructions (standing guidance for the agent while this arrangement is in use), reflexes (names of reflexes to switch on). Windows holding unsaved work are kept. Give it a name to make it the layout in use; save it with desk_layout_save.",
 			Input:       schema(`{"type":"object","required":["windows"],"properties":{"name":{"type":"string"},"about":{"type":"string"},"mode":{"type":"string","enum":["tile","float"]},"ratio":{"type":"number"},"windows":{"type":"array","items":{"type":"object","required":["view"],"properties":{"view":{"type":"string"},"key":{"type":"string"},"title":{"type":"string"},"args":{"type":"object"},"floating":{"type":"boolean"},"focus":{"type":"boolean"},"rect":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"w":{"type":"integer"},"h":{"type":"integer"}}}}}},"setup":{"type":"object"}}}`),
 			Describe:    func(json.RawMessage) string { return "Rearrange the desk" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {

@@ -7,18 +7,17 @@
   "scripts": {
     "dev": "vite --config web/vite.config.ts",
     "build": "vite build --config web/vite.config.ts",
-    "typecheck": "tsc --noEmit -p web/tsconfig.json",
-    "lint": "biome check web modules",
-    "lint:fix": "biome check --write web modules"
+    "typecheck": "tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p packages/chat/tsconfig.json",
+    "lint": "biome check web modules packages",
+    "test": "node --test packages/*/src/*.test.ts",
+    "lint:fix": "biome check --write web modules packages"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
-    "@hollis-labs/ade-agent": "0.1.0",
-    "@hollis-labs/ade-core": "0.1.0",
-    "@hollis-labs/ade-react": "0.1.0",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.2",
+    "flexlayout-react": "0.11.2",
     "lucide-react": "^1.74.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

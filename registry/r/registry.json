@@ -165,6 +165,25 @@
       ]
     },
     {
+      "name": "conversation",
+      "type": "registry:ui",
+      "title": "Conversation",
+      "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@surface/chat's useStickToBottom).",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/conversation.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "dialog",
       "type": "registry:ui",
       "title": "Dialog",
@@ -316,6 +335,38 @@
       ]
     },
     {
+      "name": "markdown",
+      "type": "registry:ui",
+      "title": "Markdown",
+      "description": "Markdown as a model writes it, set in the theme; drawn block by block so a streaming message re-parses only its last block.",
+      "dependencies": [
+        "cn",
+        "react-markdown@10.1.0",
+        "remark-gfm@4.0.1"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/markdown.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "message",
+      "type": "registry:ui",
+      "title": "Message",
+      "description": "One chat message: the person's in a bubble, the agent's across the width, and a notice line.",
+      "dependencies": [
+        "cn"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/message.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "popover",
       "type": "registry:ui",
       "title": "Popover",
@@ -341,6 +392,25 @@
       "files": [
         {
           "path": "registry/ui/progress.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "prompt-input",
+      "type": "registry:ui",
+      "title": "Prompt Input",
+      "description": "Where a chat message is written: a growing textarea (Enter sends) and a send button that is a stop button while the agent answers.",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/input-group"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/prompt-input.tsx",
           "type": "registry:ui"
         }
       ]
@@ -563,6 +633,26 @@
       ]
     },
     {
+      "name": "tool",
+      "type": "registry:ui",
+      "title": "Tool",
+      "description": "A plain, folded row for a tool the agent called: its name and status; open, its input and result.",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/collapsible",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/tool.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "tooltip",
       "type": "registry:ui",
       "title": "Tooltip",
@@ -573,6 +663,30 @@
       "files": [
         {
           "path": "registry/ui/tooltip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "window-manager",
+      "type": "registry:ui",
+      "title": "Window Manager",
+      "description": "A desk of windows that tile, tab together and float, arranged by a plain tree the caller owns.",
+      "dependencies": [
+        "cn",
+        "flexlayout-react@0.11.2",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/window-manager.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "registry/ui/window-manager.css",
           "type": "registry:ui"
         }
       ]

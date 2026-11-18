@@ -3,7 +3,7 @@
  * Window state comes from the server (./store); this file draws it and turns what the
  * owner does into actions.
  */
-import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,13 +15,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Kbd } from "@/components/ui/kbd"
+import { type WindowInfo, WindowManager, type WindowTree } from "@/components/ui/window-manager"
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { isConnected, onConnection } from "../sdk/runtime"
 import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
 import { matches, parseKeys, showKeys } from "./keys"
-import { MIN_H, MIN_W, type Placed, place, type Rect } from "./layout"
 import { moduleApi } from "./moduleApi"
 import { Palette } from "./Palette"
 import {
@@ -29,7 +29,6 @@ import {
   app,
   type CommandDef,
   closeWindow,
-  type DeskWin,
   desk,
   runCommand,
   setClientRunner,
@@ -53,8 +52,6 @@ export function Desktop({ modules }: DesktopProps) {
   const gap = (useSetting<number>("surface.gap") ?? 10) as number
   const theme = (useSetting<string>("surface.theme") ?? "dark") as string
   const panelWidth = (useSetting<number>("surface.agent_panel_width") ?? 420) as number
-  const canvasRef = useRef<HTMLDivElement>(null)
-  const [area, setArea] = useState<Rect>({ x: 0, y: 0, w: 1200, h: 800 })
 
   useEffect(() => {
     setUp(isConnected())
@@ -70,16 +67,6 @@ export function Desktop({ modules }: DesktopProps) {
   useEffect(() => {
     document.title = manifest.title
   }, [manifest.title])
-
-  useEffect(() => {
-    const el = canvasRef.current
-    if (!el) return
-    const measure = () => setArea({ x: 0, y: 0, w: el.clientWidth, h: el.clientHeight })
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   const toggleAgent = useCallback((open?: boolean) => {
     setAgentOpen((was) => {
@@ -124,7 +111,18 @@ export function Desktop({ modules }: DesktopProps) {
     return () => window.removeEventListener("keydown", onKey, true)
   }, [commands])
 
-  const placed = useMemo(() => place(state, area, gap), [state, area, gap])
+  const windows: WindowInfo[] = useMemo(
+    () =>
+      state.wins.map((w) => ({
+        id: w.id,
+        title: w.title,
+        dirty: w.dirty,
+        icon: <Icon name={viewById(w.view)?.icon} size={13} />,
+      })),
+    [state.wins],
+  )
+  // The owner dragged, split, tabbed, floated or resized: the server keeps the result.
+  const arrange = useCallback((tree: WindowTree, focus: string | undefined) => act({ type: "tree", tree, focus }), [])
   const menuViews = manifest.views.filter((v) => v.menu)
 
   return (
@@ -157,14 +155,14 @@ export function Desktop({ modules }: DesktopProps) {
                 variant={w.id === state.focus ? "secondary" : "ghost"}
                 size="sm"
                 className="min-w-0 max-w-44 shrink"
-                title={w.minimized ? `${w.title} (hidden)` : w.title}
+                title={w.title}
                 aria-pressed={w.id === state.focus}
                 onClick={() => void act({ type: "focus", id: w.id })}
                 onAuxClick={(e) => {
                   if (e.button === 1) void closeWindow(w.id)
                 }}
               >
-                <Icon name={w.minimized ? "minus" : viewById(w.view)?.icon} />
+                <Icon name={viewById(w.view)?.icon} />
                 <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
               </Button>
             ))}
@@ -190,7 +188,7 @@ export function Desktop({ modules }: DesktopProps) {
           <Button
             variant="ghost"
             size="sm"
-            title="Switch between tiling and floating"
+            title="Tile every window, or float them all"
             onClick={() => void runCommand("layout.toggle")}
           >
             <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
@@ -218,24 +216,30 @@ export function Desktop({ modules }: DesktopProps) {
 
       <div className="flex min-h-0 flex-1">
         {/* isolate: the windows' stacking order stays inside the canvas, under the bar and the overlays. */}
-        <div className="relative isolate min-w-0 flex-1 overflow-hidden bg-muted/40" ref={canvasRef}>
-          {state.wins.length === 0 && (
-            <Empty className="absolute inset-0">
-              <EmptyHeader>
-                <EmptyTitle>{manifest.title}</EmptyTitle>
-                <EmptyDescription>
-                  Open something from the menu, press <Kbd>{showKeys("cmd+k")}</Kbd> for the palette, or ask the agent.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-          {state.wins.map((w) => {
-            const p = placed.get(w.id)
-            if (!p) return null
-            return (
-              <WindowFrame key={w.id} win={w} placed={p} focused={w.id === state.focus} area={area} modules={modules} />
-            )
-          })}
+        <div
+          className="relative isolate min-w-0 flex-1 overflow-hidden bg-muted/40"
+          style={{ "--window-gap": `${gap}px` } as React.CSSProperties}
+        >
+          <WindowManager
+            tree={state.tree}
+            windows={windows}
+            focus={state.focus}
+            onArrange={arrange}
+            onClose={(id) => void closeWindow(id)}
+            empty={
+              <Empty className="size-full">
+                <EmptyHeader>
+                  <EmptyTitle>{manifest.title}</EmptyTitle>
+                  <EmptyDescription>
+                    Open something from the menu, press <Kbd>{showKeys("cmd+k")}</Kbd> for the palette, or ask the
+                    agent.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            }
+          >
+            {(id) => <WindowBody id={id} modules={modules} />}
+          </WindowManager>
         </div>
         {agentOpen && (
           <aside
@@ -253,135 +257,33 @@ export function Desktop({ modules }: DesktopProps) {
   )
 }
 
-interface FrameProps {
-  win: DeskWin
-  placed: Placed
-  focused: boolean
-  area: Rect
-  modules: Record<string, ModuleWeb>
-}
-
-/** One window: its frame, title bar and body. Moving and resizing are drawn here while the
- * pointer is down and sent to the server when it lifts. */
-function WindowFrame({ win, placed, focused, area, modules }: FrameProps) {
-  const [drag, setDrag] = useState<Rect | null>(null)
+/** One window's body: the view it shows, handed its window, the desk and its module's API. */
+function WindowBody({ id, modules }: { id: string; modules: Record<string, ModuleWeb> }) {
+  const state = useDeskState()
+  const win = state.wins.find((w) => w.id === id)
+  const focused = state.focus === id
+  const module = win?.module ?? ""
+  const api = useMemo(() => moduleApi(module), [module])
+  const pub = useMemo(() => (win ? toWin(win, focused ? win.id : "") : null), [win, focused])
+  if (!win || !pub) return null
   const view = viewById(win.view)
-  const rect = drag ?? placed
-
-  const start = (e: React.PointerEvent, mode: "move" | "resize") => {
-    if (e.button !== 0) return
-    if (placed.tiled || win.maximized) return
-    e.preventDefault()
-    const from = { x: e.clientX, y: e.clientY }
-    const base: Rect = { x: placed.x, y: placed.y, w: placed.w, h: placed.h }
-    let last = base
-    const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - from.x
-      const dy = ev.clientY - from.y
-      last =
-        mode === "move"
-          ? {
-              ...base,
-              x: Math.min(Math.max(base.x + dx, 0), Math.max(0, area.w - 80)),
-              y: Math.min(Math.max(base.y + dy, 0), Math.max(0, area.h - 40)),
-            }
-          : { ...base, w: Math.max(MIN_W, base.w + dx), h: Math.max(MIN_H, base.h + dy) }
-      setDrag(last)
-    }
-    const upFn = () => {
-      window.removeEventListener("pointermove", move)
-      window.removeEventListener("pointerup", upFn)
-      if (last !== base) {
-        void act({ type: "rect", id: win.id, rect: last }).finally(() => setDrag(null))
-      } else {
-        setDrag(null)
-      }
-    }
-    window.addEventListener("pointermove", move)
-    window.addEventListener("pointerup", upFn)
-  }
-
-  const Body = view ? (view.module === "surface" ? null : modules[view.module]?.views[view.render.entry]) : undefined
-  const CoreBody = view?.module === "surface" ? modules.surface?.views[view.render.entry] : undefined
-  const Cmp = Body ?? CoreBody
-  const api = useMemo(() => moduleApi(win.module), [win.module])
-  const pub = useMemo(() => toWin(win, focused ? win.id : ""), [win, focused])
-
+  const Cmp = view ? modules[view.module]?.views[view.render.entry] : undefined
   return (
-    <section
-      className="group absolute flex flex-col overflow-hidden rounded-lg border bg-background shadow-md transition-[left,top,width,height] duration-150 data-[dragging=true]:select-none data-[dragging=true]:transition-none data-[focused=true]:border-ring data-[focused=true]:shadow-xl data-[focused=true]:ring-1 data-[focused=true]:ring-ring"
-      data-focused={focused}
-      data-tiled={placed.tiled}
-      data-dragging={!!drag}
-      style={{
-        left: rect.x,
-        top: rect.y,
-        width: rect.w,
-        height: rect.h,
-        zIndex: placed.z + (focused && !placed.tiled ? 1 : 0),
-      }}
-      onPointerDownCapture={() => {
-        if (!focused) void act({ type: "focus", id: win.id })
-      }}
+    <div
+      className="relative size-full min-h-0 overflow-auto data-[bare=true]:flex data-[bare=true]:flex-col data-[bare=true]:overflow-hidden"
+      data-bare={!!view?.bare}
+      data-window={win.id}
     >
-      <header
-        className="flex h-8 shrink-0 select-none items-center gap-2 border-b bg-card pr-1 pl-3 text-muted-foreground text-xs group-data-[tiled=false]:cursor-grab group-data-[focused=true]:text-foreground"
-        onPointerDown={(e) => start(e, "move")}
-        onDoubleClick={() => void act({ type: "maximize", id: win.id })}
-      >
-        <Icon name={view?.icon} size={13} />
-        <span className="min-w-0 flex-1 truncate">{win.dirty ? `● ${win.title}` : win.title}</span>
-        <span className="flex" onPointerDown={(e) => e.stopPropagation()}>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            title="Float or re-tile"
-            onClick={() => void act({ type: "float", id: win.id })}
-          >
-            <Icon name={win.floating ? "pin" : "picture-in-picture-2"} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            title="Hide"
-            onClick={() => void act({ type: "minimize", id: win.id })}
-          >
-            <Icon name="minus" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            title="Maximize or restore"
-            onClick={() => void act({ type: "maximize", id: win.id })}
-          >
-            <Icon name={win.maximized ? "minimize-2" : "maximize-2"} />
-          </Button>
-          <Button variant="ghost" size="icon-xs" title="Close" onClick={() => void closeWindow(win.id)}>
-            <Icon name="x" />
-          </Button>
-        </span>
-      </header>
-      <div
-        className="relative min-h-0 flex-1 overflow-auto data-[bare=true]:flex data-[bare=true]:flex-col data-[bare=true]:overflow-hidden"
-        data-bare={!!view?.bare}
-      >
-        <Boundary key={win.view}>
-          {Cmp ? (
-            <Cmp win={pub} desk={desk} api={api} />
-          ) : (
-            <p className="p-4 text-muted-foreground">
-              This app's page was built without the view “{win.view}”. Rebuild the page with the module's web entry.
-            </p>
-          )}
-        </Boundary>
-      </div>
-      {!placed.tiled && !win.maximized && (
-        <div
-          className="absolute right-0 bottom-0 size-4 cursor-nwse-resize"
-          onPointerDown={(e) => start(e, "resize")}
-        />
-      )}
-    </section>
+      <Boundary key={win.view}>
+        {Cmp ? (
+          <Cmp win={pub} desk={desk} api={api} />
+        ) : (
+          <p className="p-4 text-muted-foreground">
+            This app's page was built without the view “{win.view}”. Rebuild the page with the module's web entry.
+          </p>
+        )}
+      </Boundary>
+    </div>
   )
 }
 

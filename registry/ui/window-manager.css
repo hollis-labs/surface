@@ -1,0 +1,132 @@
+/*
+ * The window manager's look. flexlayout-react draws the frames, tabs and gaps with its own
+ * class names and reads its colours from --flexlayout-* variables; this file points those
+ * at the theme's tokens, so the desk follows the theme (and dark mode) like everything
+ * else. The few rules below the variables shape the frames into windows.
+ */
+:root {
+  --flexlayout-font-family: inherit;
+  --flexlayout-font-size: inherit;
+  --flexlayout-font-weight: inherit;
+  --flexlayout-color-text: var(--foreground);
+  --flexlayout-color-background: transparent;
+  --flexlayout-color-base: var(--background);
+  --flexlayout-color-1: var(--card);
+  --flexlayout-color-2: var(--muted);
+  --flexlayout-color-3: var(--muted);
+  --flexlayout-color-4: var(--border);
+  --flexlayout-color-5: var(--border);
+  --flexlayout-color-6: var(--border);
+  --flexlayout-color-focus: var(--ring);
+  --flexlayout-color-icon: var(--muted-foreground);
+  --flexlayout-color-overflow: var(--muted-foreground);
+  --flexlayout-color-tabset-background: var(--card);
+  --flexlayout-color-tabset-divider-line: var(--border);
+  --flexlayout-color-tab-content: var(--background);
+  --flexlayout-color-tab-selected: var(--foreground);
+  --flexlayout-color-tab-selected-background: var(--background);
+  --flexlayout-color-tab-unselected: var(--muted-foreground);
+  --flexlayout-color-tab-unselected-background: transparent;
+  --flexlayout-color-toolbar-button-hover: var(--muted);
+  --flexlayout-color-splitter: transparent;
+  --flexlayout-color-splitter-hover: color-mix(in oklab, var(--ring) 35%, transparent);
+  --flexlayout-color-splitter-drag: color-mix(in oklab, var(--ring) 60%, transparent);
+  --flexlayout-color-drag1: var(--ring);
+  --flexlayout-color-drag1-background: color-mix(in oklab, var(--ring) 14%, transparent);
+  --flexlayout-color-drag2: var(--ring);
+  --flexlayout-color-drag2-background: color-mix(in oklab, var(--ring) 14%, transparent);
+  --flexlayout-color-drag-rect: var(--foreground);
+  --flexlayout-color-drag-rect-background: var(--popover);
+  --flexlayout-color-drag-rect-border: var(--border);
+  --flexlayout-color-edge-marker: var(--ring);
+  --flexlayout-color-edge-icon: var(--background);
+  --flexlayout-color-popup-border: var(--border);
+  --flexlayout-color-popup-unselected: var(--popover-foreground);
+  --flexlayout-color-popup-unselected-background: var(--popover);
+  --flexlayout-color-popup-selected: var(--accent-foreground);
+  --flexlayout-color-popup-selected-background: var(--accent);
+  --flexlayout-color-float-window-header-background: var(--card);
+  --flexlayout-splitter-size: var(--window-gap, 8px);
+  --flexlayout-splitter-active-size: var(--window-gap, 8px);
+}
+
+/* The layout fills the component and leaves a gap's width around the windows. */
+[data-slot="window-manager"] > .flexlayout__layout {
+  inset: var(--window-gap, 8px);
+}
+
+/* A stack is a window: a frame with its tabs as the title bar. */
+[data-slot="window-manager"] .flexlayout__tabset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+}
+/* The stack with the focus: flexlayout marks its tab strip, the frame follows. */
+[data-slot="window-manager"] .flexlayout__tabset:has(> .flexlayout__tabset-selected),
+[data-slot="window-manager"] .flexlayout__tabset:has(.flexlayout__tabset_tabbar_outer.flexlayout__tabset-selected) {
+  border-color: var(--ring);
+}
+[data-slot="window-manager"] .flexlayout__tabset_tabbar_outer:not(.flexlayout__tabset-selected) {
+  color: var(--muted-foreground);
+}
+[data-slot="window-manager"] .flexlayout__tabset_tabbar_outer {
+  min-height: 2rem;
+  font-size: var(--text-xs, 0.75rem);
+}
+[data-slot="window-manager"] .flexlayout__tab_button,
+[data-slot="window-manager"] .flexlayout__tab_button_stretch {
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0 0.25rem 0 0.625rem;
+  height: 2rem;
+  border-radius: 0;
+}
+[data-slot="window-manager"] .flexlayout__tab_button_content {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-slot="window-manager"] .flexlayout__tab_button_leading svg {
+  width: 13px;
+  height: 13px;
+}
+[data-slot="window-manager"] .flexlayout__tab_toolbar_button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--muted-foreground);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+}
+[data-slot="window-manager"] .flexlayout__tab_toolbar_button:hover {
+  color: var(--foreground);
+}
+[data-slot="window-manager"] .flexlayout__tab_toolbar_button svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* A floating group sits above the tiling with a shadow of its own. */
+[data-slot="window-manager"] .flexlayout__float_window {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+}
+[data-slot="window-manager"] .flexlayout__float_window .flexlayout__tabset {
+  border: 0;
+  border-radius: 0;
+}
+
+/* With nothing tiled, the tiling is bare canvas (or the caller's empty state), not a frame. */
+[data-slot="window-manager"][data-empty="true"] .flexlayout__tabset:not(.flexlayout__float_window .flexlayout__tabset) {
+  border-color: transparent;
+  background: transparent;
+}
+[data-slot="window-manager"][data-empty="true"]
+  .flexlayout__tabset:not(.flexlayout__float_window .flexlayout__tabset)
+  > .flexlayout__tabset_tabbar_outer {
+  display: none;
+}

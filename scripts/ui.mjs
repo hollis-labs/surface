@@ -156,13 +156,18 @@ function build() {
     const text = readFileSync(join(uiDir, f), "utf8")
     const npm = new Set()
     const deps = new Set()
-    for (const m of text.matchAll(/from\s+"([^"]+)"/g)) {
+    // Both `import x from "spec"` and a bare `import "spec"` (a stylesheet) count.
+    for (const m of text.matchAll(/(?:from|^import)\s+"([^"]+)"/gm)) {
       const spec = m[1]
       if (spec.startsWith("@/components/ui/")) deps.add(`@surface/${spec.slice("@/components/ui/".length)}`)
       else if (!spec.startsWith(".") && !spec.startsWith("@/") && spec !== "react" && spec !== "react-dom") {
-        npm.add(spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0])
+        const pkg = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]
+        // A package the item needs at one exact version says so in items.json ("pins").
+        npm.add(meta[name]?.pins?.[pkg] ? `${pkg}@${meta[name].pins[pkg]}` : pkg)
       }
     }
+    // An item is its .tsx and any file beside it of the same name (its stylesheet).
+    const beside = readdirSync(uiDir).filter((x) => x.startsWith(`${name}.`) && x !== f).sort()
     items.push({
       name,
       type: "registry:ui",
@@ -170,7 +175,7 @@ function build() {
       ...(meta[name]?.description ? { description: meta[name].description } : {}),
       ...(npm.size ? { dependencies: [...npm].sort() } : {}),
       ...(deps.size ? { registryDependencies: [...deps].sort() } : {}),
-      files: [{ path: `registry/ui/${f}`, type: "registry:ui" }],
+      files: [f, ...beside].map((x) => ({ path: `registry/ui/${x}`, type: "registry:ui" })),
     })
   }
   const registry = { $schema: "https://ui.shadcn.com/schema/registry.json", name: "surface", homepage: "https://github.com/hollis-labs/surface", items }

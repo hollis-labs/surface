@@ -5,6 +5,7 @@
  * all move the same desk.
  */
 import { useSyncExternalStore } from "react"
+import type { WindowTree } from "@/components/ui/window-manager"
 import type { Desk, OpenOptions, Win } from "../sdk"
 import { ApiError, call, getSetting, onEvent } from "../sdk/runtime"
 
@@ -16,20 +17,14 @@ export interface DeskWin {
   key?: string
   args: Record<string, unknown>
   state?: Record<string, unknown>
-  x: number
-  y: number
-  w: number
-  h: number
-  z: number
-  floating: boolean
-  maximized: boolean
-  minimized: boolean
   dirty?: boolean
 }
 
 export interface DeskState {
   wins: DeskWin[]
   focus: string
+  /** How the windows are arranged: the server's, drawn by the window manager. */
+  tree: WindowTree
   layout: "tile" | "float"
   ratio: number
   active?: string
@@ -81,7 +76,7 @@ export interface LayoutDef {
 }
 
 let manifest: AppManifest | null = null
-let state: DeskState = { wins: [], focus: "", layout: "tile", ratio: 0.56, rev: -1 }
+let state: DeskState = { wins: [], focus: "", tree: { root: { type: "row" } }, layout: "tile", ratio: 0.56, rev: -1 }
 const subs = new Set<() => void>()
 
 const emit = () => {

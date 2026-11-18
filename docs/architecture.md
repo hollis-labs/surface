@@ -48,10 +48,11 @@ import in its generated `surface_wiring.go`, the same idiom Substrate uses for i
 
 ## The desk is the server's
 
-Window state (which windows are open, focus, tile order, floating rectangles, the layout in use, the user's
+Window state (which windows are open, focus, the tree they are arranged in (tiled, tabbed, floating), the layout in use, the user's
 mode) lives in `core/internal/desk`, is kept in the core database, and is streamed to the page. The page draws
-it and posts actions (`POST /api/desk/actions`); it never changes window state by itself. Only the rectangles
-of tiled windows are computed in the page, from its own size.
+it and posts actions (`POST /api/desk/actions`); it never changes window state by itself. Sizes in the tiling are
+shares of the room, so the page works out the pixels from its own size. When the owner drags a window, the page
+posts the tree as it now stands (`type: "tree"`); the server checks it holds each open window once and keeps it.
 
 This is the one deliberate departure from Basalisk, where the page owns the windows and runs the agent's
 tools. Here every tool is Go, so the embedded agent, a palette command, the CLI and an outside agent over MCP

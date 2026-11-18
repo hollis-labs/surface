@@ -222,3 +222,224 @@ func TestContextMergesThePagesReportWithTheModules(t *testing.T) {
 		t.Errorf("context: %+v", wc)
 	}
 }
+
+// shape draws a tree as text: rows in brackets, stacks as their windows' views joined by
+// "+", the showing one starred when the stack has more than one.
+func shape(d *Desk) string {
+	s := d.Snapshot()
+	view := map[string]string{}
+	for _, w := range s.Wins {
+		view[w.ID] = w.View
+	}
+	var draw func(n *Node) string
+	draw = func(n *Node) string {
+		if n.Type == "stack" {
+			out := ""
+			for i, w := range n.Wins {
+				if i > 0 {
+					out += "+"
+				}
+				out += view[w]
+				if len(n.Wins) > 1 && i == n.Selected {
+					out += "*"
+				}
+			}
+			if n.Maximized {
+				out += "!"
+			}
+			return out
+		}
+		out := "["
+		for i, c := range n.Children {
+			if i > 0 {
+				out += " "
+			}
+			out += draw(c)
+		}
+		return out + "]"
+	}
+	out := draw(s.Tree.Root)
+	for _, f := range s.Tree.Floats {
+		out += " ~" + draw(f.Root)
+	}
+	return out
+}
+
+func TestWindowsTileFirstOnTheLeftTheRestStackedOnTheRight(t *testing.T) {
+	ctx := context.Background()
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	n, _ := d.Open(ctx, "notes", module.OpenOptions{})
+	if got := shape(d); got != "[notes]" {
+		t.Fatalf("one window: %s", got)
+	}
+	s, _ := d.Open(ctx, "scratch", module.OpenOptions{})
+	b, _ := d.Open(ctx, "browser", module.OpenOptions{Key: "a"})
+	if got := shape(d); got != "[notes [scratch browser]]" {
+		t.Fatalf("three windows: %s", got)
+	}
+	root := d.Snapshot().Tree.Root
+	if root.Children[0].Weight != 56 || root.Children[1].Weight != 44 {
+		t.Errorf("weights %v and %v, want the ratio's 56 and 44", root.Children[0].Weight, root.Children[1].Weight)
+	}
+
+	// Floating takes a window out of the tiling; floating it again docks it back.
+	_, _ = d.Apply(ctx, Action{Type: "float", ID: s.ID})
+	if got := shape(d); got != "[notes browser] ~[scratch]" {
+		t.Errorf("after floating scratch: %s", got)
+	}
+	_, _ = d.Apply(ctx, Action{Type: "rect", ID: s.ID, Rect: &module.Rect{X: 10, Y: 20, W: 100, H: 100}})
+	if r := d.Snapshot().Tree.Floats[0].Rect; r.X != 10 || r.W != minFloatW || r.H != minFloatH {
+		t.Errorf("the float's rectangle is %+v; want it moved and no smaller than the minimum", r)
+	}
+	_, _ = d.Apply(ctx, Action{Type: "float", ID: s.ID})
+	if got := shape(d); got != "[notes [browser scratch]]" {
+		t.Errorf("after docking scratch: %s", got)
+	}
+
+	// Maximizing covers the tiling; focusing a window it hides lifts it.
+	_, _ = d.Apply(ctx, Action{Type: "maximize", ID: n.ID})
+	if got := shape(d); got != "[notes! [browser scratch]]" {
+		t.Errorf("after maximizing notes: %s", got)
+	}
+	_ = d.Focus(ctx, b.ID)
+	if got := shape(d); got != "[notes [browser scratch]]" {
+		t.Errorf("after focusing the browser behind it: %s", got)
+	}
+
+	_, _ = d.Apply(ctx, Action{Type: "tab", ID: s.ID, Other: n.ID})
+	if got := shape(d); got != "[notes+scratch* browser]" {
+		t.Errorf("after tabbing scratch with notes: %s", got)
+	}
+	_, _ = d.Apply(ctx, Action{Type: "float", ID: s.ID})
+	_, _ = d.Apply(ctx, Action{Type: "float", ID: s.ID})
+	_, _ = d.Apply(ctx, Action{Type: "promote", ID: b.ID})
+	if got := shape(d); got != "[browser [notes scratch]]" {
+		t.Errorf("after giving the browser the first place: %s", got)
+	}
+	_ = d.Close(ctx, n.ID)
+	_ = d.Close(ctx, s.ID)
+	if got := shape(d); got != "[browser]" {
+		t.Errorf("after closing two: %s", got)
+	}
+
+	// Floating the whole desk, then tiling it again.
+	_, _ = d.Open(ctx, "notes", module.OpenOptions{})
+	_, _ = d.Apply(ctx, Action{Type: "layout", Layout: "float"})
+	if got := shape(d); got != "[] ~[browser] ~[notes]" {
+		t.Errorf("after floating the desk: %s", got)
+	}
+	_, _ = d.Open(ctx, "scratch", module.OpenOptions{})
+	if got := shape(d); got != "[] ~[browser] ~[notes] ~[scratch]" {
+		t.Errorf("a window opened on a floating desk: %s", got)
+	}
+	_, _ = d.Apply(ctx, Action{Type: "layout", Layout: "tile"})
+	if got := shape(d); got != "[browser [notes scratch]]" {
+		t.Errorf("after tiling the desk: %s", got)
+	}
+}
+
+func TestThePagesArrangementIsKeptButNeverTrusted(t *testing.T) {
+	ctx := context.Background()
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	n, _ := d.Open(ctx, "notes", module.OpenOptions{})
+	s, _ := d.Open(ctx, "scratch", module.OpenOptions{})
+	b, _ := d.Open(ctx, "browser", module.OpenOptions{Key: "a"})
+
+	// The owner drags scratch into a tab beside notes and floats the browser. The page's
+	// tree also names a window that does not exist, names notes twice, and leaves a stack
+	// without an id.
+	tree := &Tree{
+		Root: &Node{Type: "row", Children: []*Node{
+			{Type: "stack", Wins: []string{n.ID, s.ID, "ghost-1", n.ID}, Selected: 1},
+		}},
+		Floats: []*Float{{Rect: module.Rect{X: 30, Y: 40, W: 500, H: 400}, Root: &Node{Type: "row", Children: []*Node{
+			{Type: "stack", ID: "x", Wins: []string{b.ID}},
+		}}}},
+	}
+	if _, err := d.Apply(ctx, Action{Type: "tree", Tree: tree, Focus: s.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := shape(d); got != "[notes+scratch*] ~[browser]" {
+		t.Errorf("after the page's arrangement: %s", got)
+	}
+	st := d.Snapshot()
+	if st.Focus != s.ID {
+		t.Errorf("focus is %q, want scratch as the page said", st.Focus)
+	}
+	if id := st.Tree.Root.Children[0].ID; id == "" {
+		t.Error("the stack the page sent without an id was not given one")
+	}
+	if got := d.Windows(ctx); len(got) != 3 || got[0].View != "notes" || got[2].View != "browser" {
+		t.Errorf("windows in desk order: %+v", got)
+	}
+
+	// A tree that forgets a window does not lose it: it is tiled back in.
+	if _, err := d.Apply(ctx, Action{Type: "tree", Tree: &Tree{Root: &Node{Type: "row", Children: []*Node{
+		{Type: "stack", ID: "only", Wins: []string{n.ID}},
+	}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := shape(d); got != "[notes [scratch browser]]" {
+		t.Errorf("after a tree that forgot two windows: %s", got)
+	}
+
+	// Focusing a window behind another in a stack shows it.
+	_, _ = d.Apply(ctx, Action{Type: "tree", Tree: &Tree{Root: &Node{Type: "row", Children: []*Node{
+		{Type: "stack", ID: "only", Wins: []string{n.ID, s.ID, b.ID}},
+	}}}})
+	_ = d.Focus(ctx, b.ID)
+	if got := shape(d); got != "[notes+scratch+browser*]" {
+		t.Errorf("after focusing the tab behind: %s", got)
+	}
+}
+
+func TestACapturedLayoutComesBackAsItWas(t *testing.T) {
+	ctx := context.Background()
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	n, _ := d.Open(ctx, "notes", module.OpenOptions{})
+	s, _ := d.Open(ctx, "scratch", module.OpenOptions{})
+	b, _ := d.Open(ctx, "browser", module.OpenOptions{Key: "a"})
+	_, _ = d.Apply(ctx, Action{Type: "tree", Tree: &Tree{
+		Root: &Node{Type: "row", Children: []*Node{
+			{Type: "stack", ID: "l", Weight: 30, Wins: []string{s.ID, n.ID}, Selected: 1},
+		}},
+		Floats: []*Float{{ID: "f", Rect: module.Rect{X: 30, Y: 40, W: 500, H: 400}, Root: &Node{Type: "row", Children: []*Node{
+			{Type: "stack", ID: "x", Wins: []string{b.ID}},
+		}}}},
+	}})
+	l := d.Capture(ctx)
+	l.Name = "mine"
+	if l.Mode != "tile" || len(l.Windows) != 3 || !l.Windows[2].Floating || l.Windows[2].Rect == nil || len(l.Tree) == 0 {
+		t.Fatalf("captured %+v", l)
+	}
+	if err := d.SaveLayout(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range d.Windows(ctx) {
+		_ = d.Close(ctx, w.ID)
+	}
+	_, _ = d.Open(ctx, "scratch", module.OpenOptions{})
+	saved, _, _ := d.Layout(ctx, "mine")
+	if err := d.Arrange(ctx, saved); err != nil {
+		t.Fatal(err)
+	}
+	if got := shape(d); got != "[scratch+notes*] ~[browser]" {
+		t.Errorf("arranged from the saved layout: %s", got)
+	}
+	if r := d.Snapshot().Tree.Floats[0].Rect; r != (module.Rect{X: 30, Y: 40, W: 500, H: 400}) {
+		t.Errorf("the float came back at %+v", r)
+	}
+
+	// A layout a module composes has no tree: it is arranged by its mode.
+	if err := d.Arrange(ctx, module.Layout{Name: "composed", Mode: "tile", Ratio: 0.7, Windows: []module.LayoutWindow{
+		{View: "browser", Key: "a"}, {View: "notes"}, {View: "scratch", Floating: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := shape(d); got != "[browser notes] ~[scratch]" {
+		t.Errorf("arranged from a composed layout: %s", got)
+	}
+	if w := d.Snapshot().Tree.Root.Children[0].Weight; w != 70 {
+		t.Errorf("the first window's weight is %v, want the layout's ratio of 70", w)
+	}
+}

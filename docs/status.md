@@ -7,7 +7,7 @@ What exists, what is checked, and what is deliberately not there yet.
 | | State | How it is checked |
 |---|---|---|
 | Core separate from modules | done | Go's `internal` rule; `module/seam_test.go`; `core/api_test.go` runs a module through the core over HTTP |
-| Windows and layout | done | tile and float, focus history ("back"), minimize, maximize, saved layouts with their setup; `core/internal/desk` tests |
+| Windows and layout | done | windows tile, tab together and float in a tree the server owns (`core/internal/desk/tree.go`); the page draws it with the registry's `window-manager` (flexlayout-react, pinned) and posts back what the owner drags; focus history ("back"), maximize, saved layouts with their setup and exact arrangement; `core/internal/desk` tests |
 | Palette and commands | done | commands from the core, the modules and the page; shortcuts; saved layouts in the palette |
 | Agent panel | done | one embedded agent beside the windows; asks before a write |
 | Contexts and modes | done | window context from the page's report and the module's `Describe`; the user's mode on the desk |

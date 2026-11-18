@@ -86,15 +86,21 @@ type OpenOptions struct {
 type Layout struct {
 	Name  string `json:"name"`
 	About string `json:"about,omitempty"`
-	// Mode is "tile" or "float".
+	// Mode is "tile" (the first window on the left, the rest stacked on the right) or
+	// "float" (every window floating).
 	Mode string `json:"mode"`
-	// Ratio is the master's share of the width when tiling (0.2 to 0.8). Zero keeps it.
+	// Ratio is the first window's share of the width when tiling (0.2 to 0.8). Zero keeps it.
 	Ratio   float64        `json:"ratio,omitempty"`
 	Windows []LayoutWindow `json:"windows"`
 	// Setup is whatever goes with the arrangement: the user's mode, the reflexes that are
 	// on while it is in use. The core reads the keys it knows ("mode", "reflexes",
 	// "instructions"); a module may keep its own under its id.
 	Setup map[string]any `json:"setup,omitempty"`
+	// Tree is the exact arrangement as the desk captured it (how the windows are split,
+	// tabbed together and sized), naming each window by its place in Windows. It is the
+	// desk's to read and write; leave it out and the desk arranges Windows by Mode and
+	// Ratio, which is all a module composing a layout needs to give.
+	Tree json.RawMessage `json:"tree,omitempty"`
 }
 
 // LayoutWindow is one window of a Layout.

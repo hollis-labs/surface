@@ -3,10 +3,11 @@
 // page draws it and sends actions. That is what lets the agent, a command and an outside
 // client arrange the desk the same way the owner does.
 //
-// Two layouts, as on a tiling desktop: "tile" arranges the windows (the first is the
-// master, the rest stack beside it; a window can float out), "float" leaves every window
-// where it was put. Geometry of tiled windows is the page's to compute from its own size;
-// the server keeps order, focus and the rectangles of floating windows.
+// The windows are arranged in a tree (tree.go): tiled side by side and one above another,
+// tabbed together in a stack, or floating over the rest. Opening a window tiles it the way
+// a tiling desktop does (the first on the left, the rest stacked on the right); from there
+// the owner drags windows where they want them and the page posts the tree back. Sizes in
+// the tiling are shares of the room, so the page works out the pixels from its own size.
 package desk
 
 import (
@@ -30,27 +31,19 @@ type Win struct {
 	Key    string         `json:"key,omitempty"`
 	Args   map[string]any `json:"args"`
 	State  map[string]any `json:"state,omitempty"`
-	// Floating geometry, used when the window floats.
-	X int `json:"x"`
-	Y int `json:"y"`
-	W int `json:"w"`
-	H int `json:"h"`
-	// Z is the stacking order among floating windows; higher is in front.
-	Z         int  `json:"z"`
-	Floating  bool `json:"floating"`
-	Maximized bool `json:"maximized"`
-	Minimized bool `json:"minimized"`
-	Dirty     bool `json:"dirty,omitempty"`
+	Dirty  bool           `json:"dirty,omitempty"`
 }
 
 // State is the whole desk.
 type State struct {
-	// Wins are in tile order: the first tiled window is the master.
+	// Wins are the open windows, in the order they were opened.
 	Wins  []Win  `json:"wins"`
 	Focus string `json:"focus"`
-	// Layout is "tile" or "float".
+	// Tree is how the windows are arranged.
+	Tree Tree `json:"tree"`
+	// Layout is "tile" or "float": how the desk was last arranged as a whole.
 	Layout string `json:"layout"`
-	// Ratio is the master's share of the width.
+	// Ratio is the first window's share of the width when a second is tiled beside it.
 	Ratio float64 `json:"ratio"`
 	// Active is the saved layout in use, when the desk was arranged from one.
 	Active string `json:"active,omitempty"`
@@ -62,7 +55,6 @@ type State struct {
 	// Trail is the focus history, newest last, for returning to the previous window.
 	Trail []string `json:"trail,omitempty"`
 	Seq   int      `json:"seq"`
-	Z     int      `json:"z"`
 	// Rev counts changes, so a page can tell a newer state from an older one.
 	Rev int `json:"rev"`
 }
@@ -77,7 +69,7 @@ type Action struct {
 	Title      string         `json:"title,omitempty"`
 	Args       map[string]any `json:"args,omitempty"`
 	Background bool           `json:"background,omitempty"`
-	// state, rect, dirty, layout, ratio, cycle, swap, mode
+	// state, rect, dirty, layout, ratio, cycle, swap, mode, tree
 	State  map[string]any `json:"state,omitempty"`
 	Rect   *module.Rect   `json:"rect,omitempty"`
 	Dirty  bool           `json:"dirty,omitempty"`
@@ -86,6 +78,10 @@ type Action struct {
 	Delta  int            `json:"delta,omitempty"`
 	Other  string         `json:"other,omitempty"`
 	Mode   string         `json:"mode,omitempty"`
+	// Tree is the arrangement as the page has it after the owner dragged something; Focus
+	// is the window that has the focus there.
+	Tree  *Tree  `json:"tree,omitempty"`
+	Focus string `json:"focus,omitempty"`
 	// Force closes a window that holds unsaved work.
 	Force bool `json:"force,omitempty"`
 }
@@ -118,7 +114,7 @@ type Desk struct {
 
 // Open loads the desk as it was when the app last ran, dropping windows whose view is gone.
 func Open(ctx context.Context, db *sql.DB, pub Publisher, views []ViewInfo) (*Desk, error) {
-	d := &Desk{db: db, pub: pub, views: map[string]ViewInfo{}, st: State{Layout: "tile", Ratio: 0.56, Z: 1, Wins: []Win{}}}
+	d := &Desk{db: db, pub: pub, views: map[string]ViewInfo{}, st: State{Layout: "tile", Ratio: 0.56, Wins: []Win{}, Tree: newTree()}}
 	for _, v := range views {
 		if _, dup := d.views[v.ID]; dup {
 			return nil, fmt.Errorf("desk: view %q is declared twice", v.ID)
@@ -157,6 +153,9 @@ func Open(ctx context.Context, db *sql.DB, pub Publisher, views []ViewInfo) (*De
 			if d.find(d.st.Focus) < 0 {
 				d.st.Focus = ""
 			}
+			// A desk kept by an older build has no tree; a tree can also name windows that
+			// are gone. Either way the windows are tiled into a sound one.
+			d.st.Tree.normalize(d.ids(), d.st.Ratio, d.name)
 		}
 	}
 	return d, nil
@@ -187,7 +186,31 @@ func (d *Desk) copyState() State {
 	s := d.st
 	s.Wins = append([]Win{}, d.st.Wins...)
 	s.Trail = append([]string{}, d.st.Trail...)
+	s.Tree = d.st.Tree.clone()
 	return s
+}
+
+// ids lists the open windows' ids.
+func (d *Desk) ids() []string {
+	out := make([]string, 0, len(d.st.Wins))
+	for _, w := range d.st.Wins {
+		out = append(out, w.ID)
+	}
+	return out
+}
+
+// name makes an id for a new stack or float.
+func (d *Desk) name(kind string) string {
+	d.st.Seq++
+	return fmt.Sprintf("%s-%d", kind, d.st.Seq)
+}
+
+// spot is where the next floating window goes when nothing says: a cascade, sized as its
+// view asks.
+func (d *Desk) spot(view string) module.Rect {
+	v := d.views[view]
+	n := len(d.st.Tree.Floats)
+	return module.Rect{X: 48 + (n%8)*28, Y: 36 + (n%8)*24, W: orInt(v.Width, 820), H: orInt(v.Height, 600)}
 }
 
 func (d *Desk) find(id string) int {
@@ -271,7 +294,6 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 				if a.Title != "" {
 					st.Wins[i].Title = a.Title
 				}
-				st.Wins[i].Minimized = false
 				if !a.Background {
 					d.focus(w.ID)
 				}
@@ -279,21 +301,23 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			}
 		}
 		st.Seq++
-		st.Z++
 		w := Win{
 			ID: fmt.Sprintf("%s-%d", strings.ReplaceAll(a.View, ".", "-"), st.Seq), View: a.View, Module: v.Module,
 			Title: firstNonEmpty(a.Title, v.Title), Key: key, Args: a.Args,
-			W: orInt(v.Width, 820), H: orInt(v.Height, 600), Z: st.Z,
 		}
 		if w.Args == nil {
 			w.Args = map[string]any{}
 		}
-		n := len(st.Wins)
-		w.X, w.Y = 48+(n%8)*28, 36+(n%8)*24
-		if a.Rect != nil {
-			w.X, w.Y, w.W, w.H = a.Rect.X, a.Rect.Y, a.Rect.W, a.Rect.H
-		}
 		st.Wins = append(st.Wins, w)
+		// A window given a rectangle floats there; so does any window while the desk floats.
+		switch {
+		case a.Rect != nil:
+			st.Tree.float(w.ID, d.name("float"), d.name("stack"), *a.Rect)
+		case st.Layout == "float":
+			st.Tree.float(w.ID, d.name("float"), d.name("stack"), d.spot(a.View))
+		default:
+			st.Tree.add(w.ID, d.name("stack"), st.Ratio)
+		}
 		if !a.Background || st.Focus == "" {
 			d.focus(w.ID)
 		}
@@ -308,6 +332,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		}
 		win = st.Wins[i]
 		st.Wins = append(st.Wins[:i], st.Wins[i+1:]...)
+		st.Tree.remove(a.ID)
 		d.dropFromTrail(a.ID)
 		if st.Focus == a.ID {
 			st.Focus = ""
@@ -315,19 +340,15 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			for len(st.Trail) > 0 {
 				last := st.Trail[len(st.Trail)-1]
 				st.Trail = st.Trail[:len(st.Trail)-1]
-				if j := d.find(last); j >= 0 && !st.Wins[j].Minimized {
+				if d.find(last) >= 0 {
 					st.Focus = last
 					break
 				}
 			}
-			if st.Focus == "" {
-				for j := len(st.Wins) - 1; j >= 0; j-- {
-					if !st.Wins[j].Minimized {
-						st.Focus = st.Wins[j].ID
-						break
-					}
-				}
+			if st.Focus == "" && len(st.Wins) > 0 {
+				st.Focus = st.Wins[len(st.Wins)-1].ID
 			}
+			st.Tree.show(st.Focus)
 		}
 		return win, true, false, nil
 	case "focus":
@@ -335,10 +356,9 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if err != nil {
 			return win, false, false, err
 		}
-		if st.Focus == a.ID && !st.Wins[i].Minimized {
+		if s, _, at := st.Tree.locate(a.ID); st.Focus == a.ID && s != nil && s.Selected == at {
 			return st.Wins[i], false, false, nil
 		}
-		st.Wins[i].Minimized = false
 		d.focus(a.ID)
 		return st.Wins[i], true, false, nil
 	case "title":
@@ -379,6 +399,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		st.Wins[i].Dirty = a.Dirty
 		return st.Wins[i], true, true, nil
 	case "rect":
+		// Float a window at a rectangle, or move the float it is in.
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
@@ -386,45 +407,39 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if a.Rect == nil {
 			return win, false, false, errors.New("desk: rect needs a rectangle")
 		}
-		w := &st.Wins[i]
-		w.X, w.Y, w.W, w.H = a.Rect.X, a.Rect.Y, max(a.Rect.W, 320), max(a.Rect.H, 180)
-		w.Maximized = false
-		return *w, true, true, nil
+		r := *a.Rect
+		r.W, r.H = max(r.W, minFloatW), max(r.H, minFloatH)
+		if _, f, _ := st.Tree.locate(a.ID); f != nil {
+			f.Rect = r
+		} else {
+			st.Tree.float(a.ID, d.name("float"), d.name("stack"), r)
+		}
+		return st.Wins[i], true, true, nil
 	case "float":
+		// Take a window out of the tiling, or put it back.
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
 		}
-		st.Wins[i].Floating = !st.Wins[i].Floating
-		st.Wins[i].Maximized = false
-		st.Z++
-		st.Wins[i].Z = st.Z
+		if st.Tree.floating(a.ID) {
+			st.Tree.remove(a.ID)
+			st.Tree.add(a.ID, d.name("stack"), st.Ratio)
+		} else {
+			st.Tree.float(a.ID, d.name("float"), d.name("stack"), d.spot(st.Wins[i].View))
+		}
+		st.Tree.show(a.ID)
 		return st.Wins[i], true, true, nil
 	case "maximize":
+		// A tiled window's stack covers the tiling, or goes back. A float is left alone.
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
 		}
-		st.Wins[i].Maximized = !st.Wins[i].Maximized
 		d.focus(a.ID)
+		if s, f, _ := st.Tree.locate(a.ID); s != nil && f == nil {
+			s.Maximized = !s.Maximized
+		}
 		return st.Wins[i], true, true, nil
-	case "minimize":
-		i, err := need()
-		if err != nil {
-			return win, false, false, err
-		}
-		st.Wins[i].Minimized = true
-		st.Wins[i].Maximized = false
-		if st.Focus == a.ID {
-			st.Focus = ""
-			for j := len(st.Wins) - 1; j >= 0; j-- {
-				if !st.Wins[j].Minimized {
-					st.Focus = st.Wins[j].ID
-					break
-				}
-			}
-		}
-		return st.Wins[i], true, false, nil
 	case "layout":
 		next := a.Layout
 		if next == "" {
@@ -436,48 +451,84 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if next != "tile" && next != "float" {
 			return win, false, false, fmt.Errorf("desk: no layout %q", next)
 		}
-		if st.Layout == next {
-			return win, false, true, nil
-		}
+		// Arrange every window that way, from scratch: all tiled, or all floating.
 		st.Layout = next
+		floats := map[string]module.Rect{}
+		if next == "float" {
+			for n, w := range st.Wins {
+				r := d.spot(w.View)
+				r.X, r.Y = 48+(n%8)*28, 36+(n%8)*24
+				floats[w.ID] = r
+			}
+		}
+		st.Tree = compose(st.Tree.order(), floats, st.Ratio, d.name)
+		st.Tree.show(st.Focus)
 		return win, true, true, nil
 	case "ratio":
 		st.Ratio = min(0.8, max(0.2, a.Ratio))
+		st.Tree.setRatio(st.Ratio)
+		return win, true, true, nil
+	case "tree":
+		// The page's arrangement after the owner dragged, split, tabbed or resized.
+		if a.Tree == nil {
+			return win, false, false, errors.New("desk: tree needs an arrangement")
+		}
+		next := a.Tree.clone()
+		next.normalize(d.ids(), st.Ratio, d.name)
+		st.Tree = next
+		if a.Focus != "" && a.Focus != st.Focus && d.find(a.Focus) >= 0 {
+			d.focus(a.Focus)
+			return st.Wins[d.find(a.Focus)], true, false, nil
+		}
 		return win, true, true, nil
 	case "promote":
+		// Give a window the first place in the tiling.
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
 		}
-		w := st.Wins[i]
-		w.Floating = false
-		st.Wins = append(st.Wins[:i], st.Wins[i+1:]...)
-		st.Wins = append([]Win{w}, st.Wins...)
-		d.focus(w.ID)
-		return w, true, true, nil
+		if st.Tree.floating(a.ID) {
+			st.Tree.remove(a.ID)
+			st.Tree.add(a.ID, d.name("stack"), st.Ratio)
+		}
+		if tiled := st.Tree.tiled(); len(tiled) > 0 {
+			st.Tree.swap(a.ID, tiled[0].Wins[tiled[0].Selected])
+		}
+		d.focus(a.ID)
+		return st.Wins[i], true, true, nil
+	case "tab":
+		// Put a window in another's stack, as the tab showing.
+		i, err := need()
+		if err != nil {
+			return win, false, false, err
+		}
+		if a.Other == a.ID || d.find(a.Other) < 0 {
+			return win, false, false, fmt.Errorf("desk: no other window %q to tab with", a.Other)
+		}
+		st.Tree.remove(a.ID)
+		to, _, _ := st.Tree.locate(a.Other)
+		to.Wins = append(to.Wins, a.ID)
+		st.Tree.show(a.ID)
+		return st.Wins[i], true, true, nil
 	case "swap":
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
 		}
-		j := d.find(a.Other)
-		if j < 0 {
+		if d.find(a.Other) < 0 {
 			return win, false, false, fmt.Errorf("desk: no window %q", a.Other)
 		}
-		st.Wins[i], st.Wins[j] = st.Wins[j], st.Wins[i]
-		return st.Wins[j], true, true, nil
+		st.Tree.swap(a.ID, a.Other)
+		st.Tree.show(st.Focus)
+		return st.Wins[i], true, true, nil
 	case "cycle":
-		var visible []string
-		for _, w := range st.Wins {
-			if !w.Minimized {
-				visible = append(visible, w.ID)
-			}
-		}
-		if len(visible) == 0 {
+		// The next window, in the order they sit on the desk.
+		order := st.Tree.order()
+		if len(order) == 0 {
 			return win, false, false, nil
 		}
 		at := 0
-		for i, id := range visible {
+		for i, id := range order {
 			if id == st.Focus {
 				at = i
 			}
@@ -486,7 +537,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if delta == 0 {
 			delta = 1
 		}
-		next := visible[((at+delta)%len(visible)+len(visible))%len(visible)]
+		next := order[((at+delta)%len(order)+len(order))%len(order)]
 		d.focus(next)
 		return st.Wins[d.find(next)], true, false, nil
 	case "back":
@@ -495,7 +546,6 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			last := st.Trail[len(st.Trail)-1]
 			st.Trail = st.Trail[:len(st.Trail)-1]
 			if j := d.find(last); j >= 0 && last != st.Focus {
-				st.Wins[j].Minimized = false
 				cur := st.Focus
 				d.focus(last)
 				// focus pushed the window we left; a "back" should not grow the trail.
@@ -523,7 +573,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 	return win, false, false, fmt.Errorf("desk: unknown action %q", a.Type)
 }
 
-// focus brings a window to the front and remembers the one it replaced.
+// focus gives a window the focus, shows it where it sits, and remembers the one it replaced.
 func (d *Desk) focus(id string) {
 	st := &d.st
 	if st.Focus != "" && st.Focus != id {
@@ -534,10 +584,7 @@ func (d *Desk) focus(id string) {
 		}
 	}
 	st.Focus = id
-	if i := d.find(id); i >= 0 {
-		st.Z++
-		st.Wins[i].Z = st.Z
-	}
+	st.Tree.show(id)
 }
 
 func (d *Desk) dropFromTrail(id string) {

@@ -50,12 +50,34 @@ func (d *Desk) SetArgs(ctx context.Context, window string, args map[string]any) 
 	return err
 }
 
-// Windows lists the open windows in tile order.
+// Windows lists the open windows in the order they sit on the desk.
 func (d *Desk) Windows(context.Context) []module.Window {
 	s := d.Snapshot()
 	out := make([]module.Window, 0, len(s.Wins))
-	for _, w := range s.Wins {
+	for _, w := range s.ordered() {
 		out = append(out, w.public(s.Focus))
+	}
+	return out
+}
+
+// ordered lists the windows in the order they sit on the desk: the tiling first, then the
+// floats.
+func (s State) ordered() []Win {
+	by := map[string]Win{}
+	for _, w := range s.Wins {
+		by[w.ID] = w
+	}
+	out := make([]Win, 0, len(s.Wins))
+	for _, id := range s.Tree.order() {
+		if w, ok := by[id]; ok {
+			out = append(out, w)
+			delete(by, id)
+		}
+	}
+	for _, w := range s.Wins {
+		if _, left := by[w.ID]; left {
+			out = append(out, w)
+		}
 	}
 	return out
 }
@@ -111,7 +133,11 @@ func clip(s string, n int) string {
 // Capture returns the present arrangement as a Layout.
 func (d *Desk) Capture(context.Context) module.Layout {
 	s := d.Snapshot()
-	l := module.Layout{Name: s.Active, Mode: s.Layout, Ratio: s.Ratio, Windows: []module.LayoutWindow{}}
+	mode := "tile"
+	if len(s.Tree.tiled()) == 0 && len(s.Tree.Floats) > 0 {
+		mode = "float"
+	}
+	l := module.Layout{Name: s.Active, Mode: mode, Ratio: s.Ratio, Windows: []module.LayoutWindow{}}
 	// The setup the desk was arranged with travels with it, so saving the desk as it is
 	// keeps the instructions and reflexes it is running under. The mode is the present one.
 	if len(s.Setup) > 0 || s.Mode != "" {
@@ -124,15 +150,20 @@ func (d *Desk) Capture(context.Context) module.Layout {
 			l.Setup["mode"] = s.Mode
 		}
 	}
-	for _, w := range s.Wins {
-		if w.Minimized {
-			continue
+	index := map[string]int{}
+	for _, w := range s.ordered() {
+		lw := module.LayoutWindow{View: w.View, Key: w.Key, Title: w.Title, Args: w.Args, Focus: w.ID == s.Focus}
+		if _, f, _ := s.Tree.locate(w.ID); f != nil {
+			r := f.Rect
+			lw.Floating, lw.Rect = true, &r
 		}
-		lw := module.LayoutWindow{View: w.View, Key: w.Key, Title: w.Title, Args: w.Args, Floating: w.Floating, Focus: w.ID == s.Focus}
-		if w.Floating || s.Layout == "float" {
-			lw.Rect = &module.Rect{X: w.X, Y: w.Y, W: w.W, H: w.H}
-		}
+		index[w.ID] = len(l.Windows)
 		l.Windows = append(l.Windows, lw)
+	}
+	if len(l.Windows) > 0 {
+		if raw, err := json.Marshal(s.Tree.template(index)); err == nil {
+			l.Tree = raw
+		}
 	}
 	return l
 }
@@ -154,6 +185,7 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 	d.st.Wins = append([]Win{}, kept...)
 	d.st.Trail = nil
 	d.st.Focus = ""
+	d.st.Tree = newTree()
 	if l.Mode == "tile" || l.Mode == "float" {
 		d.st.Layout = l.Mode
 	}
@@ -169,22 +201,44 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 	}
 	focus := ""
 	var firstErr error
-	for _, lw := range l.Windows {
-		w, _, _, err := d.reduce(Action{Type: "open", View: lw.View, Key: lw.Key, Title: lw.Title, Args: lw.Args, Rect: lw.Rect, Background: true})
+	// ids[i] is the window the layout's i-th entry became; order is the layout's own.
+	ids := make([]string, len(l.Windows))
+	var order []string
+	floats := map[string]module.Rect{}
+	for i, lw := range l.Windows {
+		w, _, _, err := d.reduce(Action{Type: "open", View: lw.View, Key: lw.Key, Title: lw.Title, Args: lw.Args, Background: true})
 		if err != nil {
 			firstErr = err
 			continue
 		}
-		if i := d.find(w.ID); i >= 0 {
-			d.st.Wins[i].Floating = lw.Floating
+		ids[i] = w.ID
+		order = append(order, w.ID)
+		switch {
+		case lw.Rect != nil:
+			floats[w.ID] = *lw.Rect
+		case lw.Floating || d.st.Layout == "float":
+			r := d.spot(lw.View)
+			r.X, r.Y = 48+(len(floats)%8)*28, 36+(len(floats)%8)*24
+			floats[w.ID] = r
 		}
 		if lw.Focus || focus == "" {
 			focus = w.ID
 		}
 	}
+	// The layout's own tree when it has one (it was captured from a desk); otherwise the
+	// windows are arranged by mode. Either way the windows that stayed are tiled in.
+	var tree Tree
+	if len(l.Tree) > 0 && json.Unmarshal(l.Tree, &tree) == nil && tree.Root != nil {
+		tree.instantiate(ids)
+	} else {
+		tree = compose(order, floats, d.st.Ratio, d.name)
+	}
+	tree.normalize(d.ids(), d.st.Ratio, d.name)
+	d.st.Tree = tree
 	if focus != "" {
 		d.st.Trail = nil
 		d.st.Focus = focus
+		d.st.Tree.show(focus)
 	}
 	d.st.Rev++
 	snap := d.copyState()

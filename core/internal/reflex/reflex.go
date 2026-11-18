@@ -171,7 +171,7 @@ func (s *Set) List(ctx context.Context) ([]Reflex, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Reflex
 	for rows.Next() {
 		var r Reflex

@@ -220,7 +220,12 @@ func (s *Service) onEvent(ev module.Event) {
 func (s *Service) Preview(ctx context.Context) slots.Assembly {
 	sit := s.k.Situation(ctx)
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	return slots.Assemble(ctx, sit, sel, s.k.Tools(), s.notes, slots.Extra{Instructions: s.layoutInstructions(ctx, sit)})
+	return slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, slots.Extra{Instructions: s.layoutInstructions(ctx, sit)})
+}
+
+// allTools is every tool the agent has: the app's and its own.
+func (s *Service) allTools() []kernel.BoundTool {
+	return append(append([]kernel.BoundTool(nil), s.k.Tools()...), s.ownTools()...)
 }
 
 // layout returns the setup of the layout in use.
@@ -228,11 +233,11 @@ func (s *Service) layout(ctx context.Context, sit module.Situation) map[string]a
 	if sit.Layout == "" {
 		return nil
 	}
-	l, ok, err := s.k.Desk().Layout(ctx, sit.Layout)
-	if err != nil || !ok {
-		return nil
+	if l, ok, err := s.k.Desk().Layout(ctx, sit.Layout); err == nil && ok {
+		return l.Setup
 	}
-	return l.Setup
+	// Arranged under a name but not saved: what the desk holds of it.
+	return s.k.Desk().Capture(ctx).Setup
 }
 
 func (s *Service) layoutReflexes(ctx context.Context, sit module.Situation) []string {
@@ -313,13 +318,13 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	res.Fired = out.Fired
 	if out.Halt != "" {
 		res.Halted = out.Halt
-		res.Assembly = slots.Assemble(ctx, sit, sel, s.k.Tools(), s.notes, extra)
+		res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
 		s.k.Events().Publish("agent.halted", map[string]any{"text": text, "message": out.Halt, "fired": out.Fired})
 		return res, nil
 	}
 	extra.Reminders = out.Reminders
 
-	res.Assembly = slots.Assemble(ctx, sit, sel, s.k.Tools(), s.notes, extra)
+	res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
 	raw, _ := json.Marshal(map[string]any{"block": res.Assembly.Block, "assembly": res.Assembly})
 	id, err := s.engine.Start(ctx, Turn{Owner: Owner, Text: text, ClientID: clientID, Context: raw, Auto: auto})
 	if err != nil {

@@ -25,11 +25,11 @@ func TestNormalizeAndNavigate(t *testing.T) {
 		"http://x.org/p":     "http://x.org/p",
 		"surface ade design": searchURL + "surface+ade+design",
 	} {
-		if got, _ := normalize(in, searchURL); got != want {
+		if got, _ := normalize(in); got != want {
 			t.Errorf("%q: %q", in, got)
 		}
 	}
-	if _, err := normalize("file:///etc/passwd", searchURL); err == nil {
+	if _, err := normalize("file:///etc/passwd"); err == nil {
 		t.Error("file: allowed")
 	}
 	a := navigate(map[string]any{"url": "a", "history": []any{"a", "b", "c"}, "at": float64(1)}, "d")

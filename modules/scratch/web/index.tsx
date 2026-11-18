@@ -1,6 +1,7 @@
 /** Scratch's window: a box to jot into and the list of what was jotted. */
-import { useCallback, useEffect, useRef, useState } from "react"
+
 import { Icon, type ModuleWeb, useEvent, useSetting, type ViewProps } from "@surface/sdk"
+import { useCallback, useEffect, useRef, useState } from "react"
 import "./scratch.css"
 
 interface Item {
@@ -36,6 +37,7 @@ function Scratch({ win, desk, api }: ViewProps) {
   // The agent, a command or the CLI may have changed the items: the module says so on the bus.
   useEvent("scratch.changed", load)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opening with compose again refocuses the box
   useEffect(() => {
     if (win.focused) box.current?.focus()
   }, [win.focused, win.args.compose])
@@ -73,7 +75,12 @@ function Scratch({ win, desk, api }: ViewProps) {
           }}
         />
         <div className="sf-row">
-          <input className="sf-input sf-grow" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input
+            className="sf-input sf-grow"
+            placeholder="Filter…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
           <button type="button" className="sf-btn" data-kind="primary" disabled={!text.trim()} onClick={add}>
             Keep
           </button>
@@ -103,7 +110,8 @@ function Scratch({ win, desk, api }: ViewProps) {
         ))}
       </ul>
       <footer className="scratch-foot sf-dim">
-        {items.filter((i) => !i.done).length} open{showDone ? ` · ${items.filter((i) => i.done).length} done` : " · finished items hidden"}
+        {items.filter((i) => !i.done).length} open
+        {showDone ? ` · ${items.filter((i) => i.done).length} done` : " · finished items hidden"}
       </footer>
     </div>
   )

@@ -86,11 +86,13 @@ func (s *store) list(ctx context.Context, q string) ([]Draft, error) {
 		where += " AND (title LIKE ? OR body LIKE ?)"
 		args = append(args, "%"+q+"%", "%"+q+"%")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, title, lang, body, rev, created_at, updated_at FROM drafts WHERE `+where+` ORDER BY updated_at DESC LIMIT 200`, args...)
+	// where is built from constants; the values are bound.
+	query := `SELECT id, title, lang, body, rev, created_at, updated_at FROM drafts WHERE ` + where + ` ORDER BY updated_at DESC LIMIT 200` //nolint:gosec // where is constants only
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Draft{}
 	for rows.Next() {
 		var d Draft
@@ -129,7 +131,7 @@ func (s *store) revisions(ctx context.Context, id string) ([]Revision, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Revision{}
 	for rows.Next() {
 		var r Revision

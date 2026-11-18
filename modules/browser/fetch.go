@@ -39,14 +39,14 @@ const (
 )
 
 // normalize makes what the owner typed into a URL: a bare host gets https, words become a search.
-func normalize(in, search string) (string, error) {
+func normalize(in string) (string, error) {
 	in = strings.TrimSpace(in)
 	if in == "" {
 		return "", errors.New("no address")
 	}
 	if !strings.Contains(in, "://") {
 		if strings.Contains(in, " ") || !strings.Contains(in, ".") {
-			return search + url.QueryEscape(in), nil
+			return searchURL + url.QueryEscape(in), nil
 		}
 		in = "https://" + in
 	}
@@ -90,18 +90,20 @@ func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
 	if p, ok := f.cachedPage(u); ok {
 		return p, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	// Fetching the address the owner or the agent gave is the module's purpose; the app is
+	// single-user and loopback-only.
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil) //nolint:gosec // see above
 	if err != nil {
 		return Page{}, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
 	req.Header.Set("Accept-Language", "en")
-	resp, err := f.client.Do(req)
+	resp, err := f.client.Do(req) //nolint:gosec // see above
 	if err != nil {
 		return Page{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return Page{}, fmt.Errorf("%s answered %s", req.URL.Host, resp.Status)
 	}
@@ -272,7 +274,7 @@ func (f *fetcher) search(ctx context.Context, q string) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("search answered %s", resp.Status)
 	}

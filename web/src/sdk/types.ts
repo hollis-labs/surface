@@ -48,6 +48,12 @@ export interface Desk {
   report(winId: string, state: Record<string, unknown>): void
   /** Say whether the window holds unsaved work; closing it then asks first. */
   setDirty(winId: string, dirty: boolean): void
+  /**
+   * Open a file in the view that declares it opens such files (View.Opens, "*.md"). The
+   * first view that matches gets args as given. Resolves to null when no view in this app
+   * opens it, so a module can offer "open" without knowing which modules are present.
+   */
+  openFile(name: string, opts?: OpenOptions): Promise<Win | null>
   /** Run any command by id. */
   run<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T>
   /** Ask a yes/no question in a dialog on the desk. */

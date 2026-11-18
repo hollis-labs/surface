@@ -1,0 +1,150 @@
+/* Browser. Colours are the design tokens'. The window is a size container: narrow, the
+ * toolbar drops the buttons a stacked tile can do without. */
+.br {
+  container: browser / inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.br-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.br-ibtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+}
+.br-ibtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-fg);
+}
+.br-ibtn[data-on="true"] {
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+.br-ibtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.br-addr {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 4px;
+}
+.br-spin {
+  animation: br-spin 1s linear infinite;
+}
+@keyframes br-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.br-error {
+  padding: 6px 12px;
+  background: var(--color-danger-muted);
+  color: var(--color-fg);
+  font-size: 12px;
+}
+.br-content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.br-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+.br-empty {
+  padding: 24px;
+  color: var(--color-fg-muted);
+}
+.br-reader {
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 18px 28px 40px;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  line-height: 1.6;
+  font-size: 14px;
+}
+.br-reader > * {
+  max-width: 72ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+.br-reader h1 {
+  margin-top: 0;
+  margin-bottom: 2px;
+  font-size: 20px;
+}
+.br-reader h2 {
+  margin: 18px auto 6px;
+  font-size: 15px;
+}
+.br-reader p {
+  margin-top: 0;
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.br-source {
+  margin-bottom: 16px;
+  color: var(--color-fg-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.br-links {
+  margin-top: 24px;
+  font-size: 12px;
+}
+.br-links summary {
+  cursor: pointer;
+  color: var(--color-fg-muted);
+}
+.br-links ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.br-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-primary);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.br-host {
+  margin-left: 6px;
+  color: var(--color-fg-faint);
+}
+
+@container browser (max-width: 520px) {
+  .br-wide {
+    display: none;
+  }
+  .br-reader {
+    padding: 12px 14px 32px;
+  }
+}

@@ -80,7 +80,7 @@ func (m *mod) Manifest() module.Manifest {
 func (m *mod) Start(_ context.Context, h module.Host) error {
 	m.h = h
 	h.Handle("GET /read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, err := normalize(r.URL.Query().Get("url"), searchURL)
+		u, err := normalize(r.URL.Query().Get("url"))
 		if err != nil {
 			reply(w, nil, err)
 			return
@@ -89,7 +89,7 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 		reply(w, p, err)
 	}))
 	h.Handle("GET /resolve", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, err := normalize(r.URL.Query().Get("q"), searchURL)
+		u, err := normalize(r.URL.Query().Get("q"))
 		reply(w, map[string]string{"url": u}, err)
 	}))
 	return nil
@@ -97,7 +97,7 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 
 // open shows a URL (or a search for words) in the frontmost Browser window, or a new one.
 func (m *mod) open(ctx context.Context, in string, newWindow bool) (module.Window, error) {
-	u, err := normalize(in, searchURL)
+	u, err := normalize(in)
 	if err != nil {
 		return module.Window{}, err
 	}
@@ -207,7 +207,8 @@ func (m *mod) knowledge(_ context.Context, _ module.Host, s module.Situation) (s
 	u := s.Focused.URL
 	p, ok := m.f.cachedPage(u)
 	if !ok {
-		go func() {
+		// Warm the cache for the next message; it must outlive this (quick) call.
+		go func() { //nolint:gosec // detached on purpose: the read outlives the request
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			_, _ = m.f.get(ctx, u)
@@ -227,7 +228,7 @@ func raw(s string) json.RawMessage { return json.RawMessage(s) }
 // Browser window's.
 func (m *mod) target(ctx context.Context, given, window string) (string, error) {
 	if given != "" {
-		return normalize(given, searchURL)
+		return normalize(given)
 	}
 	for _, w := range m.h.Desk().Windows(ctx) {
 		if w.View != "browser" {

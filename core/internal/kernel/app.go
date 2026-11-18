@@ -134,23 +134,21 @@ func New(ctx context.Context, o Options) (*App, error) {
 		man := m.Manifest()
 		h := &host{app: a, id: id, mod: m, man: man, log: o.Log.With("module", id)}
 		h.dir = filepath.Join(o.DataDir, "modules", id)
-		if err := os.MkdirAll(h.dir, 0o700); err != nil {
+		if err = os.MkdirAll(h.dir, 0o700); err != nil {
 			return nil, a.fail(err)
 		}
 		if man.Store != nil {
 			if man.Store.Migrations == nil {
 				return nil, a.fail(fmt.Errorf("surface: module %q declares a store with no migrations", id))
 			}
-			db, err := storage.Open(ctx, filepath.Join(h.dir, id+".db"))
-			if err != nil {
+			if h.db, err = storage.Open(ctx, filepath.Join(h.dir, id+".db")); err != nil {
 				return nil, a.fail(fmt.Errorf("surface: module %q store: %w", id, err))
 			}
-			h.db = db
-			if err := storage.Migrate(ctx, db, id, man.Store.Migrations, man.Store.Dir); err != nil {
+			if err = storage.Migrate(ctx, h.db, id, man.Store.Migrations, man.Store.Dir); err != nil {
 				return nil, a.fail(err)
 			}
 		}
-		if err := a.cfg.Declare(id, man.Settings); err != nil {
+		if err = a.cfg.Declare(id, man.Settings); err != nil {
 			return nil, a.fail(err)
 		}
 		for _, v := range man.Views {

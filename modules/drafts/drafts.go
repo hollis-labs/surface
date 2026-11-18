@@ -169,8 +169,12 @@ func (m *mod) describe(ctx context.Context, _ module.Host, w module.Window) (mod
 		return module.WindowContext{Kind: "data", Ref: "drafts:list"}, nil
 	}
 	d, err := m.st.get(ctx, id)
-	if err != nil {
+	if errors.Is(err, errNotFound) {
+		// The window outlived its draft: say what it was, without failing the context.
 		return module.WindowContext{Kind: "document", Ref: ref(id)}, nil
+	}
+	if err != nil {
+		return module.WindowContext{}, err
 	}
 	c := module.WindowContext{Kind: "document", Ref: ref(id), Title: d.Title,
 		Extra: map[string]any{"draft": id, "rev": d.Rev, "lang": d.Lang, "lines": d.Lines}}

@@ -38,7 +38,13 @@ export function ConfirmHost() {
           <button type="button" className="sf-btn" onClick={() => answer(false)}>
             Cancel
           </button>
-          <button type="button" className="sf-btn" data-kind={q.danger ? "danger" : "primary"} autoFocus onClick={() => answer(true)}>
+          <button
+            type="button"
+            className="sf-btn"
+            data-kind={q.danger ? "danger" : "primary"}
+            autoFocus
+            onClick={() => answer(true)}
+          >
             {q.confirmLabel ?? "OK"}
           </button>
         </div>

@@ -39,8 +39,7 @@ export async function call<T = unknown>(method: string, path: string, body?: unk
 type Listener = (ev: SurfaceEvent) => void
 const listeners = new Set<{ prefix: string; fn: Listener }>()
 
-const matches = (prefix: string, topic: string) =>
-  prefix === "" || topic === prefix || topic.startsWith(`${prefix}.`)
+const matches = (prefix: string, topic: string) => prefix === "" || topic === prefix || topic.startsWith(`${prefix}.`)
 
 /** Listen to the bus. Returns the function that stops listening. */
 export function onEvent(prefix: string, fn: Listener): () => void {
@@ -132,9 +131,9 @@ onEvent("config.changed", (ev) => {
   if (s) settings.set(d.key, { ...s, value: d.value, set: true })
 })
 
+/** Change a live setting by its full key ("files.show_hidden"). Every window hears it. */
 export async function setSetting(fullKey: string, value: unknown): Promise<void> {
   await call("PUT", `/api/settings/${encodeURIComponent(fullKey)}`, { value })
 }
 
-export const listMarks = (ref: string) =>
-  call<Mark[]>("GET", `/api/marks?ref=${encodeURIComponent(ref)}`)
+export const listMarks = (ref: string) => call<Mark[]>("GET", `/api/marks?ref=${encodeURIComponent(ref)}`)

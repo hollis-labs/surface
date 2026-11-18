@@ -16,14 +16,17 @@ function Settings(_: ViewProps) {
     setError("")
     setSetting(e.full_key, value).catch((err: Error) => setError(`${e.title}: ${err.message}`))
   }
-  const reset = (e: SettingEntry) => void call("DELETE", `/api/settings/${encodeURIComponent(e.full_key)}`).then(refresh)
+  const reset = (e: SettingEntry) =>
+    void call("DELETE", `/api/settings/${encodeURIComponent(e.full_key)}`).then(refresh)
 
   const scopes = [...new Set(entries.map((e) => e.scope))]
   const title = (scope: string) =>
     scope === "surface" ? "Desk" : (app().modules.find((m) => m.id === scope)?.title ?? scope)
   return (
     <div className="sf-pane">
-      <p className="sf-note">Settings are kept in the app's database and take effect as you change them. Nothing restarts.</p>
+      <p className="sf-note">
+        Settings are kept in the app's database and take effect as you change them. Nothing restarts.
+      </p>
       {error && <p className="sf-error">{error}</p>}
       {scopes.map((scope) => (
         <section key={scope} className="sf-group">
@@ -31,7 +34,7 @@ function Settings(_: ViewProps) {
           {entries
             .filter((e) => e.scope === scope)
             .map((e) => (
-              <label key={e.full_key} className="sf-setting">
+              <div key={e.full_key} className="sf-setting">
                 <span className="sf-setting-text">
                   <span className="sf-setting-title">{e.title}</span>
                   {e.about && <span className="sf-setting-about">{e.about}</span>}
@@ -77,7 +80,7 @@ function Settings(_: ViewProps) {
                     </button>
                   )}
                 </span>
-              </label>
+              </div>
             ))}
         </section>
       ))}
@@ -103,8 +106,8 @@ function Layouts(_: ViewProps) {
   return (
     <div className="sf-pane">
       <p className="sf-note">
-        A layout is an arrangement you can come back to: which windows are open, how they sit, and the setup that
-        goes with them (your mode, the agent's standing instructions, the reflexes that are on).
+        A layout is an arrangement you can come back to: which windows are open, how they sit, and the setup that goes
+        with them (your mode, the agent's standing instructions, the reflexes that are on).
       </p>
       <form
         className="sf-row"
@@ -113,7 +116,12 @@ function Layouts(_: ViewProps) {
           if (name.trim()) save(name.trim())
         }}
       >
-        <input className="sf-input sf-grow" placeholder="Save the desk as it is now, as…" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="sf-input sf-grow"
+          placeholder="Save the desk as it is now, as…"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <button type="submit" className="sf-btn" data-kind="primary" disabled={!name.trim()}>
           Save
         </button>
@@ -130,10 +138,20 @@ function Layouts(_: ViewProps) {
             <button type="button" className="sf-btn" onClick={() => void loadLayout(l.name)}>
               Arrange
             </button>
-            <button type="button" className="sf-btn" title="Replace it with the desk as it is now" onClick={() => save(l.name)}>
+            <button
+              type="button"
+              className="sf-btn"
+              title="Replace it with the desk as it is now"
+              onClick={() => save(l.name)}
+            >
               Update
             </button>
-            <button type="button" className="sf-btn" data-kind="danger" onClick={() => void deleteLayout(l.name).then(refresh)}>
+            <button
+              type="button"
+              className="sf-btn"
+              data-kind="danger"
+              onClick={() => void deleteLayout(l.name).then(refresh)}
+            >
               Delete
             </button>
           </div>
@@ -164,7 +182,9 @@ function Marks({ desk }: ViewProps) {
   useEvent("marks.changed", refresh)
   return (
     <div className="sf-pane">
-      <p className="sf-note">Marks are notes pinned to a part of something, by you or the agent. These are the open ones.</p>
+      <p className="sf-note">
+        Marks are notes pinned to a part of something, by you or the agent. These are the open ones.
+      </p>
       {marks.length === 0 && <p className="sf-dim">No open marks.</p>}
       {marks.map((m) => (
         <MarkCard key={m.id} mark={m} onOpen={() => void desk.run("marks.open", { ref: m.ref }).catch(() => {})} />
@@ -201,7 +221,12 @@ export function MarkCard({ mark, onOpen }: { mark: Mark; onOpen?: () => void }) 
           if (reply.trim()) void replyMark(mark.id, reply.trim()).then(() => setReply(""))
         }}
       >
-        <input className="sf-input sf-grow" placeholder="Reply…" value={reply} onChange={(e) => setReply(e.target.value)} />
+        <input
+          className="sf-input sf-grow"
+          placeholder="Reply…"
+          value={reply}
+          onChange={(e) => setReply(e.target.value)}
+        />
       </form>
     </div>
   )

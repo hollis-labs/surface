@@ -90,8 +90,8 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 	}
 	started, err := boot.StartWith(ctx, cfg.Name, cfg.SubstrateModules, cfg.SubstrateConfigJSON, boot.Options{
 		AfterConfig: func(_ context.Context, app *smodule.App) error {
-			if err := os.MkdirAll(dataDir, 0o700); err != nil {
-				return fmt.Errorf("prepare the data directory %s: %w", dataDir, err)
+			if mkErr := os.MkdirAll(dataDir, 0o700); mkErr != nil {
+				return fmt.Errorf("prepare the data directory %s: %w", dataDir, mkErr)
 			}
 			// The core database lives in the data directory unless the operator's override
 			// names an absolute path.
@@ -170,7 +170,7 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 		return err
 	}
 	defer func() { _ = a.Stop(context.Background()) }()
-	if err := a.Start(ctx); err != nil {
+	if err = a.Start(ctx); err != nil {
 		return err
 	}
 	// Substrate's host serves its own routes (/healthz); everything else is the core's. The

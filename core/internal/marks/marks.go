@@ -75,7 +75,7 @@ func (s *Store) List(ctx context.Context, ref string) ([]module.Mark, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []module.Mark{}
 	for rows.Next() {
 		m, err := scan(rows)

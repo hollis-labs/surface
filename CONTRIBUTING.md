@@ -27,6 +27,7 @@ A change to the module contract (`module/`) should say which modules it touches 
 - **Everything in `apps/<name>/` except `surface.yaml` is generated**, and committed so a clone builds with `go build`. CI fails when it is stale.
 - **The page's packages are at the repository root**, not in `web/`, so a module's `web/` directory resolves the same React as the core.
 - **A module cannot import the core.** That is the design, not an obstacle: ask the `Host`, or propose a contract change.
+- **Three accessibility lint rules are off** (`biome.json`): autofocus, and click handlers on non-interactive elements. A window manager focuses the palette's input and closes overlays on a backdrop click; both have keyboard equivalents (Escape, the shortcuts).
 - **No secrets or real config in the repository.** It is public, and `make scan` is a CI check.
 - **Use a disposable data directory** (`<APP>_DATA_DIR`) for experiments.
 

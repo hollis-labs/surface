@@ -1,6 +1,6 @@
+import { modules } from "@surface/app"
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { modules } from "@surface/app"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
 import { loadManifest } from "./desk/store"

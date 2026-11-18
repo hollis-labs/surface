@@ -43,7 +43,7 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 		if err != nil {
 			return fmt.Errorf("%s is not running at %s (start it with `%s serve`): %w", cfg.Name, base(), cfg.Name, err)
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		out, _ := io.ReadAll(res.Body)
 		if res.StatusCode >= 400 {
 			var e struct{ Error string }
@@ -59,21 +59,21 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 		_, err = fmt.Fprintln(c.OutOrStdout(), strings.TrimSpace(string(out)))
 		return err
 	}
-	jsonArg := func(args []string, i int) (json.RawMessage, error) {
-		if len(args) <= i {
+	jsonArg := func(args []string) (json.RawMessage, error) {
+		if len(args) < 2 {
 			return json.RawMessage(`{}`), nil
 		}
-		if !json.Valid([]byte(args[i])) {
+		if !json.Valid([]byte(args[1])) {
 			return nil, errors.New("the argument is not valid JSON")
 		}
-		return json.RawMessage(args[i]), nil
+		return json.RawMessage(args[1]), nil
 	}
 
 	desk := &cobra.Command{Use: "desk", Short: "Show the windows of the running app", Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error { return call(c, "GET", "/api/desk", nil) }}
 	open := &cobra.Command{Use: "open <view> [args-json]", Short: "Open a view in the running app", Args: cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
-			a, err := jsonArg(args, 1)
+			a, err := jsonArg(args)
 			if err != nil {
 				return err
 			}
@@ -81,7 +81,7 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 		}}
 	run := &cobra.Command{Use: "run <command-id> [args-json]", Short: "Run a palette command in the running app", Args: cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
-			a, err := jsonArg(args, 1)
+			a, err := jsonArg(args)
 			if err != nil {
 				return err
 			}
@@ -91,7 +91,7 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 		RunE: func(c *cobra.Command, _ []string) error { return call(c, "GET", "/api/tools", nil) }}
 	tool := &cobra.Command{Use: "call <tool> [input-json]", Short: "Call one of the running app's tools", Args: cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
-			a, err := jsonArg(args, 1)
+			a, err := jsonArg(args)
 			if err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 			if len(args) < 2 {
 				return call(c, "GET", "/api/settings", nil)
 			}
-			v, err := jsonArg(args, 1)
+			v, err := jsonArg(args)
 			if err != nil {
 				// A bare word is a string.
 				raw, _ := json.Marshal(args[1])

@@ -7,25 +7,25 @@ import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, use
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { isConnected, onConnection } from "../sdk/runtime"
+import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
 import { matches, parseKeys, showKeys } from "./keys"
 import { MIN_H, MIN_W, type Placed, place, type Rect } from "./layout"
-import { ConfirmHost } from "./Confirm"
+import { moduleApi } from "./moduleApi"
 import { Palette } from "./Palette"
 import {
   act,
   app,
-  closeWindow,
   type CommandDef,
-  desk,
+  closeWindow,
   type DeskWin,
+  desk,
   runCommand,
   setClientRunner,
   toWin,
   useDeskState,
   viewById,
 } from "./store"
-import { moduleApi } from "./moduleApi"
 
 export interface DesktopProps {
   /** The views compiled into this app's page, by module id. */
@@ -45,7 +45,10 @@ export function Desktop({ modules }: DesktopProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [area, setArea] = useState<Rect>({ x: 0, y: 0, w: 1200, h: 800 })
 
-  useEffect(() => onConnection(setUp), [])
+  useEffect(() => {
+    setUp(isConnected())
+    return onConnection(setUp)
+  }, [])
 
   // The theme is a live setting: changing it redraws the desk at once, with no reload.
   useEffect(() => {
@@ -78,7 +81,11 @@ export function Desktop({ modules }: DesktopProps) {
 
   // The page's own commands (palette, panels) run here; the rest go to the server.
   const ui = useMemo(
-    () => ({ togglePalette: (o?: boolean) => setPalette((p) => o ?? !p), toggleAgent, toggleMenu: () => setMenu((m) => !m) }),
+    () => ({
+      togglePalette: (o?: boolean) => setPalette((p) => o ?? !p),
+      toggleAgent,
+      toggleMenu: () => setMenu((m) => !m),
+    }),
     [toggleAgent],
   )
   useEffect(() => {
@@ -163,21 +170,46 @@ export function Desktop({ modules }: DesktopProps) {
         </div>
         <div className="sf-bar-side sf-bar-end">
           {state.active && (
-            <button type="button" className="sf-bar-btn" title="The saved layout in use" onClick={() => void desk.open("surface.layouts")}>
+            <button
+              type="button"
+              className="sf-bar-btn"
+              title="The saved layout in use"
+              onClick={() => void desk.open("surface.layouts")}
+            >
               <Icon name="layout-dashboard" size={13} />
               <span>{state.active}</span>
             </button>
           )}
-          {state.mode && <span className="sf-chip" title="Your mode">{state.mode}</span>}
-          <button type="button" className="sf-bar-btn" title="Switch between tiling and floating" onClick={() => void runCommand("layout.toggle")}>
+          {state.mode && (
+            <span className="sf-chip" title="Your mode">
+              {state.mode}
+            </span>
+          )}
+          <button
+            type="button"
+            className="sf-bar-btn"
+            title="Switch between tiling and floating"
+            onClick={() => void runCommand("layout.toggle")}
+          >
             <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} size={13} />
             <span>{state.layout}</span>
           </button>
-          <button type="button" className="sf-bar-btn" title={`Command palette ${showKeys("cmd+k")}`} onClick={() => setPalette(true)}>
+          <button
+            type="button"
+            className="sf-bar-btn"
+            title={`Command palette ${showKeys("cmd+k")}`}
+            onClick={() => setPalette(true)}
+          >
             <Icon name="search" size={13} />
             <span>{showKeys("cmd+k")}</span>
           </button>
-          <button type="button" className="sf-bar-btn" data-on={agentOpen} title={`Agent ${showKeys("cmd+j")}`} onClick={() => toggleAgent()}>
+          <button
+            type="button"
+            className="sf-bar-btn"
+            data-on={agentOpen}
+            title={`Agent ${showKeys("cmd+j")}`}
+            onClick={() => toggleAgent()}
+          >
             <Icon name="bot" size={14} />
           </button>
           <span className="sf-live" data-up={up} title={up ? "Connected" : "Reconnecting…"} />
@@ -275,7 +307,13 @@ function WindowFrame({ win, placed, focused, area, modules }: FrameProps) {
       data-focused={focused}
       data-tiled={placed.tiled}
       data-dragging={!!drag}
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: placed.z + (focused && !placed.tiled ? 1 : 0) }}
+      style={{
+        left: rect.x,
+        top: rect.y,
+        width: rect.w,
+        height: rect.h,
+        zIndex: placed.z + (focused && !placed.tiled ? 1 : 0),
+      }}
       onPointerDownCapture={() => {
         if (!focused) void act({ type: "focus", id: win.id })
       }}

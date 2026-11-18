@@ -20,8 +20,8 @@ func TestRevisionsAndStaleWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	ddl, _ := fs.ReadFile(migrations, "migrations/0001_init.sql")
-	if _, err := db.ExecContext(ctx, string(ddl)); err != nil {
-		t.Fatal(err)
+	if _, xerr := db.ExecContext(ctx, string(ddl)); xerr != nil {
+		t.Fatal(xerr)
 	}
 	s := &store{db: db}
 	d, err := s.create(ctx, "Plan", "markdown", "one\ntwo\n", "owner")
@@ -32,8 +32,8 @@ func TestRevisionsAndStaleWrites(t *testing.T) {
 	if err != nil || d2.Rev != 2 {
 		t.Fatal(d2, err)
 	}
-	if _, err := s.write(ctx, d.ID, "x", "owner", "", 1, nil); !errors.Is(err, errStale) {
-		t.Fatalf("stale write: %v", err)
+	if _, werr := s.write(ctx, d.ID, "x", "owner", "", 1, nil); !errors.Is(werr, errStale) {
+		t.Fatalf("stale write: %v", werr)
 	}
 	// Same body, new title: no new revision.
 	title := "Plan B"

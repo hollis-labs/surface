@@ -10,7 +10,7 @@ interface Row {
   icon?: string
   hint?: string
   words: string
-  run: () => void | Promise<unknown>
+  run: () => unknown
 }
 
 /** How well a row fits what was typed: every word must appear; earlier and in the title is better. */
@@ -78,7 +78,9 @@ export function Palette({ commands, onClose }: { commands: CommandDef[]; onClose
       .map((x) => x.r)
   }, [rows, query])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new query starts the cursor at the top
   useEffect(() => setAt(0), [query])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when the cursor moves
   useEffect(() => {
     listRef.current?.querySelector('[data-at="true"]')?.scrollIntoView({ block: "nearest" })
   }, [at])
@@ -123,7 +125,13 @@ export function Palette({ commands, onClose }: { commands: CommandDef[]; onClose
             return (
               <div key={r.id}>
                 {head && <div className="sf-palette-head">{head}</div>}
-                <button type="button" className="sf-palette-row" data-at={i === at} onMouseMove={() => setAt(i)} onClick={() => pick(r)}>
+                <button
+                  type="button"
+                  className="sf-palette-row"
+                  data-at={i === at}
+                  onMouseMove={() => setAt(i)}
+                  onClick={() => pick(r)}
+                >
                   <Icon name={r.icon ?? "chevron-right"} size={14} />
                   <span className="sf-palette-title">{r.title}</span>
                   {query && <span className="sf-palette-sec">{r.section}</span>}

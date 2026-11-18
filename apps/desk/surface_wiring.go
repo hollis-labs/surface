@@ -3,6 +3,8 @@
 package main
 
 import (
+	_ "github.com/hollis-labs/surface/modules/notes"
+	_ "github.com/hollis-labs/surface/modules/files"
 	_ "github.com/hollis-labs/surface/modules/scratch"
 	_ "github.com/hollis-labs/surface/modules/drafts"
 	_ "github.com/hollis-labs/surface/modules/browser"
@@ -14,4 +16,4 @@ const (
 )
 
 // surfaceModules is the start order.
-var surfaceModules = []string{"scratch", "drafts", "browser"}
+var surfaceModules = []string{"notes", "files", "scratch", "drafts", "browser"}

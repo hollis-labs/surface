@@ -85,7 +85,7 @@ func (r *Router) Rules(ctx context.Context) ([]Rule, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Rule
 	for rows.Next() {
 		var body string

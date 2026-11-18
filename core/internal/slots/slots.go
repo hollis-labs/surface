@@ -100,7 +100,7 @@ func (f *FocusSelector) Select(_ context.Context, sit module.Situation, all []ke
 	}
 	why := "kept"
 	if byView := forView(all, view); byView != "" {
-		if !(f.pinned && view == f.lastView) {
+		if !f.pinned || view != f.lastView {
 			why = "focus"
 			f.current, f.pinned, f.lastView = byView, false, view
 		}

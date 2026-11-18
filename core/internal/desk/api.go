@@ -112,8 +112,17 @@ func clip(s string, n int) string {
 func (d *Desk) Capture(context.Context) module.Layout {
 	s := d.Snapshot()
 	l := module.Layout{Name: s.Active, Mode: s.Layout, Ratio: s.Ratio, Windows: []module.LayoutWindow{}}
-	if s.Mode != "" {
-		l.Setup = map[string]any{"mode": s.Mode}
+	// The setup the desk was arranged with travels with it, so saving the desk as it is
+	// keeps the instructions and reflexes it is running under. The mode is the present one.
+	if len(s.Setup) > 0 || s.Mode != "" {
+		l.Setup = map[string]any{}
+		for k, v := range s.Setup {
+			l.Setup[k] = v
+		}
+		delete(l.Setup, "mode")
+		if s.Mode != "" {
+			l.Setup["mode"] = s.Mode
+		}
 	}
 	for _, w := range s.Wins {
 		if w.Minimized {
@@ -152,6 +161,7 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 		d.st.Ratio = l.Ratio
 	}
 	d.st.Active = l.Name
+	d.st.Setup = l.Setup
 	if m, ok := l.Setup["mode"].(string); ok {
 		d.st.Mode = m
 	} else {
@@ -218,7 +228,7 @@ func (d *Desk) Layouts(ctx context.Context) ([]module.Layout, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []module.Layout{}
 	for rows.Next() {
 		var raw string

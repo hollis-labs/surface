@@ -444,7 +444,7 @@ type Catalog struct {
 	Modules []CatalogModule `json:"modules"`
 }
 
-// CatalogModule is one module of the catalogue. The core's own entries are under "surface".
+// CatalogModule is one module of the catalog. The core's own entries are under "surface".
 type CatalogModule struct {
 	ID       string           `json:"id"`
 	Title    string           `json:"title"`
@@ -464,7 +464,7 @@ type CatalogItem struct {
 	Level string `json:"level,omitempty"`
 }
 
-// Catalog returns the app's catalogue.
+// Catalog returns the app's catalog.
 func (a *App) Catalog() Catalog {
 	c := Catalog{App: a.name, Title: a.title}
 	by := map[string]*CatalogModule{}

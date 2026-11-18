@@ -79,12 +79,12 @@ func (s *store) list(ctx context.Context, q, kind string, includeDone bool, limi
 		limit = 200
 	}
 	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at FROM items WHERE `+
+	rows, err := s.db.QueryContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at FROM items WHERE `+ //nolint:gosec // the WHERE clause is joined from constant fragments; every value is bound
 		strings.Join(where, " AND ")+` ORDER BY created_at DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Item{}
 	for rows.Next() {
 		var it Item

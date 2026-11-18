@@ -8,5 +8,4 @@ export const addMark = (m: { ref: string; body: string; quote?: string; anchor?:
 export const replyMark = (id: string, body: string) =>
   call<Mark>("POST", `/api/marks/${encodeURIComponent(id)}/replies`, { body })
 
-export const resolveMark = (id: string) =>
-  call<void>("POST", `/api/marks/${encodeURIComponent(id)}/resolve`)
+export const resolveMark = (id: string) => call<void>("POST", `/api/marks/${encodeURIComponent(id)}/resolve`)

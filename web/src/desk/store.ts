@@ -108,6 +108,17 @@ export const app = (): AppManifest => {
 }
 export const viewById = (id: string) => manifest?.views.find((v) => v.id === id)
 
+/** The view that opens a file of this name: the first whose Opens patterns match it. */
+export function viewForFile(name: string): ViewDef | undefined {
+  const base = name.toLowerCase().split("/").pop() ?? ""
+  const matches = (pattern: string) => {
+    const p = pattern.toLowerCase()
+    if (p.startsWith("*")) return base.endsWith(p.slice(1))
+    return base === p
+  }
+  return manifest?.views.find((v) => v.opens?.some(matches))
+}
+
 export const deskState = () => state
 const subscribe = (fn: () => void) => {
   subs.add(fn)
@@ -191,6 +202,10 @@ export const desk: Desk = {
     const w = await act({ type: "open", view, ...opts })
     if (!w) throw new Error(`could not open ${view}`)
     return toWin(w, w.id)
+  },
+  async openFile(name: string, opts?: OpenOptions) {
+    const view = viewForFile(name)
+    return view ? desk.open(view.id, opts) : null
   },
   close: closeWindow,
   async focus(id) {

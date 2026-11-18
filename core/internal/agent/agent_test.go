@@ -275,10 +275,10 @@ func TestReflexesRemindHaltAndFollowTheLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put(`{"name":"cite","trigger_kind":"text","trigger":{"pattern":"(?i)summar"},"action_kind":"remind","action":{"body":"Cite the note you summarise."},"enabled":true}`)
+	put(`{"name":"cite","trigger_kind":"text","trigger":{"pattern":"(?i)summar"},"action_kind":"remind","action":{"body":"Cite the note you summarize."},"enabled":true}`)
 	put(`{"name":"no-deploys","trigger_kind":"text","trigger":{"pattern":"(?i)deploy"},"action_kind":"halt","action":{"message":"Not from here."}}`)
 
-	if _, err := s.Send(ctx, "summarise this", "c1", ""); err != nil {
+	if _, err := s.Send(ctx, "summarize this", "c1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(describe(fe.turns[0].Context), "Reminder: Cite the note") {

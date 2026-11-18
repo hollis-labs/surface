@@ -59,7 +59,7 @@ func LoadConfig(app string) (FileConfig, error) {
 	var c FileConfig
 	path := ConfigPath(app)
 	if path != "" {
-		raw, err := os.ReadFile(path)
+		raw, err := os.ReadFile(path) //nolint:gosec // the operator's own config file, by design
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:

@@ -10,8 +10,24 @@ export interface UI {
 }
 
 export const clientCommands: CommandDef[] = [
-  { id: "palette.toggle", title: "Command palette", section: "System", keys: "cmd+k", hidden: true, module: "surface", server: false },
-  { id: "agent.toggle", title: "Show or hide the agent", section: "Agent", keys: "cmd+j", keywords: "assistant panel chat", module: "surface", server: false },
+  {
+    id: "palette.toggle",
+    title: "Command palette",
+    section: "System",
+    keys: "cmd+k",
+    hidden: true,
+    module: "surface",
+    server: false,
+  },
+  {
+    id: "agent.toggle",
+    title: "Show or hide the agent",
+    section: "Agent",
+    keys: "cmd+j",
+    keywords: "assistant panel chat",
+    module: "surface",
+    server: false,
+  },
   { id: "agent.ask", title: "Ask the agent", section: "Agent", hidden: true, module: "surface", server: false },
   { id: "menu.toggle", title: "Apps menu", section: "System", hidden: true, module: "surface", server: false },
 ]

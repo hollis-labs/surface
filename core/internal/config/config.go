@@ -56,7 +56,7 @@ func Open(ctx context.Context, db *sql.DB, pub Publisher) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var k, raw string
 		if err := rows.Scan(&k, &raw); err != nil {

@@ -97,14 +97,14 @@ type app struct {
 }
 
 func load(file string) (*app, error) {
-	raw, err := os.ReadFile(file)
+	raw, err := os.ReadFile(file) //nolint:gosec // the manifest path is the developer's own argument
 	if err != nil {
 		return nil, err
 	}
 	var m manifest
 	dec := yaml.NewDecoder(strings.NewReader(string(raw)))
 	dec.KnownFields(true)
-	if err := dec.Decode(&m); err != nil {
+	if err = dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	if !idRe.MatchString(m.App) {
@@ -125,7 +125,7 @@ func load(file string) (*app, error) {
 	}
 	root := dir
 	for {
-		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+		if _, statErr := os.Stat(filepath.Join(root, "go.mod")); statErr == nil { //nolint:gosec // walks up from the developer's manifest to the repository root
 			break
 		}
 		up := filepath.Dir(root)
@@ -134,7 +134,7 @@ func load(file string) (*app, error) {
 		}
 		root = up
 	}
-	modRaw, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	modRaw, err := os.ReadFile(filepath.Join(root, "go.mod")) //nolint:gosec // the repository's own go.mod
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +160,9 @@ func load(file string) (*app, error) {
 		if r.Import == "" {
 			// A module of this repository (or, in another repository, of Surface itself).
 			local := filepath.Join(root, "modules", r.ID)
-			if _, err := os.Stat(local); err == nil {
+			if _, err := os.Stat(local); err == nil { //nolint:gosec // a module directory of the developer's repository; the id is checked above
 				r.Import = modPath + "/modules/" + r.ID
-				if _, err := os.Stat(filepath.Join(local, "web", "index.tsx")); err == nil {
+				if _, err := os.Stat(filepath.Join(local, "web", "index.tsx")); err == nil { //nolint:gosec // same module directory
 					r.Web = "modules/" + r.ID + "/web/index.tsx"
 				}
 			} else {
@@ -174,17 +174,17 @@ func load(file string) (*app, error) {
 }
 
 func write(path, body string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // source directories in the developer's repository
 		return err
 	}
-	if old, err := os.ReadFile(path); err == nil && string(old) == body {
+	if old, err := os.ReadFile(path); err == nil && string(old) == body { //nolint:gosec // a generated file inside the app's directory
 		return nil
 	}
-	return os.WriteFile(path, []byte(body), 0o644)
+	return os.WriteFile(path, []byte(body), 0o644) //nolint:gosec // generated source files are world-readable like the rest of the repository
 }
 
 func run(dir string, name string, args ...string) error {
-	c := exec.Command(name, args...)
+	c := exec.Command(name, args...) //nolint:gosec // only go, npm and npx, with fixed arguments
 	c.Dir, c.Stdout, c.Stderr = dir, os.Stdout, os.Stderr
 	return c.Run()
 }
@@ -298,7 +298,7 @@ func Assets() (fs.FS, error) {
 		return nil, err
 	}
 	keep := filepath.Join(a.dir, "webui", "dist", ".gitkeep")
-	if _, err := os.Stat(keep); err != nil {
+	if _, err := os.Stat(keep); err != nil { //nolint:gosec // a generated file inside the app's directory
 		if err := write(keep, ""); err != nil {
 			return nil, err
 		}

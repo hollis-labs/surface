@@ -13,7 +13,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-bottom: 1px solid var(--color-border);
   font-size: 12px;
 }
 .sf-agent-row {
@@ -35,7 +35,7 @@
   font-weight: 600;
   padding: 1px 4px;
   border-radius: 4px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+  border: 1px solid var(--color-border);
   background: transparent;
   color: inherit;
 }
@@ -48,7 +48,7 @@
   font: inherit;
   background: none;
   border: none;
-  color: var(--accent, inherit);
+  color: var(--color-fg-muted);
   text-decoration: underline;
   cursor: pointer;
   padding: 0;
@@ -65,7 +65,7 @@
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 10px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.14));
+  background: var(--color-primary-muted);
 }
 .sf-agent-block {
   max-height: 40vh;
@@ -73,11 +73,66 @@
   margin: 0;
   padding: 8px;
   border-radius: 6px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.1));
+  background: var(--color-bg-elevated);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .sf-agent-off {
-  color: var(--danger, #b4532a);
+  color: var(--color-danger);
+}
+
+/* ade-react draws the chat in its own dark palette (--ade-*, and a few literal colours).
+ * Inside the panel, map it onto the design tokens so the whole panel follows the theme:
+ * dark, light (data-mode) and dusk (data-surface-theme). */
+.sf-agent {
+  --ade-agent: var(--color-primary);
+  --ade-user: var(--color-info, var(--color-primary));
+  --ade-bg: var(--color-bg);
+  --ade-fg: var(--color-fg);
+  --ade-soft: var(--color-fg-muted);
+  --ade-border: var(--color-border);
+  --ade-dim: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+.sf-agent .ade-chat {
+  font: inherit;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+.sf-agent .ade-chat-user {
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+.sf-agent .ade-chat textarea {
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border-color: var(--color-border);
+}
+.sf-agent .ade-chat textarea::placeholder {
+  color: var(--color-fg-faint);
+}
+.sf-agent .ade-chat button {
+  color: var(--color-fg);
+  border-color: var(--color-border);
+}
+.sf-agent .ade-chat button[data-primary] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-fg);
+}
+.sf-agent .ade-chat-tool[data-error] summary,
+.sf-agent .ade-chat-notice[data-tone="error"] {
+  color: var(--color-danger);
+}
+.sf-agent .ade-chat-tool pre {
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-secondary);
+}
+.sf-agent .ade-chat-ask {
+  background: var(--color-primary-muted);
+  border-color: var(--color-primary);
 }

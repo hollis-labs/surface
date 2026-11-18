@@ -56,6 +56,9 @@ type State struct {
 	Active string `json:"active,omitempty"`
 	// Mode is the user's mode ("writing", "triage"), when one is set.
 	Mode string `json:"mode,omitempty"`
+	// Setup is what goes with the arrangement in use (instructions, reflexes, a module's
+	// own keys), saved or not: it is set when the desk is arranged and kept until the next.
+	Setup map[string]any `json:"setup,omitempty"`
 	// Trail is the focus history, newest last, for returning to the previous window.
 	Trail []string `json:"trail,omitempty"`
 	Seq   int      `json:"seq"`

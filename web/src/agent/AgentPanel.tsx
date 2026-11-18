@@ -7,12 +7,12 @@
  * here as an "agent.context" event whenever the window in front changes. The page sends no
  * context and no tools of its own.
  */
-import { createAgentSession, type AgentSession } from "@hollis-labs/ade-agent"
+import { type AgentSession, createAgentSession } from "@hollis-labs/ade-agent"
 import { AgentPanel as Chat } from "@hollis-labs/ade-react"
 import "@hollis-labs/ade-react/styles.css"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useEvent, type Desk, type SurfaceEvent } from "../sdk"
-import { agentApi, type Assembly, type Setup, type SlotInfo } from "./api"
+import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
+import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
 import "./agent.css"
 
 let shared: AgentSession | null = null
@@ -65,7 +65,7 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
 
   return (
     <div className="sf-agent">
-      <div className="sf-agent-context" aria-label="What the agent has in mind">
+      <section className="sf-agent-context" aria-label="What the agent has in mind">
         <div className="sf-agent-row">
           <label className="sf-agent-slot">
             <span className="sf-agent-label">Slot</span>
@@ -81,7 +81,9 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
               ))}
             </select>
           </label>
-          <span className="sf-agent-why">{asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""}</span>
+          <span className="sf-agent-why">
+            {asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""}
+          </span>
           {asm?.why === "pinned" && (
             <button type="button" className="sf-agent-link" onClick={() => void pin("")}>
               unpin
@@ -92,10 +94,16 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
           </button>
         </div>
         {asm && asm.slots.length > 1 && (
-          <div className="sf-agent-row sf-agent-also">also: {asm.slots.slice(1).map((s) => s.name).join(", ")}</div>
+          <div className="sf-agent-row sf-agent-also">
+            also:{" "}
+            {asm.slots
+              .slice(1)
+              .map((s) => s.name)
+              .join(", ")}
+          </div>
         )}
         {top.length > 0 && (
-          <div className="sf-agent-tools" aria-label="Top of mind">
+          <div className="sf-agent-tools" title="Top of mind">
             {top.map((t) => (
               <code key={t}>{t}</code>
             ))}
@@ -104,12 +112,12 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
         {open && asm && <pre className="sf-agent-block">{asm.block}</pre>}
         {setup && !setup.ready && (
           <div className="sf-agent-off">
-            No model is configured. Write <code>{setup.config_path}</code> with <code>model</code>, <code>gateway_url</code> and{" "}
-            <code>key_file</code>; it is read when the app starts.
+            No model is configured. Write <code>{setup.config_path}</code> with <code>model</code>,{" "}
+            <code>gateway_url</code> and <code>key_file</code>; it is read when the app starts.
           </div>
         )}
         {err && <div className="sf-agent-off">{err}</div>}
-      </div>
+      </section>
       <Chat session={session} title={title} placeholder="Ask, or /open, /layout, /run" />
     </div>
   )

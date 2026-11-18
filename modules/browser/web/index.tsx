@@ -15,7 +15,8 @@ interface Page {
   framable: boolean
 }
 
-const btn = "inline-flex h-7 w-7 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30"
+const btn =
+  "inline-flex h-7 w-7 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30"
 
 function hostOf(u: string) {
   try {
@@ -29,7 +30,10 @@ function BrowserView({ win, desk, api }: ViewProps) {
   const home = useSetting<string>("browser.home") ?? "https://duckduckgo.com/"
   const readerDefault = useSetting<boolean>("browser.reader") ?? false
   const url = typeof win.args.url === "string" ? win.args.url : ""
-  const history = useMemo(() => (Array.isArray(win.args.history) ? (win.args.history as string[]) : url ? [url] : []), [win.args.history, url])
+  const history = useMemo(
+    () => (Array.isArray(win.args.history) ? (win.args.history as string[]) : url ? [url] : []),
+    [win.args.history, url],
+  )
   const at = typeof win.args.at === "number" ? win.args.at : history.length - 1
   const [address, setAddress] = useState(url)
   const [page, setPage] = useState<Page | null>(null)
@@ -45,6 +49,8 @@ function BrowserView({ win, desk, api }: ViewProps) {
   }, [win.args.focus_address, url])
 
   // Read the page on the server: its title, whether it may be framed, and the reader text.
+  // Only a new address or a reload (tick) reads it again, not a change of reader mode.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick forces a reload; desk and reader are read, not watched
   useEffect(() => {
     if (!url) return
     let live = true
@@ -63,7 +69,6 @@ function BrowserView({ win, desk, api }: ViewProps) {
     return () => {
       live = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, tick, api])
 
   const go = async (to: string) => {
@@ -94,11 +99,20 @@ function BrowserView({ win, desk, api }: ViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-sm">
-      <form className="flex items-center gap-1 border-b border-black/10 px-2 py-1 dark:border-white/10" onSubmit={submit}>
+      <form
+        className="flex items-center gap-1 border-b border-black/10 px-2 py-1 dark:border-white/10"
+        onSubmit={submit}
+      >
         <button type="button" className={btn} disabled={at <= 0} title="Back" onClick={() => step(-1)}>
           <Icon name="arrow-left" size={15} />
         </button>
-        <button type="button" className={btn} disabled={at >= history.length - 1} title="Forward" onClick={() => step(1)}>
+        <button
+          type="button"
+          className={btn}
+          disabled={at >= history.length - 1}
+          title="Forward"
+          onClick={() => step(1)}
+        >
           <Icon name="arrow-right" size={15} />
         </button>
         <button type="button" className={btn} title="Reload" onClick={() => setTick((t) => t + 1)}>
@@ -147,15 +161,25 @@ function BrowserView({ win, desk, api }: ViewProps) {
           />
         )}
         {url && showReader && page && (
-          <article className="mx-auto h-full max-w-3xl overflow-auto px-6 py-4 leading-relaxed" onMouseUp={onReaderSelect}>
+          <article
+            className="mx-auto h-full max-w-3xl overflow-auto px-6 py-4 leading-relaxed"
+            onMouseUp={onReaderSelect}
+          >
             <h1 className="mb-1 text-lg font-semibold">{page.title}</h1>
             <div className="mb-4 truncate text-xs opacity-60">{page.final_url}</div>
             {page.text.split("\n").map((l, i) => {
+              // Paragraphs of a fixed text, keyed by position.
+              const key = `p${i}`
               const h = /^(#{1,6}) (.*)$/.exec(l)
-              if (h) return <h2 key={i} className="mb-1 mt-4 font-semibold">{h[2]}</h2>
+              if (h)
+                return (
+                  <h2 key={key} className="mb-1 mt-4 font-semibold">
+                    {h[2]}
+                  </h2>
+                )
               if (!l.trim()) return null
               return (
-                <p key={i} className="mb-2">
+                <p key={key} className="mb-2">
                   {l}
                 </p>
               )

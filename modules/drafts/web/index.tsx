@@ -1,11 +1,12 @@
 /**
  * Drafts: documents the owner and the agent work on together. Review shows the text by line:
  * select a passage and mark it. Edit changes the text; every save is a revision. Compare shows
- * any revision against the latest. The marks on the draft are listed on the right.
+ * any revision against the latest. The marks on the draft are listed beside the text (under
+ * it when the window is narrow).
  */
 import {
-  addMark,
   ApiError,
+  addMark,
   Icon,
   type Mark,
   type ModuleWeb,
@@ -16,6 +17,7 @@ import {
   type ViewProps,
 } from "@surface/sdk"
 import { useCallback, useEffect, useRef, useState } from "react"
+import "./drafts.css"
 
 interface Draft {
   id: string
@@ -37,10 +39,11 @@ interface DiffLine {
   text: string
 }
 type Mode = "review" | "edit" | "compare"
-
-const btn =
-  "inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40"
-const btnOn = "bg-black/10 dark:bg-white/15"
+const MODES: { mode: Mode; icon: string }[] = [
+  { mode: "review", icon: "scan-text" },
+  { mode: "edit", icon: "pencil" },
+  { mode: "compare", icon: "git-compare" },
+]
 
 function when(iso: string) {
   const d = new Date(iso)
@@ -49,7 +52,11 @@ function when(iso: string) {
 
 function DraftsView({ win, desk, api }: ViewProps) {
   const id = typeof win.args.id === "string" ? win.args.id : ""
-  return id ? <DraftEditor key={id} id={id} win={win} desk={desk} api={api} /> : <DraftList desk={desk} api={api} win={win} />
+  return (
+    <div className="dr">
+      {id ? <DraftEditor key={id} id={id} win={win} desk={desk} api={api} /> : <DraftList desk={desk} api={api} win={win} />}
+    </div>
+  )
 }
 
 /** No draft chosen: the list, and a way to start one. */
@@ -66,47 +73,35 @@ function DraftList({ win, desk, api }: ViewProps) {
     void desk.setArgs(win.id, { id: d.id })
     void desk.setTitle(win.id, d.title)
   }
-  const create = async () => {
-    const d = await api.post<Draft>("drafts", { title: "Untitled" })
-    show(d)
-  }
+  const create = async () => show(await api.post<Draft>("drafts", { title: "Untitled" }))
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-black/10 p-2 dark:border-white/10">
-        <input
-          className="flex-1 rounded border border-black/15 bg-transparent px-2 py-1 text-sm dark:border-white/15"
-          placeholder="Find a draft"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button type="button" className={btn} onClick={() => void create()}>
+    <>
+      <div className="dr-find">
+        <input className="sf-input sf-grow" placeholder="Find a draft" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button type="button" className="sf-btn" onClick={() => void create()}>
           <Icon name="file-plus-2" size={14} /> New
         </button>
       </div>
-      <ul className="flex-1 overflow-auto">
+      <ul className="dr-list">
         {drafts.map((d) => (
           <li key={d.id}>
-            <button
-              type="button"
-              className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/10"
-              onClick={() => show(d)}
-            >
-              <span className="flex-1 truncate text-sm font-medium">{d.title}</span>
-              <span className="text-xs opacity-60">
+            <button type="button" className="dr-row" onClick={() => show(d)}>
+              <span className="dr-row-title">{d.title}</span>
+              <span className="dr-row-meta">
                 {d.lang} · r{d.rev} · {d.lines ?? 0} lines · {when(d.updated)}
               </span>
             </button>
           </li>
         ))}
-        {drafts.length === 0 && <li className="p-4 text-sm opacity-60">No drafts yet.</li>}
+        {drafts.length === 0 && <li className="dr-hint">No drafts yet.</li>}
       </ul>
-    </div>
+    </>
   )
 }
 
 function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [mode, setMode] = useState<Mode>(((win.state?.mode as Mode) ?? "review") || "review")
+  const [mode, setMode] = useState<Mode>((win.state?.mode as Mode) || "review")
   const [text, setText] = useState("")
   const [title, setTitle] = useState("")
   const [dirty, setDirty] = useState(false)
@@ -151,12 +146,27 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   useEffect(() => {
     if (mode !== "compare" || !draft) return
     const f = from || Math.max(1, draft.rev - 1)
-    api.get<{ lines: DiffLine[] }>(`drafts/${id}/diff?from=${f}&to=${draft.rev}`).then((r) => setDiff(r.lines ?? []), () => {})
+    api.get<{ lines: DiffLine[] }>(`drafts/${id}/diff?from=${f}&to=${draft.rev}`).then(
+      (r) => setDiff(r.lines ?? []),
+      () => {},
+    )
   }, [mode, from, draft, api, id])
+
+  // desk.report replaces the window's state: every report says the whole of it.
+  const report = (m: Mode, sel?: { quote: string; start: number; end: number } | null) =>
+    desk.report(win.id, sel ? { mode: m, selection: sel.quote.slice(0, 2000), line_start: sel.start, line_end: sel.end } : { mode: m })
 
   const switchMode = (m: Mode) => {
     setMode(m)
-    desk.report(win.id, { mode: m })
+    setPicked(null)
+    report(m)
+  }
+
+  const markDirty = () => {
+    if (!dirty) {
+      setDirty(true)
+      desk.setDirty(win.id, true)
+    }
   }
 
   const save = async () => {
@@ -181,7 +191,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
     if (!sel || !root || sel.isCollapsed || !root.contains(sel.anchorNode)) {
       if (picked) {
         setPicked(null)
-        desk.report(win.id, { mode })
+        report(mode)
       }
       return
     }
@@ -196,7 +206,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
     if (!quote) return
     const p = { quote, start: Math.min(a, b), end: Math.max(a, b) }
     setPicked(p)
-    desk.report(win.id, { mode, selection: quote.slice(0, 2000), line_start: p.start, line_end: p.end })
+    report(mode, p)
   }
 
   const mark = async () => {
@@ -204,10 +214,11 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
     await addMark({ ref, body: composing.trim(), quote: picked.quote, anchor: { lines: { start: picked.start, end: picked.end } } })
     setComposing("")
     setPicked(null)
+    report(mode)
   }
 
-  if (!draft) return <div className="p-4 text-sm opacity-70">{notice || "Loading…"}</div>
-  const lines = (draft.body ?? "").split("\n")
+  if (!draft) return <p className="dr-hint">{notice || "Loading…"}</p>
+  const lines = (draft.body ?? "").replace(/\n$/, "").split("\n")
   const marked = new Set<number>()
   for (const m of marks) {
     const l = (m.anchor as { lines?: { start: number; end?: number } } | undefined)?.lines
@@ -215,70 +226,70 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col text-sm">
-      <div className="flex items-center gap-1 border-b border-black/10 px-2 py-1 dark:border-white/10">
-        <button type="button" className={btn} title="All drafts" onClick={() => void desk.setArgs(win.id, {})}>
+    <>
+      <div className="dr-bar">
+        <button type="button" className="dr-tool" title="All drafts" onClick={() => void desk.setArgs(win.id, {})}>
           <Icon name="list" size={14} />
         </button>
         {mode === "edit" ? (
           <input
-            className="mx-1 min-w-0 flex-1 rounded border border-black/15 bg-transparent px-2 py-0.5 dark:border-white/15"
+            className="sf-input dr-title-input"
             value={title}
+            aria-label="Title"
             onChange={(e) => {
               setTitle(e.target.value)
-              setDirty(true)
-              desk.setDirty(win.id, true)
+              markDirty()
             }}
           />
         ) : (
-          <span className="mx-1 min-w-0 flex-1 truncate font-medium">{draft.title}</span>
+          <span className="dr-title">{draft.title}</span>
         )}
-        <span className="text-xs opacity-60">
+        <span className="dr-meta">
           {draft.lang} · r{draft.rev}
         </span>
-        {(["review", "edit", "compare"] as const).map((m) => (
-          <button key={m} type="button" className={`${btn} ${mode === m ? btnOn : ""}`} onClick={() => switchMode(m)}>
-            <Icon name={{ review: "scan-text", edit: "pencil", compare: "git-compare" }[m]} size={14} />
-            {m}
+        {MODES.map(({ mode: m, icon }) => (
+          <button key={m} type="button" className="dr-tool" data-on={mode === m} title={m} onClick={() => switchMode(m)}>
+            <Icon name={icon} size={14} />
+            <span className="dr-tool-label">{m}</span>
           </button>
         ))}
         {mode === "edit" && (
-          <button type="button" className={btn} disabled={!dirty} onClick={() => void save()}>
-            <Icon name="save" size={14} /> Save
+          <button type="button" className="dr-tool" disabled={!dirty} title="Save (⌘S)" onClick={() => void save()}>
+            <Icon name="save" size={14} />
+            <span className="dr-tool-label">Save</span>
           </button>
         )}
       </div>
       {notice && (
-        <div className="flex items-center gap-2 bg-amber-500/15 px-3 py-1 text-xs">
-          <span className="flex-1">{notice}</span>
-          <button type="button" className={btn} onClick={() => void load()}>
+        <div className="dr-notice">
+          <span className="sf-grow">{notice}</span>
+          <button type="button" className="sf-btn" onClick={() => void load()}>
             Reload
           </button>
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto">
+      <div className="dr-main">
+        <div className="dr-body">
           {mode === "review" && (
-            <div ref={body} className="py-2 font-mono text-[12.5px] leading-5" onMouseUp={onSelect} onKeyUp={onSelect}>
+            <div ref={body} className="dr-lines" onMouseUp={onSelect} onKeyUp={onSelect}>
               {lines.map((l, i) => (
-                <div key={i} data-line={i + 1} className={`flex ${marked.has(i + 1) ? "bg-yellow-400/20" : ""}`}>
-                  <span className="w-12 shrink-0 select-none pr-3 text-right opacity-40">{i + 1}</span>
-                  <span className="whitespace-pre-wrap break-words pr-3">{l || " "}</span>
+                // biome-ignore lint/suspicious/noArrayIndexKey: a line is its position
+                <div key={i} data-line={i + 1} className="dr-line" data-marked={marked.has(i + 1)}>
+                  <span className="dr-num">{i + 1}</span>
+                  <span className="dr-text">{l || " "}</span>
                 </div>
               ))}
             </div>
           )}
           {mode === "edit" && (
             <textarea
-              className="h-full w-full resize-none bg-transparent p-3 font-mono text-[12.5px] leading-5 outline-none"
+              className="dr-edit"
               value={text}
+              aria-label="Text"
               spellCheck={draft.lang === "markdown" || draft.lang === "text"}
               onChange={(e) => {
                 setText(e.target.value)
-                if (!dirty) {
-                  setDirty(true)
-                  desk.setDirty(win.id, true)
-                }
+                markDirty()
               }}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -289,14 +300,10 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
             />
           )}
           {mode === "compare" && (
-            <div className="py-2">
-              <div className="flex items-center gap-2 px-3 pb-2 text-xs">
-                <span className="opacity-70">Revision</span>
-                <select
-                  className="rounded border border-black/15 bg-transparent px-1 dark:border-white/15"
-                  value={from || Math.max(1, draft.rev - 1)}
-                  onChange={(e) => setFrom(Number(e.target.value))}
-                >
+            <>
+              <div className="dr-compare-head">
+                <span>Revision</span>
+                <select className="sf-input" value={from || Math.max(1, draft.rev - 1)} onChange={(e) => setFrom(Number(e.target.value))}>
                   {revs
                     .filter((r) => r.rev < draft.rev)
                     .map((r) => (
@@ -305,34 +312,28 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
                       </option>
                     ))}
                 </select>
-                <span className="opacity-70">against the latest (r{draft.rev})</span>
+                <span>against the latest (r{draft.rev})</span>
               </div>
-              <div className="font-mono text-[12.5px] leading-5">
-                {draft.rev === 1 && <div className="px-3 opacity-60">There is only one revision.</div>}
+              <div className="dr-diff">
+                {draft.rev === 1 && <p className="dr-hint">There is only one revision.</p>}
                 {diff.map((d, i) => (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: a diff line is its position
                     key={i}
-                    className={`whitespace-pre-wrap break-words px-3 ${
-                      d.op === "+" ? "bg-green-500/15" : d.op === "-" ? "bg-red-500/15 line-through decoration-red-500/40" : ""
-                    }`}
+                    className="dr-diff-line"
+                    data-op={d.op}
                   >
-                    <span className="select-none opacity-50">{d.op} </span>
+                    <span className="dr-diff-op">{d.op} </span>
                     {d.text || " "}
                   </div>
                 ))}
               </div>
-            </div>
+            </>
           )}
         </div>
-        <MarksPanel
-          marks={marks}
-          picked={picked}
-          composing={composing}
-          setComposing={setComposing}
-          onMark={() => void mark()}
-        />
+        <MarksPanel marks={marks} picked={picked} composing={composing} setComposing={setComposing} onMark={() => void mark()} />
       </div>
-    </div>
+    </>
   )
 }
 
@@ -351,38 +352,39 @@ function MarksPanel({
 }) {
   const [showDone, setShowDone] = useState(false)
   const list = marks.filter((m) => showDone || m.status === "open")
+  const open = marks.filter((m) => m.status === "open").length
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-black/10 dark:border-white/10">
-      <div className="flex items-center justify-between px-3 py-2 text-xs">
-        <span className="font-medium">Marks ({marks.filter((m) => m.status === "open").length} open)</span>
-        <label className="flex items-center gap-1 opacity-70">
+    <aside className="dr-marks">
+      <div className="dr-marks-head">
+        <span>Marks ({open} open)</span>
+        <label>
           <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> resolved
         </label>
       </div>
       {picked && (
-        <div className="mx-2 mb-2 rounded border border-black/15 p-2 dark:border-white/15">
-          <div className="mb-1 line-clamp-3 text-xs italic opacity-70">
+        <div className="dr-compose">
+          <div className="dr-quote">
             Lines {picked.start}
             {picked.end !== picked.start ? `–${picked.end}` : ""}: “{picked.quote}”
           </div>
           <textarea
-            className="h-16 w-full resize-none rounded border border-black/15 bg-transparent p-1 text-xs dark:border-white/15"
             placeholder="A comment, a question, a change to make"
+            aria-label="Mark"
             value={composing}
             onChange={(e) => setComposing(e.target.value)}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onMark()
             }}
           />
-          <button type="button" className={btn} disabled={!composing.trim()} onClick={onMark}>
-            <Icon name="message-square-plus" size={14} /> Mark
-          </button>
+          <div>
+            <button type="button" className="sf-btn" data-kind="primary" disabled={!composing.trim()} onClick={onMark}>
+              <Icon name="message-square-plus" size={14} /> Mark
+            </button>
+          </div>
         </div>
       )}
-      {!picked && list.length === 0 && (
-        <p className="px-3 text-xs opacity-60">Select a passage in Review to mark it. The agent sees your marks and answers them.</p>
-      )}
-      <ul className="flex-1 space-y-2 overflow-auto px-2 pb-2">
+      {!picked && list.length === 0 && <p className="dr-hint">Select a passage in Review to mark it. The agent sees your marks and answers them.</p>}
+      <ul className="dr-marks-list">
         {list.map((m) => (
           <MarkCard key={m.id} mark={m} />
         ))}
@@ -399,28 +401,28 @@ function MarkCard({ mark }: { mark: Mark }) {
     setReply("")
   }
   return (
-    <li className={`rounded border border-black/10 p-2 text-xs dark:border-white/10 ${mark.status !== "open" ? "opacity-60" : ""}`}>
-      {mark.quote && <div className="mb-1 line-clamp-2 italic opacity-70">“{mark.quote}”</div>}
+    <li className="dr-mark" data-status={mark.status}>
+      {mark.quote && <div className="dr-quote">“{mark.quote}”</div>}
       <div>
-        <span className="font-medium">{mark.author}</span>: {mark.body}
+        <span className="dr-who">{mark.author}</span>: {mark.body}
       </div>
-      {mark.replies?.map((r, i) => (
-        <div key={i} className="mt-1 border-l-2 border-black/10 pl-2 dark:border-white/15">
-          <span className="font-medium">{r.author}</span>: {r.body}
+      {mark.replies?.map((r) => (
+        <div key={`${r.created}-${r.author}-${r.body.slice(0, 16)}`} className="dr-reply">
+          <span className="dr-who">{r.author}</span>: {r.body}
         </div>
       ))}
       {mark.status === "open" && (
-        <div className="mt-1 flex gap-1">
+        <div className="dr-mark-act">
           <input
-            className="min-w-0 flex-1 rounded border border-black/15 bg-transparent px-1 dark:border-white/15"
             placeholder="Reply"
+            aria-label="Reply"
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") void send()
             }}
           />
-          <button type="button" className={btn} title="Resolve" onClick={() => void resolveMark(mark.id)}>
+          <button type="button" className="dr-tool" title="Resolve" onClick={() => void resolveMark(mark.id)}>
             <Icon name="check" size={14} />
           </button>
         </div>

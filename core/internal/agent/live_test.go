@@ -30,8 +30,8 @@ func TestLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer eng.Close()
-	if err := eng.AddTools(s.engineTools()...); err != nil {
-		t.Fatal(err)
+	if aerr := eng.AddTools(s.engineTools()...); aerr != nil {
+		t.Fatal(aerr)
 	}
 	s.engine = eng
 	mux := http.NewServeMux()

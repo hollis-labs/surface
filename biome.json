@@ -2,7 +2,12 @@
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["web/**", "modules/**", "!web/src/generated", "!**/dist"]
+    "includes": [
+      "web/**",
+      "modules/**",
+      "!web/src/generated",
+      "!**/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -18,7 +23,15 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "a11y": {
+        "noAutofocus": "off",
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off"
+      },
+      "style": {
+        "noDescendingSpecificity": "off"
+      }
     }
   },
   "javascript": {

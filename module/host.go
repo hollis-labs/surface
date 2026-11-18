@@ -170,7 +170,7 @@ type Event struct {
 // Events is the app's event bus. Events also reach the page, where a view can listen for
 // them and refresh; that is how a view learns that the agent changed its data.
 type Events interface {
-	// Publish sends an event. data is marshalled to JSON.
+	// Publish sends an event. data is marshaled to JSON.
 	Publish(topic string, data any)
 	// Subscribe calls fn for each event whose topic is prefix or starts with prefix + ".".
 	// An empty prefix takes every event. fn must not block.

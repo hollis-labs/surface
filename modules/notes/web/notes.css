@@ -1,0 +1,284 @@
+.notes {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.notes-side {
+  flex: 0 0 200px;
+  width: 200px;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+}
+.notes-find {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+.notes-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0 4px 6px;
+  list-style: none;
+}
+.notes-head {
+  padding: 10px 8px 3px;
+  color: var(--color-fg-faint);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.notes-none {
+  padding: 14px 10px;
+}
+.notes-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.notes-row:hover {
+  background: var(--color-surface);
+}
+.notes-row[data-on="true"] {
+  background: var(--color-primary-muted);
+}
+.notes-row-title,
+.notes-row-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-row-path {
+  color: var(--color-fg-faint);
+  font-size: 11px;
+}
+.notes-folder {
+  padding: 6px 10px;
+  border-top: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.notes-empty {
+  flex: 1 1 auto;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 20px;
+  text-align: center;
+}
+.notes-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.notes-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.notes-bar .sf-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.notes-bar .sf-btn[data-on="true"] {
+  border-color: var(--sf-accent);
+}
+.notes-path {
+  font-family: var(--sf-mono);
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-status {
+  font-size: 11px;
+  color: var(--color-fg-faint);
+}
+.notes-status[data-status="conflict"] {
+  color: var(--color-warning);
+}
+.notes-conflict {
+  display: flex;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--color-warning-muted);
+  color: var(--color-warning);
+  font-size: 12px;
+}
+.notes-error {
+  padding: 6px 12px;
+}
+.notes-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.notes-text {
+  flex: 1 1 50%;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: var(--color-bg);
+  font-family: var(--sf-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notes-body[data-layout="split"] .notes-text {
+  border-right: 1px solid var(--color-border-subtle);
+}
+.notes-preview {
+  flex: 1 1 50%;
+  min-width: 0;
+  overflow: auto;
+  padding: 14px 20px 30px;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.notes-preview h1 {
+  font-size: 22px;
+  font-weight: 650;
+  margin: 0.2em 0 0.5em;
+}
+.notes-preview h2 {
+  font-size: 17px;
+  font-weight: 650;
+  margin: 1.2em 0 0.4em;
+}
+.notes-preview h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 1em 0 0.3em;
+}
+.notes-preview p,
+.notes-preview ul,
+.notes-preview ol,
+.notes-preview blockquote,
+.notes-preview pre,
+.notes-preview table {
+  margin: 0 0 0.8em;
+}
+.notes-preview ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.notes-preview ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.notes-preview a {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+.notes-preview .notes-wiki {
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+.notes-preview .notes-wiki[data-missing="true"] {
+  color: var(--color-fg-muted);
+  border-bottom-style: dashed;
+}
+.notes-preview code {
+  font-family: var(--sf-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-surface);
+}
+.notes-preview pre {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  overflow: auto;
+}
+.notes-preview pre code {
+  padding: 0;
+  background: transparent;
+}
+.notes-preview blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--color-border);
+  color: var(--color-fg-secondary);
+}
+.notes-preview th,
+.notes-preview td {
+  padding: 4px 9px;
+  border: 1px solid var(--color-border);
+}
+.notes-back {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.notes-marks {
+  flex: 0 0 250px;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+}
+.notes-marks .sf-card {
+  background: var(--color-bg);
+}
+.notes-reply {
+  width: 100%;
+}
+
+/* A narrow window stacks the text, the preview and the marks instead of squeezing them. */
+.notes-main {
+  container-type: inline-size;
+}
+.notes-text,
+.notes-preview {
+  min-height: 0;
+}
+@container (max-width: 720px) {
+  .notes-body {
+    flex-direction: column;
+  }
+  .notes-body[data-layout="split"] .notes-text {
+    flex: 1 1 45%;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .notes-preview {
+    flex: 1 1 55%;
+  }
+  .notes-marks {
+    flex: 0 0 auto;
+    max-height: 34%;
+    border-left: 0;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+}

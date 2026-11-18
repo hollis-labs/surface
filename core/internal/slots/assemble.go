@@ -100,6 +100,16 @@ type Extra struct {
 // knowledgeTimeout bounds one slot's Knowledge call: it runs on every message.
 const knowledgeTimeout = 1500 * time.Millisecond
 
+// Size budgets, in characters, for what the slots put in front of every message. The
+// primary slot gets the most; a slot also in play (a mode) gets a glance; the whole block
+// is capped so a module cannot crowd out the conversation.
+const (
+	budgetPrimary   = 6000
+	budgetSecondary = 1500
+	budgetBlock     = 12000
+	budgetNote      = 2000
+)
+
 // Assemble builds the Assembly for a Selection.
 func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []kernel.BoundTool, notes *Notes, extra Extra) Assembly {
 	have := map[string]bool{}
@@ -111,9 +121,14 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 	if len(slots) == 0 {
 		slots = []kernel.BoundSlot{General}
 	}
-	for _, s := range slots {
+	for i, s := range slots {
 		v := SlotView{Name: s.Name, Module: s.Module, About: s.About, Instructions: s.Instructions, Where: s.Where}
 		v.Note, v.NoteUpdated = notes.Get(ctx, s.Name)
+		v.Note = clip(v.Note, budgetNote)
+		budget := budgetPrimary
+		if i > 0 {
+			budget = budgetSecondary
+		}
 		if s.Knowledge != nil {
 			kctx, cancel := context.WithTimeout(ctx, knowledgeTimeout)
 			k, err := s.Knowledge(kctx, sit)
@@ -121,7 +136,7 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 			if err != nil {
 				k = "(could not be read: " + err.Error() + ")"
 			}
-			v.Knowledge = clip(strings.TrimSpace(k), 6000)
+			v.Knowledge = clip(strings.TrimSpace(k), budget)
 		}
 		a.Slots = append(a.Slots, v)
 		for _, t := range s.Tools {
@@ -131,6 +146,18 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 		}
 	}
 	a.Block = block(sit, a, extra)
+	// Over the cap: drop what the modules know, the secondary slots' first, then trim the
+	// primary's. What is in front, the slots, the note and the reminders always stay.
+	for i := len(a.Slots) - 1; i >= 0 && len([]rune(a.Block)) > budgetBlock; i-- {
+		over := len([]rune(a.Block)) - budgetBlock
+		k := []rune(a.Slots[i].Knowledge)
+		if i > 0 || over >= len(k) {
+			a.Slots[i].Knowledge = ""
+		} else {
+			a.Slots[i].Knowledge = clip(string(k), len(k)-over-40)
+		}
+		a.Block = block(sit, a, extra)
+	}
 	return a
 }
 

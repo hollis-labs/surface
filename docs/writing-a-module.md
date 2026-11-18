@@ -146,12 +146,14 @@ export default { views: { "scratch/main": Scratch } } satisfies ModuleWeb
 
 A view gets `win` (its window: `args`, `key`, `focused`), `desk` (open, close, setTitle, setArgs, report,
 setDirty, run, confirm) and `api` (calls to the module's own routes). Hooks: `useEvent(prefix, fn)`,
-`useSetting(fullKey)`, `useMarks(ref)`; marks: `addMark`, `replyMark`, `resolveMark`; `Icon` draws a lucide
+`useSetting(fullKey)` (and `setSetting` to change one), `useMarks(ref)`; marks: `addMark`, `replyMark`, `resolveMark`; `Icon` draws a lucide
 icon by name.
 
 - `desk.report(win.id, state)` replaces what the window says it is showing; send the whole state each time.
   The keys the desk reads are `kind`, `ref`, `url` and `selection`.
 - `desk.setDirty(win.id, true)` makes closing ask first.
+- `desk.openFile(name, opts)` opens a file in whichever view declares it (`View.Opens`), or resolves to
+  `null` when this app has none: a module offers "open" without knowing which other modules are present.
 - Style with the design tokens (`var(--color-…)`), the shared `sf-*` classes in `web/src/desk/desk.css`, or
   Tailwind classes.
 

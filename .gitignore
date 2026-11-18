@@ -1,0 +1,34 @@
+# Built binaries
+/bin/
+/surface
+
+# Go test and build artefacts
+*.exe
+*.test
+*.out
+coverage.out
+
+# The page's packages and each app's built page. dist/.gitkeep stays so go:embed compiles.
+node_modules/
+/apps/*/webui/dist/*
+!/apps/*/webui/dist/.gitkeep
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local env, data and browser verification
+.env
+.env.local
+*.env
+!*.example.env
+*.db
+*.db-shm
+*.db-wal
+/data/
+.playwright-mcp/
+*.local.json
+*.local.yaml
+.claude/

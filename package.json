@@ -1,0 +1,37 @@
+{
+  "name": "surface-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The page of a Surface app: the desk, the palette, the agent panel and the modules' views. Sources are in web/ and modules/*/web.",
+  "scripts": {
+    "dev": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json",
+    "lint": "biome check web modules",
+    "lint:fix": "biome check --write web modules"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.8.0",
+    "@hollis-labs/ade-agent": "0.1.0",
+    "@hollis-labs/ade-core": "0.1.0",
+    "@hollis-labs/ade-react": "0.1.0",
+    "@hollis-labs/design-components": "0.5.1",
+    "@hollis-labs/design-tokens": "0.5.0",
+    "lucide-react": "1.52.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  }
+}

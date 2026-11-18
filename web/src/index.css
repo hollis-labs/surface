@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@import "@hollis-labs/design-tokens/design-tokens.css";
+@import "@hollis-labs/design-components/source.css";
+@import "./desk/desk.css";
+
+:root {
+  color-scheme: dark light;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}

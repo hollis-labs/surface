@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@surface/sdk": ["src/sdk/index.ts"],
+      "@surface/app": ["src/generated/desk.ts"]
+    }
+  },
+  "include": ["src", "../modules/*/web"]
+}

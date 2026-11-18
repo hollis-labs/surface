@@ -1,0 +1,30 @@
+{
+  "version": "surface-builtin-1",
+  "strategy": "first_match",
+  "rules": [
+    {
+      "id": "open-view",
+      "priority": 10,
+      "when": [{"field": "slash", "op": "eq", "value": "open"}, {"field": "arg", "op": "exists"}],
+      "target": "tool:desk_open",
+      "auto": true,
+      "params": {"view": "{arg}", "_say": "Opened {arg} for the owner (/open)."}
+    },
+    {
+      "id": "load-layout",
+      "priority": 10,
+      "when": [{"field": "slash", "op": "eq", "value": "layout"}, {"field": "arg", "op": "exists"}],
+      "target": "tool:desk_layout_load",
+      "auto": true,
+      "params": {"name": "{arg}", "_say": "Arranged the desk as the layout {arg} (/layout)."}
+    },
+    {
+      "id": "run-command",
+      "priority": 10,
+      "when": [{"field": "slash", "op": "eq", "value": "run"}, {"field": "arg", "op": "exists"}],
+      "target": "tool:desk_run_command",
+      "auto": true,
+      "params": {"id": "{arg}", "_say": "The owner asked to run the command {arg} (/run)."}
+    }
+  ]
+}

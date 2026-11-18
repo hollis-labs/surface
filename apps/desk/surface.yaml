@@ -1,0 +1,9 @@
+# Surface Desk: the first Surface app, with the core modules.
+# `surface generate -f apps/desk/surface.yaml` writes the wiring; `surface build` builds it.
+app: desk
+title: Surface Desk
+addr: 127.0.0.1:8090
+modules:
+  - scratch
+  - drafts
+  - browser

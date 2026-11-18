@@ -1,0 +1,83 @@
+.sf-agent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.sf-agent > .ade-chat {
+  flex: 1;
+  min-height: 0;
+}
+.sf-agent-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  font-size: 12px;
+}
+.sf-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sf-agent-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sf-agent-label {
+  opacity: 0.7;
+}
+.sf-agent-slot select {
+  font: inherit;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+  background: transparent;
+  color: inherit;
+}
+.sf-agent-why,
+.sf-agent-also {
+  opacity: 0.7;
+}
+.sf-agent-link {
+  margin-left: auto;
+  font: inherit;
+  background: none;
+  border: none;
+  color: var(--accent, inherit);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+.sf-agent-link + .sf-agent-link {
+  margin-left: 0;
+}
+.sf-agent-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sf-agent-tools code {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.14));
+}
+.sf-agent-block {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.1));
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sf-agent-off {
+  color: var(--danger, #b4532a);
+}

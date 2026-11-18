@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the hygiene scan reads history
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Typecheck and lint the page
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+      # The wiring is generated and committed; a manifest edited without regenerating fails here.
+      - name: Generated wiring is current
+        run: |
+          make generate
+          git diff --exit-code -- apps web/src/generated
+      - name: Build every app (page, then binary)
+        run: make all
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+      - name: hygiene (secrets, hosts, private paths; tree and history)
+        run: python3 scripts/scan-public --ref HEAD

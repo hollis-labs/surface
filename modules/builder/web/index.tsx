@@ -5,9 +5,15 @@
  * The view composes nothing and takes no description itself: the owner talks to the agent in
  * its panel, whose builder slot knows how, and this window lists the flows the agent saved.
  */
-import { Icon, type ModuleWeb, useEvent, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useEvent, type ViewProps } from "@surface/sdk"
+import { Bot, ChevronDown, ChevronUp, Play, Trash2, Workflow } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import "./builder.css"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface LayoutWindow {
   view: string
@@ -80,50 +86,81 @@ function BuilderView({ win, desk, api }: ViewProps) {
   }
 
   return (
-    <div className="bl">
-      <section className="bl-compose">
-        <h2>Flows</h2>
-        <p className="sf-dim">
+    <div className="@container flex h-full min-h-0 flex-col overflow-y-auto">
+      <section className="flex shrink-0 flex-col items-start gap-2 border-b border-border p-4 @max-md:p-3">
+        <h2 className="text-sm font-semibold">Flows</h2>
+        <p className="text-sm text-muted-foreground">
           Describe a way of working to the agent, in its panel: “set up a flow to triage my inbox”, “write an article”.
           It arranges the windows, sets the mode and its own instructions, adds the reflexes the flow needs, and saves
           it here. To change one, tell the agent what to change; each change is a new version.
         </p>
-        <button type="button" className="sf-btn" onClick={() => void desk.run("agent.toggle", { open: true })}>
-          <Icon name="bot" size={14} /> Open the agent
-        </button>
-        {err && <p className="sf-error">{err}</p>}
+        <Button variant="outline" size="sm" onClick={() => void desk.run("agent.toggle", { open: true })}>
+          <Bot /> Open the agent
+        </Button>
+        {err && <p className="text-sm text-destructive">{err}</p>}
       </section>
-      <section className="bl-flows">
-        {flows.length === 0 && <p className="sf-dim bl-none">None yet.</p>}
-        <ul className="bl-list">
-          {flows.map((f) => (
-            <li key={f.name} className="bl-flow" data-open={open === f.name}>
-              <div className="bl-flow-row">
-                <button type="button" className="bl-flow-name" onClick={() => select(f.name)}>
-                  <strong>{f.name}</strong>
-                  <span>
-                    {f.goal} · v{f.version} · {when(f.updated)}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="sf-btn"
-                  title="Put this flow on the desk"
-                  onClick={() => void run(`flows/${encodeURIComponent(f.name)}/open`)}
-                >
-                  <Icon name="play" size={14} />
-                  <span className="bl-label">Open</span>
-                </button>
-              </div>
-              {open === f.name && detail && (
-                <FlowDetail
-                  flow={detail}
-                  onRestore={(v) => void run(`flows/${encodeURIComponent(f.name)}/versions/${v}/restore`)}
-                  onDelete={() => void remove(f)}
-                />
-              )}
-            </li>
-          ))}
+      <section className="flex-1">
+        {flows.length === 0 && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Workflow />
+              </EmptyMedia>
+              <EmptyTitle>No flows yet</EmptyTitle>
+              <EmptyDescription>Ask the agent to set one up.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+        <ul className="flex flex-col gap-1 p-2">
+          {flows.map((f) => {
+            const isOpen = open === f.name
+            return (
+              <li key={f.name}>
+                <Item size="sm" variant={isOpen ? "muted" : "default"}>
+                  <ItemContent className="min-w-0 cursor-pointer" onClick={() => select(f.name)}>
+                    <ItemTitle className={isOpen ? "text-primary" : undefined}>{f.name}</ItemTitle>
+                    <ItemDescription className="line-clamp-1 text-xs">
+                      {f.goal} · v{f.version} · {when(f.updated)}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={isOpen ? "Hide the details" : "Show the details"}
+                      aria-expanded={isOpen}
+                      onClick={() => select(f.name)}
+                    >
+                      {isOpen ? <ChevronUp /> : <ChevronDown />}
+                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label="Open"
+                            onClick={() => void run(`flows/${encodeURIComponent(f.name)}/open`)}
+                          />
+                        }
+                      >
+                        <Play />
+                        <span className="@max-md:hidden">Open</span>
+                      </TooltipTrigger>
+                      <TooltipContent>Put this flow on the desk</TooltipContent>
+                    </Tooltip>
+                  </ItemActions>
+                </Item>
+                {isOpen && detail && (
+                  <FlowDetail
+                    flow={detail}
+                    onRestore={(v) => void run(`flows/${encodeURIComponent(f.name)}/versions/${v}/restore`)}
+                    onDelete={() => void remove(f)}
+                  />
+                )}
+              </li>
+            )
+          })}
         </ul>
       </section>
     </div>
@@ -141,68 +178,68 @@ function FlowDetail({
 }) {
   const setup = flow.layout?.setup ?? {}
   const reflexes = Array.isArray(setup.reflexes) ? (setup.reflexes as string[]) : []
+  const key = "text-muted-foreground"
   return (
-    <div className="bl-detail">
+    <div className="flex flex-col items-start gap-2 px-3 pt-1 pb-3 text-xs">
       {flow.description && <p>{flow.description}</p>}
-      <p>
-        <span className="bl-key">Windows ({flow.layout?.mode ?? "tile"}): </span>
-        <span className="bl-pills">
-          {(flow.layout?.windows ?? []).map((w, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a layout's windows have no id; their order is their identity
-            <span key={i} className="bl-pill">
-              {w.title || w.view}
-              {w.focus ? " ●" : ""}
-            </span>
-          ))}
-        </span>
-      </p>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className={key}>Windows ({flow.layout?.mode ?? "tile"}):</span>
+        {(flow.layout?.windows ?? []).map((w, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a layout's windows have no id; their order is their identity
+          <Badge key={i} variant={w.focus ? "default" : "secondary"}>
+            {w.title || w.view}
+          </Badge>
+        ))}
+      </div>
       {typeof setup.mode === "string" && setup.mode && (
         <p>
-          <span className="bl-key">Mode: </span>
+          <span className={key}>Mode: </span>
           {setup.mode}
         </p>
       )}
       {typeof setup.instructions === "string" && setup.instructions && (
         <p>
-          <span className="bl-key">Agent instructions: </span>
+          <span className={key}>Agent instructions: </span>
           {setup.instructions}
         </p>
       )}
       {reflexes.length > 0 && (
-        <p>
-          <span className="bl-key">Reflexes: </span>
-          <span className="bl-pills">
-            {reflexes.map((r) => (
-              <span key={r} className="bl-pill">
-                <code>{r}</code>
-              </span>
-            ))}
-          </span>
-        </p>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className={key}>Reflexes:</span>
+          {reflexes.map((r) => (
+            <Badge key={r} variant="outline" className="font-mono">
+              {r}
+            </Badge>
+          ))}
+        </div>
       )}
       {flow.versions && flow.versions.length > 1 && (
-        <details className="bl-versions">
-          <summary>Versions ({flow.versions.length})</summary>
-          <ul>
-            {flow.versions.map((v) => (
-              <li key={v.version}>
-                <span className="bl-v">v{v.version}</span>
-                <span className="bl-v-note">
-                  {v.note || "—"} · {when(v.created)}
-                </span>
-                {v.version !== flow.version && (
-                  <button type="button" className="sf-link" onClick={() => onRestore(v.version)}>
-                    restore
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
+        <Collapsible className="w-full">
+          <CollapsibleTrigger render={<Button variant="link" size="xs" className="px-0" />}>
+            Versions ({flow.versions.length})
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="mt-1 flex flex-col gap-1">
+              {flow.versions.map((v) => (
+                <li key={v.version} className="flex items-baseline gap-2">
+                  <span className="w-7 shrink-0 font-semibold">v{v.version}</span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">
+                    {v.note || "—"} · {when(v.created)}
+                  </span>
+                  {v.version !== flow.version && (
+                    <Button variant="link" size="xs" onClick={() => onRestore(v.version)}>
+                      restore
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
       )}
-      <button type="button" className="sf-link bl-delete" onClick={onDelete}>
-        Delete flow
-      </button>
+      <Button variant="destructive" size="xs" onClick={onDelete}>
+        <Trash2 /> Delete flow
+      </Button>
     </div>
   )
 }

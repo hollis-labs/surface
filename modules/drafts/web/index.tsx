@@ -7,7 +7,6 @@
 import {
   ApiError,
   addMark,
-  Icon,
   type Mark,
   type ModuleWeb,
   replyMark,
@@ -16,8 +15,31 @@ import {
   useMarks,
   type ViewProps,
 } from "@surface/sdk"
-import { useCallback, useEffect, useRef, useState } from "react"
-import "./drafts.css"
+import {
+  Check,
+  FilePlus2,
+  FileText,
+  GitCompare,
+  List,
+  type LucideIcon,
+  MessageSquarePlus,
+  Pencil,
+  Save,
+  ScanText,
+} from "lucide-react"
+import { type ReactElement, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Kbd } from "@/components/ui/kbd"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TextEditor } from "@/components/ui/text-editor"
+import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface Draft {
   id: string
@@ -39,11 +61,23 @@ interface DiffLine {
   text: string
 }
 type Mode = "review" | "edit" | "compare"
-const MODES: { mode: Mode; icon: string }[] = [
-  { mode: "review", icon: "scan-text" },
-  { mode: "edit", icon: "pencil" },
-  { mode: "compare", icon: "git-compare" },
+const MODES: { mode: Mode; label: string; icon: LucideIcon }[] = [
+  { mode: "review", label: "Review", icon: ScanText },
+  { mode: "edit", label: "Edit", icon: Pencil },
+  { mode: "compare", label: "Compare", icon: GitCompare },
 ]
+
+/** A control with its name (and shortcut) in a tooltip. */
+function Tip({ label, children }: { label: ReactNode; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+const hint = "px-2.5 text-xs text-muted-foreground"
 
 function when(iso: string) {
   const d = new Date(iso)
@@ -53,7 +87,7 @@ function when(iso: string) {
 function DraftsView({ win, desk, api }: ViewProps) {
   const id = typeof win.args.id === "string" ? win.args.id : ""
   return (
-    <div className="dr">
+    <div className="@container flex h-full min-h-0 flex-col">
       {id ? (
         <DraftEditor key={id} id={id} win={win} desk={desk} api={api} />
       ) : (
@@ -80,30 +114,55 @@ function DraftList({ win, desk, api }: ViewProps) {
   const create = async () => show(await api.post<Draft>("drafts", { title: "Untitled" }))
   return (
     <>
-      <div className="dr-find">
-        <input
-          className="sf-input sf-grow"
+      <div className="flex gap-1.5 border-b border-border p-2">
+        <Input
+          className="min-w-0 flex-1"
           placeholder="Find a draft"
+          aria-label="Find a draft"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" className="sf-btn" onClick={() => void create()}>
-          <Icon name="file-plus-2" size={14} /> New
-        </button>
+        <Button onClick={() => void create()}>
+          <FilePlus2 /> New
+        </Button>
       </div>
-      <ul className="dr-list">
-        {drafts.map((d) => (
-          <li key={d.id}>
-            <button type="button" className="dr-row" onClick={() => show(d)}>
-              <span className="dr-row-title">{d.title}</span>
-              <span className="dr-row-meta">
-                {d.lang} · r{d.rev} · {d.lines ?? 0} lines · {when(d.updated)}
-              </span>
-            </button>
-          </li>
-        ))}
-        {drafts.length === 0 && <li className="dr-hint">No drafts yet.</li>}
-      </ul>
+      {drafts.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <FileText />
+            </EmptyMedia>
+            <EmptyTitle>{q ? "No draft matches" : "No drafts yet"}</EmptyTitle>
+            <EmptyDescription>Start one with New, or ask the agent to write one.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto p-1">
+          {drafts.map((d) => (
+            <li key={d.id}>
+              <Item
+                size="xs"
+                render={
+                  <a
+                    href={`#draft-${d.id}`}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      show(d)
+                    }}
+                  />
+                }
+              >
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="w-full truncate">{d.title}</ItemTitle>
+                  <ItemDescription>
+                    {d.lang} · r{d.rev} · {d.lines ?? 0} lines · {when(d.updated)}
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   )
 }
@@ -245,23 +304,29 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
     report(mode)
   }
 
-  if (!draft) return <p className="dr-hint">{notice || "Loading…"}</p>
+  if (!draft) return <p className={`${hint} py-2`}>{notice || "Loading…"}</p>
   const lines = (draft.body ?? "").replace(/\n$/, "").split("\n")
   const marked = new Set<number>()
   for (const m of marks) {
     const l = (m.anchor as { lines?: { start: number; end?: number } } | undefined)?.lines
     if (m.status === "open" && l) for (let i = l.start; i <= (l.end ?? l.start); i++) marked.add(i)
   }
+  const fromRev = from || Math.max(1, draft.rev - 1)
+  const older = revs
+    .filter((r) => r.rev < draft.rev)
+    .map((r) => ({ value: String(r.rev), label: `r${r.rev} · ${r.author} · ${r.summary || when(r.created)}` }))
 
   return (
     <>
-      <div className="dr-bar">
-        <button type="button" className="dr-tool" title="All drafts" onClick={() => void desk.setArgs(win.id, {})}>
-          <Icon name="list" size={14} />
-        </button>
+      <div className="flex min-h-10 items-center gap-1 border-b border-border px-2 py-1">
+        <Tip label="All drafts">
+          <Button variant="ghost" size="icon-sm" aria-label="All drafts" onClick={() => void desk.setArgs(win.id, {})}>
+            <List />
+          </Button>
+        </Tip>
         {mode === "edit" ? (
-          <input
-            className="sf-input dr-title-input"
+          <Input
+            className="min-w-0 flex-1"
             value={title}
             aria-label="Title"
             onChange={(e) => {
@@ -270,55 +335,70 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
             }}
           />
         ) : (
-          <span className="dr-title">{draft.title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{draft.title}</span>
         )}
-        <span className="dr-meta">
+        <span className="text-xs whitespace-nowrap text-muted-foreground @max-md:hidden">
           {draft.lang} · r{draft.rev}
         </span>
-        {MODES.map(({ mode: m, icon }) => (
-          <button
-            key={m}
-            type="button"
-            className="dr-tool"
-            data-on={mode === m}
-            title={m}
-            onClick={() => switchMode(m)}
-          >
-            <Icon name={icon} size={14} />
-            <span className="dr-tool-label">{m}</span>
-          </button>
-        ))}
+        <ToggleGroup
+          size="sm"
+          spacing={0}
+          value={[mode]}
+          onValueChange={(v: string[]) => v[0] && switchMode(v[0] as Mode)}
+        >
+          {MODES.map(({ mode: m, label, icon: ModeIcon }) => (
+            <Tip key={m} label={label}>
+              <ToggleGroupItem value={m} aria-label={label}>
+                <ModeIcon />
+                <span className="@max-md:hidden">{label}</span>
+              </ToggleGroupItem>
+            </Tip>
+          ))}
+        </ToggleGroup>
         {mode === "edit" && (
-          <button type="button" className="dr-tool" disabled={!dirty} title="Save (⌘S)" onClick={() => void save()}>
-            <Icon name="save" size={14} />
-            <span className="dr-tool-label">Save</span>
-          </button>
+          <Tip
+            label={
+              <>
+                Save <Kbd>⌘S</Kbd>
+              </>
+            }
+          >
+            <Button size="sm" aria-label="Save" disabled={!dirty} onClick={() => void save()}>
+              <Save />
+              <span className="@max-md:hidden">Save</span>
+            </Button>
+          </Tip>
         )}
       </div>
       {notice && (
-        <div className="dr-notice">
-          <span className="sf-grow">{notice}</span>
-          <button type="button" className="sf-btn" onClick={() => void load()}>
+        <div className="flex items-center gap-2 bg-warning/10 px-3 py-1.5 text-xs">
+          <span className="flex-1">{notice}</span>
+          <Button variant="outline" size="xs" onClick={() => void load()}>
             Reload
-          </button>
+          </Button>
         </div>
       )}
-      <div className="dr-main">
-        <div className="dr-body">
+      <div className="flex min-h-0 flex-1 @max-2xl:flex-col">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           {mode === "review" && (
-            <div ref={body} className="dr-lines" onMouseUp={onSelect} onKeyUp={onSelect}>
+            <div ref={body} className="py-2 font-mono text-xs leading-5" onMouseUp={onSelect} onKeyUp={onSelect}>
               {lines.map((l, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: a line is its position
-                <div key={i} data-line={i + 1} className="dr-line" data-marked={marked.has(i + 1)}>
-                  <span className="dr-num">{i + 1}</span>
-                  <span className="dr-text">{l || " "}</span>
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a line is its position
+                  key={i}
+                  data-line={i + 1}
+                  className={marked.has(i + 1) ? "flex bg-warning/15" : "flex"}
+                >
+                  <span className="w-11 shrink-0 pr-3 text-right text-muted-foreground/60 select-none @max-md:w-8 @max-md:pr-2">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 pr-3 break-words whitespace-pre-wrap">{l || " "}</span>
                 </div>
               ))}
             </div>
           )}
           {mode === "edit" && (
-            <textarea
-              className="dr-edit"
+            <TextEditor
               value={text}
               aria-label="Text"
               spellCheck={draft.lang === "markdown" || draft.lang === "text"}
@@ -336,33 +416,31 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
           )}
           {mode === "compare" && (
             <>
-              <div className="dr-compare-head">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                 <span>Revision</span>
-                <select
-                  className="sf-input"
-                  value={from || Math.max(1, draft.rev - 1)}
-                  onChange={(e) => setFrom(Number(e.target.value))}
-                >
-                  {revs
-                    .filter((r) => r.rev < draft.rev)
-                    .map((r) => (
-                      <option key={r.rev} value={r.rev}>
-                        r{r.rev} · {r.author} · {r.summary || when(r.created)}
-                      </option>
+                <Select value={String(fromRev)} onValueChange={(v) => setFrom(Number(v))} items={older}>
+                  <SelectTrigger size="sm" aria-label="Revision to compare">
+                    <SelectValue placeholder={`r${fromRev}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {older.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
                     ))}
-                </select>
+                  </SelectContent>
+                </Select>
                 <span>against the latest (r{draft.rev})</span>
               </div>
-              <div className="dr-diff">
-                {draft.rev === 1 && <p className="dr-hint">There is only one revision.</p>}
+              <div className="font-mono text-xs leading-5">
+                {draft.rev === 1 && <p className={hint}>There is only one revision.</p>}
                 {diff.map((d, i) => (
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: a diff line is its position
                     key={i}
-                    className="dr-diff-line"
-                    data-op={d.op}
+                    className={`px-3 break-words whitespace-pre-wrap ${d.op === "+" ? "bg-success/15" : d.op === "-" ? "bg-destructive/10 line-through decoration-destructive/50" : ""}`}
                   >
-                    <span className="dr-diff-op">{d.op} </span>
+                    <span className="text-muted-foreground/60 select-none">{d.op} </span>
                     {d.text || " "}
                   </div>
                 ))}
@@ -396,42 +474,51 @@ function MarksPanel({
   onMark: () => void
 }) {
   const [showDone, setShowDone] = useState(false)
+  const id = useId()
   const list = marks.filter((m) => showDone || m.status === "open")
   const open = marks.filter((m) => m.status === "open").length
   return (
-    <aside className="dr-marks">
-      <div className="dr-marks-head">
-        <span>Marks ({open} open)</span>
-        <label>
-          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> resolved
-        </label>
+    <aside className="flex min-h-0 w-66 shrink-0 flex-col border-l border-border bg-card @max-2xl:max-h-[42%] @max-2xl:w-full @max-2xl:border-t @max-2xl:border-l-0">
+      <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+        <span className="text-xs font-semibold">Marks ({open} open)</span>
+        <Field orientation="horizontal" className="w-auto">
+          <Checkbox id={`${id}-done`} checked={showDone} onCheckedChange={(on) => setShowDone(on === true)} />
+          <FieldLabel htmlFor={`${id}-done`}>resolved</FieldLabel>
+        </Field>
       </div>
       {picked && (
-        <div className="dr-compose">
-          <div className="dr-quote">
+        <div className="mx-2 mb-2 flex flex-col gap-1.5 rounded-md border border-border bg-background p-2 text-xs">
+          <div className="line-clamp-2 text-muted-foreground italic">
             Lines {picked.start}
             {picked.end !== picked.start ? `–${picked.end}` : ""}: “{picked.quote}”
           </div>
-          <textarea
+          <Textarea
             placeholder="A comment, a question, a change to make"
             aria-label="Mark"
+            rows={3}
             value={composing}
             onChange={(e) => setComposing(e.target.value)}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onMark()
             }}
           />
-          <div>
-            <button type="button" className="sf-btn" data-kind="primary" disabled={!composing.trim()} onClick={onMark}>
-              <Icon name="message-square-plus" size={14} /> Mark
-            </button>
-          </div>
+          <Tip
+            label={
+              <>
+                Mark <Kbd>⌘↵</Kbd>
+              </>
+            }
+          >
+            <Button size="sm" className="self-start" disabled={!composing.trim()} onClick={onMark}>
+              <MessageSquarePlus /> Mark
+            </Button>
+          </Tip>
         </div>
       )}
       {!picked && list.length === 0 && (
-        <p className="dr-hint">Select a passage in Review to mark it. The agent sees your marks and answers them.</p>
+        <p className={hint}>Select a passage in Review to mark it. The agent sees your marks and answers them.</p>
       )}
-      <ul className="dr-marks-list">
+      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-2 pb-2">
         {list.map((m) => (
           <MarkCard key={m.id} mark={m} />
         ))}
@@ -448,19 +535,22 @@ function MarkCard({ mark }: { mark: Mark }) {
     setReply("")
   }
   return (
-    <li className="dr-mark" data-status={mark.status}>
-      {mark.quote && <div className="dr-quote">“{mark.quote}”</div>}
+    <li
+      className={`rounded-md border border-border bg-background p-2 text-xs ${mark.status === "resolved" ? "opacity-60" : ""}`}
+    >
+      {mark.quote && <div className="mb-1 line-clamp-2 text-muted-foreground italic">“{mark.quote}”</div>}
       <div>
-        <span className="dr-who">{mark.author}</span>: {mark.body}
+        <span className="font-semibold">{mark.author}</span>: {mark.body}
       </div>
       {mark.replies?.map((r) => (
-        <div key={`${r.created}-${r.author}-${r.body.slice(0, 16)}`} className="dr-reply">
-          <span className="dr-who">{r.author}</span>: {r.body}
+        <div key={`${r.created}-${r.author}-${r.body.slice(0, 16)}`} className="mt-1 border-l-2 border-border pl-2">
+          <span className="font-semibold">{r.author}</span>: {r.body}
         </div>
       ))}
       {mark.status === "open" && (
-        <div className="dr-mark-act">
-          <input
+        <div className="mt-1.5 flex gap-1">
+          <Input
+            className="min-w-0 flex-1"
             placeholder="Reply"
             aria-label="Reply"
             value={reply}
@@ -469,9 +559,11 @@ function MarkCard({ mark }: { mark: Mark }) {
               if (e.key === "Enter") void send()
             }}
           />
-          <button type="button" className="dr-tool" title="Resolve" onClick={() => void resolveMark(mark.id)}>
-            <Icon name="check" size={14} />
-          </button>
+          <Tip label="Resolve">
+            <Button variant="ghost" size="icon" aria-label="Resolve" onClick={() => void resolveMark(mark.id)}>
+              <Check />
+            </Button>
+          </Tip>
         </div>
       )}
     </li>

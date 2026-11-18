@@ -10,7 +10,13 @@
 import { type AgentSession, createAgentSession } from "@hollis-labs/ade-agent"
 import { AgentPanel as Chat } from "@hollis-labs/ade-react"
 import "@hollis-labs/ade-react/styles.css"
+import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
 import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
 import "./agent.css"
@@ -63,38 +69,44 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
   const pin = (name: string) => agentApi.pin(name).then(setAsm, (e: Error) => setErr(e.message))
   const top = asm?.top_of_mind ?? []
 
+  const why = asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""
   return (
-    <div className="sf-agent">
-      <section className="sf-agent-context" aria-label="What the agent has in mind">
-        <div className="sf-agent-row">
-          <label className="sf-agent-slot">
-            <span className="sf-agent-label">Slot</span>
-            <select
-              value={asm?.slot ?? ""}
-              onChange={(e) => void pin(e.target.value)}
-              title={asm ? `${asm.slots[0]?.about ?? ""} (${asm.why})` : ""}
-            >
+    <div className="agent-panel flex h-full min-h-0 flex-col bg-background text-foreground">
+      <section
+        className="flex flex-col gap-1.5 border-b border-border px-2.5 py-2 text-xs"
+        aria-label="What the agent has in mind"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="agent-slot">Slot</Label>
+          <Select
+            value={asm?.slot ?? null}
+            onValueChange={(v) => void pin(String(v ?? ""))}
+            items={slots.map((s) => ({ value: s.name, label: s.name }))}
+          >
+            <SelectTrigger id="agent-slot" size="sm" title={asm ? `${asm.slots[0]?.about ?? ""} (${asm.why})` : ""}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
               {slots.map((s) => (
-                <option key={s.name} value={s.name}>
+                <SelectItem key={s.name} value={s.name}>
                   {s.name}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </label>
-          <span className="sf-agent-why">
-            {asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""}
-          </span>
+            </SelectContent>
+          </Select>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{why}</span>
           {asm?.why === "pinned" && (
-            <button type="button" className="sf-agent-link" onClick={() => void pin("")}>
+            <Button variant="link" size="xs" onClick={() => void pin("")}>
               unpin
-            </button>
+            </Button>
           )}
-          <button type="button" className="sf-agent-link" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? "hide context" : "context"}
-          </button>
+          <Button variant="ghost" size="xs" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? <ChevronUp /> : <ChevronDown />}
+            context
+          </Button>
         </div>
         {asm && asm.slots.length > 1 && (
-          <div className="sf-agent-row sf-agent-also">
+          <div className="text-muted-foreground">
             also:{" "}
             {asm.slots
               .slice(1)
@@ -103,15 +115,21 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
           </div>
         )}
         {top.length > 0 && (
-          <div className="sf-agent-tools" title="Top of mind">
+          <div className="flex flex-wrap gap-1" title="Top of mind">
             {top.map((t) => (
-              <code key={t}>{t}</code>
+              <Badge key={t} variant="secondary" className="font-mono">
+                {t}
+              </Badge>
             ))}
           </div>
         )}
-        {open && asm && <pre className="sf-agent-block">{asm.block}</pre>}
+        {open && asm && (
+          <pre className="m-0 max-h-[40vh] overflow-auto rounded-md bg-muted p-2 font-mono break-words whitespace-pre-wrap">
+            {asm.block}
+          </pre>
+        )}
         {setup && !setup.ready && <SetupCard path={setup.config_path} />}
-        {err && <div className="sf-agent-off">{err}</div>}
+        {err && <div className="text-destructive">{err}</div>}
       </section>
       <Chat session={session} title={title} placeholder="Ask, or /open, /layout, /run" />
     </div>
@@ -136,18 +154,26 @@ function SetupCard({ path }: { path: string }) {
     })
   }
   return (
-    <div className="sf-agent-setup">
-      <strong>The agent is not set up yet.</strong>
-      <span>
-        Everything else works by hand. To talk to the agent, write <code>{path}</code>:
-      </span>
-      <pre>{text}</pre>
-      <span>
-        The gateway is any Anthropic-compatible endpoint; the key file holds its key. Restart the app after writing it.{" "}
-        <button type="button" className="sf-agent-link" onClick={copy}>
-          {copied ? "copied" : "copy the example"}
-        </button>
-      </span>
-    </div>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>The agent is not set up yet</CardTitle>
+        <CardDescription>
+          Everything else works by hand. To talk to the agent, write <code className="break-all">{path}</code>:
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 text-muted-foreground">
+        <pre className="m-0 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs text-foreground">{text}</pre>
+        <p>
+          The gateway is any Anthropic-compatible endpoint; the key file holds its key. Restart the app after writing
+          it.
+        </p>
+      </CardContent>
+      <CardFooter>
+        <Button variant="outline" size="xs" onClick={copy}>
+          {copied ? <Check /> : <Copy />}
+          {copied ? "Copied" : "Copy the example"}
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }

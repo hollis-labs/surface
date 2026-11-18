@@ -3,8 +3,17 @@
  * reader mode (the page's words and links as the server read them). History lives in the
  * window's args, so back and forward survive a reload and a saved layout.
  */
-import { Icon, type ModuleWeb, useSetting, type ViewProps } from "@surface/sdk"
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
+
+import { type ModuleWeb, useSetting, type ViewProps } from "@surface/sdk"
+import { ArrowLeft, ArrowRight, BookOpenText, ExternalLink, Globe, House, RotateCw } from "lucide-react"
+import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
+import { Toggle } from "@/components/ui/toggle"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "./browser.css"
 
 interface Page {
@@ -22,6 +31,16 @@ function hostOf(u: string) {
   } catch {
     return u
   }
+}
+
+/** An icon control with its name in a tooltip. */
+function Tip({ label, children }: { label: string; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function BrowserView({ win, desk, api }: ViewProps) {
@@ -98,66 +117,95 @@ function BrowserView({ win, desk, api }: ViewProps) {
     const s = window.getSelection()?.toString().trim() ?? ""
     desk.report(win.id, { title: page?.title, reader: true, selection: s.slice(0, 2000) })
   }
+  const unframable = page !== null && !page.framable
 
   return (
-    <div className="br">
-      <form className="br-bar" onSubmit={submit}>
-        <button type="button" className="br-ibtn" disabled={at <= 0} title="Back" onClick={() => step(-1)}>
-          <Icon name="arrow-left" size={15} />
-        </button>
-        <button
-          type="button"
-          className="br-ibtn br-wide"
-          disabled={at >= history.length - 1}
-          title="Forward"
-          onClick={() => step(1)}
-        >
-          <Icon name="arrow-right" size={15} />
-        </button>
-        <button type="button" className="br-ibtn" title="Reload" onClick={() => setTick((t) => t + 1)}>
-          <Icon name={loading ? "loader" : "rotate-cw"} size={15} className={loading ? "br-spin" : undefined} />
-        </button>
-        <button type="button" className="br-ibtn br-wide" title="Home" onClick={() => void go(home)}>
-          <Icon name="house" size={15} />
-        </button>
-        <input
+    <div className="@container flex h-full min-h-0 flex-col">
+      <form className="flex items-center gap-0.5 border-b border-border px-1.5 py-1" onSubmit={submit}>
+        <Tip label="Back">
+          <Button variant="ghost" size="icon-sm" aria-label="Back" disabled={at <= 0} onClick={() => step(-1)}>
+            <ArrowLeft />
+          </Button>
+        </Tip>
+        <Tip label="Forward">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="hidden @lg:inline-flex"
+            aria-label="Forward"
+            disabled={at >= history.length - 1}
+            onClick={() => step(1)}
+          >
+            <ArrowRight />
+          </Button>
+        </Tip>
+        <Tip label="Reload">
+          <Button variant="ghost" size="icon-sm" aria-label="Reload" onClick={() => setTick((t) => t + 1)}>
+            {loading ? <Spinner /> : <RotateCw />}
+          </Button>
+        </Tip>
+        <Tip label="Home">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="hidden @lg:inline-flex"
+            aria-label="Home"
+            onClick={() => void go(home)}
+          >
+            <House />
+          </Button>
+        </Tip>
+        <Input
           ref={input}
-          className="sf-input br-addr"
+          className="mx-1 min-w-0 flex-1"
           value={address}
           aria-label="Address"
           placeholder="Search or enter an address"
           onChange={(e) => setAddress(e.target.value)}
           onFocus={(e) => e.target.select()}
         />
-        <button
-          type="button"
-          className="br-ibtn"
-          data-on={showReader}
-          disabled={page !== null && !page.framable}
-          title={page && !page.framable ? "This site cannot be shown in a frame: reader mode" : "Reader mode"}
-          onClick={() => setReader(!reader)}
-        >
-          <Icon name="book-open-text" size={15} />
-        </button>
-        {url && (
-          <a
-            className="br-ibtn br-wide"
-            href={url}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="Open in the system browser"
+        <Tip label={unframable ? "This site cannot be shown in a frame: reader mode" : "Reader mode"}>
+          <Toggle
+            size="sm"
+            aria-label="Reader mode"
+            pressed={showReader}
+            disabled={unframable}
+            onPressedChange={setReader}
           >
-            <Icon name="external-link" size={15} />
-          </a>
+            <BookOpenText />
+          </Toggle>
+        </Tip>
+        {url && (
+          <Tip label="Open in the system browser">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="hidden @lg:inline-flex"
+              aria-label="Open in the system browser"
+              nativeButton={false}
+              render={<a href={url} target="_blank" rel="noreferrer noopener" />}
+            >
+              <ExternalLink />
+            </Button>
+          </Tip>
         )}
       </form>
-      {err && <div className="br-error">{err}</div>}
-      <div className="br-content">
-        {!url && <p className="br-empty">Type an address or words to search.</p>}
+      {err && <div className="bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{err}</div>}
+      <div className="min-h-0 flex-1">
+        {!url && (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Globe />
+              </EmptyMedia>
+              <EmptyDescription>Type an address or words to search.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
         {url && !showReader && (
           <iframe
             key={`${url}#${tick}`}
-            className="br-frame"
+            className="browser-frame block size-full border-0"
             src={url}
             title={page?.title ?? url}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
@@ -165,9 +213,12 @@ function BrowserView({ win, desk, api }: ViewProps) {
           />
         )}
         {url && showReader && page && (
-          <article className="br-reader" onMouseUp={onReaderSelect}>
+          <article
+            className="browser-reader h-full overflow-auto bg-background px-7 pt-4 pb-10 text-foreground @max-lg:px-3.5"
+            onMouseUp={onReaderSelect}
+          >
             <h1>{page.title}</h1>
-            <div className="br-source">{page.final_url}</div>
+            <div className="truncate text-xs text-muted-foreground">{page.final_url}</div>
             {page.text.split("\n").map((l, i) => {
               // Paragraphs of a fixed text, keyed by position.
               const key = `p${i}`
@@ -177,19 +228,29 @@ function BrowserView({ win, desk, api }: ViewProps) {
               return <p key={key}>{l}</p>
             })}
             {page.links && page.links.length > 0 && (
-              <details className="br-links">
-                <summary>Links ({page.links.length})</summary>
-                <ul>
-                  {page.links.map((l) => (
-                    <li key={l.url}>
-                      <button type="button" className="br-link" onClick={() => void go(l.url)}>
-                        {l.text}
-                      </button>
-                      <span className="br-host">{hostOf(l.url)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <Collapsible className="mt-6 text-xs">
+                <CollapsibleTrigger render={<Button variant="link" size="xs" />}>
+                  Links ({page.links.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {page.links.map((l) => (
+                      <li key={l.url}>
+                        <a
+                          href={l.url}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            void go(l.url)
+                          }}
+                        >
+                          {l.text}
+                        </a>
+                        <span className="ml-1.5 text-muted-foreground">{hostOf(l.url)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CollapsibleContent>
+              </Collapsible>
             )}
           </article>
         )}

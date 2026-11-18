@@ -44,7 +44,7 @@
   },
   "overrides": [
     {
-      "includes": ["web/src/desk/coreViews.tsx", "web/src/desk/Confirm.tsx"],
+      "includes": ["web/src/**", "modules/*/web/**", "!web/src/components/ui"],
       "linter": {
         "rules": {
           "correctness": {

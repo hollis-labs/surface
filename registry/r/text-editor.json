@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "text-editor",
+  "title": "Text Editor",
+  "dependencies": [
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/text-editor.tsx",
+      "content": "import type * as React from \"react\"\n\nimport { cn } from \"cn\"\n\n/**\n * A plain writing surface: a textarea with no frame, in the monospace face, that fills\n * the room it is given. For editing a document's source (a note, a draft), where the\n * bordered Textarea of a form would be wrong. Surface's own; not from shadcn.\n */\nfunction TextEditor({ className, ...props }: React.ComponentProps<\"textarea\">) {\n  return (\n    <textarea\n      data-slot=\"text-editor\"\n      className={cn(\n        \"block size-full min-h-0 resize-none border-0 bg-transparent px-4 py-3 font-mono text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50\",\n        className\n      )}\n      {...props}\n    />\n  )\n}\n\nexport { TextEditor }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

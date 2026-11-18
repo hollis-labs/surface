@@ -21,6 +21,35 @@ registry/
    registry. To change a component, or add a variant, change it here and sync.
 3. **An app's look is its theme.** Override the theme's variables in the app's stylesheet; never a component.
 
+## Building a view
+
+A view is components from `@/components/ui/*` arranged with Tailwind utilities. That is all of it.
+
+| For | Use |
+|---|---|
+| Any action | `Button`: `variant` default (the one primary action), `outline`, `secondary`, `ghost` (toolbars, icon buttons), `destructive`, `link`; `size` `xs`, `sm`, default, `lg`, and `icon`, `icon-sm`, `icon-xs` for a lone icon |
+| Text entry | `Input`, `Textarea`; `InputGroup` for an input with an icon or button inside; `TextEditor` for a document's source |
+| A choice | `Select`, `Checkbox`, `Switch`, `ToggleGroup`, `Tabs` |
+| A label and its control | `Field` (with `FieldLabel`, `FieldDescription`, `FieldError`) or `Label` |
+| Asking or showing over the page | `AlertDialog` (confirm), `Dialog`, `Sheet`, `Popover`, `Tooltip`, `DropdownMenu`, `ContextMenu`, `Command` (a searchable list) |
+| A row in a list | `Item` (with `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`); `Table` for columns |
+| Status and small things | `Badge`, `Kbd`, `Spinner`, `Skeleton`, `Progress`, `Separator`, `Empty` (nothing here yet) |
+| Regions | `Card`, `ScrollArea`, `ResizablePanelGroup`, `Collapsible`, `Breadcrumb` |
+
+Layout and surfaces are Tailwind utilities on plain elements, in the theme's names:
+
+- Colours only as tokens: `bg-background`, `bg-card`, `bg-muted`, `bg-accent`, `text-foreground`,
+  `text-muted-foreground`, `text-destructive`, `text-success`, `text-warning`, `border-border`, `ring-ring`.
+  No hex, no `rgb()`, no `oklch()`, no `text-[#…]`, no `dark:` pairs of literal colours.
+- Sizes from the scale: `text-xs`/`text-sm`/`text-base`, `gap-2`, `p-3`, `rounded-md`. An arbitrary value
+  (`w-[230px]`) only for a real layout dimension that the scale lacks.
+- `className` on a component is for where it sits (`w-64`, `flex-1`, `ml-auto`, `shrink-0`), never for how it
+  looks. If a component needs to look different, that is a variant: add it in `registry/ui` and sync.
+- Icons are `lucide-react`.
+
+A stylesheet of a view's own is for what utilities cannot say (rendered Markdown, a diff, a canvas), written
+with the theme's variables (`var(--foreground)`, `var(--border)`). It never styles a control.
+
 ## Using it in an app
 
 `ui.lock.json` at the app's root names the registry and where components go:

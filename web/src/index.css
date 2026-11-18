@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "../../registry/theme/surface.css";
+/* The modules' views live outside the page's root; point Tailwind at them. */
+@source "../../modules";
 @import "./desk/desk.css";
 
 /* Native controls (checkboxes, selects, scrollbars) follow the app's theme, not the OS's. */

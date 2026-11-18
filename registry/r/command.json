@@ -3,9 +3,9 @@
   "name": "command",
   "title": "Command",
   "dependencies": [
-    "cmdk",
-    "cn",
-    "lucide-react"
+    "cmdk@1.1.1",
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/dialog",

@@ -3,8 +3,8 @@
   "name": "card-choice",
   "title": "Card Choice",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/button",

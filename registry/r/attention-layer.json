@@ -4,8 +4,8 @@
   "title": "Attention Layer",
   "description": "Rings, a spotlight, arrows and a note over the whole window, at rectangles the caller resolves. Takes no input.",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/button"

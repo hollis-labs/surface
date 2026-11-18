@@ -4,9 +4,9 @@
   "title": "Window Manager",
   "description": "A desk of windows that tile, tab together and float, arranged by a plain tree the caller owns.",
   "dependencies": [
-    "cn",
+    "cn@0.5.2",
     "flexlayout-react@0.11.2",
-    "lucide-react"
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/button"

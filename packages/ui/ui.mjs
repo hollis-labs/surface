@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process"
 //                                           write ui.lock.json naming the registry on GitHub at a tag
 //   node scripts/ui.mjs build              registry maintainers: regenerate registry.json and registry/r
 //   node scripts/ui.mjs add <item...>      install items (and what they depend on) into the app
+//   node scripts/ui.mjs add --all          install every item the registry has
 //   node scripts/ui.mjs add --for <package>
 //                                           install the items an installed package draws with
 //                                           (@hollis-labs/surface-page lists its own)
@@ -56,6 +57,14 @@ const fail = (msg) => {
   process.exit(1)
 }
 const bare = (name) => name.replace(/^@surface\//, "")
+// How this tool was started, for the commands its messages suggest.
+const SELF = /scripts[\\/]ui\.mjs$/.test(process.argv[1] ?? "") ? "node scripts/ui.mjs" : "npx surface-ui"
+const wantAll = (() => {
+  const i = args.indexOf("--all")
+  if (i < 0) return false
+  args.splice(i, 1)
+  return true
+})()
 
 function readLock() {
   if (!existsSync(lockPath)) {
@@ -137,7 +146,9 @@ async function install(lock, names) {
     const have = { ...pkg.dependencies, ...pkg.devDependencies }
     const missing = [...npm].filter((d) => !have[d.replace(/(?<=.)@[^/]+$/, "")])
     if (missing.length)
-      console.log(`these packages are needed and not in package.json:\n  npm install ${missing.join(" ")}`)
+      console.log(
+        `these packages are needed and not in package.json (at the versions this registry was built with):\n  npm install --save-exact ${missing.join(" ")}`,
+      )
   }
 }
 
@@ -152,11 +163,12 @@ async function verify(lock) {
       const abs = join(appDir, rel)
       if (!existsSync(abs)) problems.push(`${rel}: missing (item ${name})`)
       else if (sha(readFileSync(abs, "utf8")) !== hash)
-        problems.push(`${rel}: edited in place. Change it in the registry, then run "ui sync"`)
-      else if (want.get(rel) !== hash) problems.push(`${rel}: behind the registry (item ${name}). Run "ui sync"`)
+        problems.push(`${rel}: edited in place. Change it in the registry, then run "${SELF} sync"`)
+      else if (want.get(rel) !== hash) problems.push(`${rel}: behind the registry (item ${name}). Run "${SELF} sync"`)
     }
     for (const rel of want.keys())
-      if (!entry.files[rel]) problems.push(`${rel}: the registry's ${name} has a file the app lacks. Run "ui sync"`)
+      if (!entry.files[rel])
+        problems.push(`${rel}: the registry's ${name} has a file the app lacks. Run "${SELF} sync"`)
   }
   // Nothing lives beside the copied components that the registry did not put there.
   const dir = join(appDir, lock.uiDir)
@@ -262,6 +274,14 @@ function build() {
   const root = resolve(appDir, "registry")
   const uiDir = join(root, "ui")
   const meta = existsSync(join(root, "items.json")) ? JSON.parse(readFileSync(join(root, "items.json"), "utf8")) : {}
+  // Every package an item imports is named at the version this repository has installed, so
+  // an app outside it installs the same one instead of guessing.
+  const lockFile = join(appDir, "package-lock.json")
+  const locked = existsSync(lockFile) ? (JSON.parse(readFileSync(lockFile, "utf8")).packages ?? {}) : {}
+  const versioned = (pkg, pin) => {
+    const version = pin ?? locked[`node_modules/${pkg}`]?.version
+    return version ? `${pkg}@${version}` : pkg
+  }
   const items = []
   for (const f of readdirSync(uiDir)
     .filter((x) => x.endsWith(".tsx"))
@@ -277,7 +297,7 @@ function build() {
       else if (!spec.startsWith(".") && !spec.startsWith("@/") && spec !== "react" && spec !== "react-dom") {
         const pkg = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]
         // A package the item needs at one exact version says so in items.json ("pins").
-        npm.add(meta[name]?.pins?.[pkg] ? `${pkg}@${meta[name].pins[pkg]}` : pkg)
+        npm.add(versioned(pkg, meta[name]?.pins?.[pkg]))
       }
     }
     // An item is its .tsx and any file beside it of the same name (its stylesheet).
@@ -301,7 +321,7 @@ function build() {
     const npm = new Set()
     for (const m of text.matchAll(/^@import\s+"([^".][^"]*)"/gm)) {
       if (m[1] !== "tailwindcss")
-        npm.add(m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0])
+        npm.add(versioned(m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0]))
     }
     const name = f === "surface.css" ? "theme" : `theme-${f.replace(/\.css$/, "")}`
     items.push({
@@ -360,9 +380,12 @@ switch (cmd) {
     build()
     break
   case "add": {
-    const names = [...args, ...(forPackage ? itemsFor(forPackage) : [])]
-    if (!names.length) fail("add needs at least one item name (or --for <package>)")
-    await install(readLock(), names)
+    const lock = readLock()
+    // --all: every item the registry has, at the lock's ref (its index is the item "registry").
+    const all = wantAll ? ((await fetchItem(lock, "registry")).items ?? []).map((i) => i.name) : []
+    const names = [...args, ...(forPackage ? itemsFor(forPackage) : []), ...all]
+    if (!names.length) fail("add needs at least one item name (or --for <package>, or --all)")
+    await install(lock, names)
     break
   }
   case "sync": {
@@ -395,6 +418,6 @@ switch (cmd) {
   }
   default:
     fail(
-      "usage: ui.mjs init [--ref <tag>] [--dir <dir>] | build | add <item...> [--for <package>] | sync | verify | status | report <app dir...> [--from <file>] [--json]  [--app <dir>] [--registry <dir or URL>]",
+      "usage: ui.mjs init [--ref <tag>] [--dir <dir>] | build | add <item...> [--for <package>] [--all] | sync | verify | status | report <app dir...> [--from <file>] [--json]  [--app <dir>] [--registry <dir or URL>]",
     )
 }

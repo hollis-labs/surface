@@ -4,7 +4,7 @@
   "title": "Message",
   "description": "One chat message: the person's in a bubble, the agent's across the width, and a notice line.",
   "dependencies": [
-    "cn"
+    "cn@0.5.2"
   ],
   "files": [
     {

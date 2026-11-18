@@ -3,7 +3,7 @@
   "name": "card-progress",
   "title": "Card Progress",
   "dependencies": [
-    "lucide-react"
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/card-frame",

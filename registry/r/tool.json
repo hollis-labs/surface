@@ -4,8 +4,8 @@
   "title": "Tool",
   "description": "A plain, folded row for a tool the agent called: its name and status; open, its input and result.",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/collapsible",

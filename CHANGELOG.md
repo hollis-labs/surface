@@ -3,6 +3,17 @@
 One version for the whole of Surface: the registry at the tag, the Go module and the
 `@hollis-labs/surface-*` npm packages (`docs/releasing.md`).
 
+## Unreleased
+
+Found by the first outside user of the tool (the Folio presets).
+
+- **`surface-ui add` names exact versions.** Every package a registry item imports is recorded at the
+  version this repository has installed, and `add` prints one `npm install --save-exact` line with them.
+- **`surface-ui add --all`** installs every item the registry has at the lock's ref.
+- **`verify` suggests the command that exists where it runs:** `npx surface-ui sync` in an app,
+  `node scripts/ui.mjs sync` in this repository.
+- Biome's `"recommended": true` (deprecated) is now `"preset": "recommended"`.
+
 ## [0.1.0] - 2026-11-18
 
 The first release, and the first an app outside this repository can build on.

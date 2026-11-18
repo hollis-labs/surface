@@ -3,8 +3,8 @@
   "name": "genui-surface",
   "title": "Genui Surface",
   "dependencies": [
-    "cn",
-    "lucide-react"
+    "cn@0.5.2",
+    "lucide-react@1.74.0"
   ],
   "registryDependencies": [
     "@surface/badge",

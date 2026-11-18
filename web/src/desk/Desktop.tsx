@@ -1,9 +1,11 @@
 /**
- * The desktop: a bar, the windows, the agent panel beside them, the palette over them.
+ * The desktop: the registry's AppFrame with the bar, the windows in its content, the agent
+ * panel in its side region, and the palette and ADE's overlays over them.
  * Window state comes from the server (./store); this file draws it and turns what the
  * owner does into actions.
  */
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
+import { AppFrame } from "@/components/ui/app-frame"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,9 +18,10 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Kbd } from "@/components/ui/kbd"
 import { type WindowInfo, WindowManager, type WindowTree } from "@/components/ui/window-manager"
+import { AdeAttention, AdeGuide } from "../ade/Overlay"
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
-import { isConnected, onConnection } from "../sdk/runtime"
+import { getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
 import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
 import { matches, parseKeys, showKeys } from "./keys"
@@ -125,99 +128,109 @@ export function Desktop({ modules }: DesktopProps) {
   const arrange = useCallback((tree: WindowTree, focus: string | undefined) => act({ type: "tree", tree, focus }), [])
   const menuViews = manifest.views.filter((v) => v.menu)
 
-  return (
-    <div className="fixed inset-0 flex flex-col bg-background text-sm" data-layout={state.layout}>
-      <header className="flex h-9 shrink-0 select-none items-center justify-between gap-3 border-b bg-background px-2">
-        <div className="flex h-full min-w-0 items-center gap-1">
-          <DropdownMenu open={menu} onOpenChange={setMenu}>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="ghost" size="sm" title="Apps">
-                  <Icon name="layout-grid" />
-                  <span className="font-semibold">{manifest.title}</span>
-                </Button>
-              }
-            />
-            <DropdownMenuContent className="min-w-56">
-              {menuViews.map((v) => (
-                <DropdownMenuItem key={v.id} onClick={() => void desk.open(v.id)}>
-                  <Icon name={v.icon} />
-                  <span>{v.title}</span>
-                  {v.module !== "surface" && <DropdownMenuShortcut>{v.module}</DropdownMenuShortcut>}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="ml-1 flex min-w-0 gap-0.5 overflow-hidden">
-            {state.wins.map((w) => (
-              <Button
-                key={w.id}
-                variant={w.id === state.focus ? "secondary" : "ghost"}
-                size="sm"
-                className="min-w-0 max-w-44 shrink"
-                title={w.title}
-                aria-pressed={w.id === state.focus}
-                onClick={() => void act({ type: "focus", id: w.id })}
-                onAuxClick={(e) => {
-                  if (e.button === 1) void closeWindow(w.id)
-                }}
-              >
-                <Icon name={viewById(w.view)?.icon} />
-                <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
+  const bar = (
+    <>
+      <div className="flex h-full min-w-0 flex-1 items-center gap-1">
+        <DropdownMenu open={menu} onOpenChange={setMenu}>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" size="sm" title="Apps">
+                <Icon name="layout-grid" />
+                <span className="font-semibold">{manifest.title}</span>
               </Button>
+            }
+          />
+          <DropdownMenuContent className="min-w-56">
+            {menuViews.map((v) => (
+              <DropdownMenuItem key={v.id} onClick={() => void desk.open(v.id)}>
+                <Icon name={v.icon} />
+                <span>{v.title}</span>
+                {v.module !== "surface" && <DropdownMenuShortcut>{v.module}</DropdownMenuShortcut>}
+              </DropdownMenuItem>
             ))}
-          </div>
-        </div>
-        <div className="flex h-full shrink-0 items-center gap-1">
-          {state.active && (
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className="ml-1 flex min-w-0 gap-0.5 overflow-hidden">
+          {state.wins.map((w) => (
             <Button
-              variant="ghost"
+              key={w.id}
+              variant={w.id === state.focus ? "secondary" : "ghost"}
               size="sm"
-              title="The saved layout in use"
-              onClick={() => void desk.open("surface.layouts")}
+              className="min-w-0 max-w-44 shrink"
+              title={w.title}
+              aria-pressed={w.id === state.focus}
+              onClick={() => void act({ type: "focus", id: w.id })}
+              onAuxClick={(e) => {
+                if (e.button === 1) void closeWindow(w.id)
+              }}
             >
-              <Icon name="layout-dashboard" />
-              <span>{state.active}</span>
+              <Icon name={viewById(w.view)?.icon} />
+              <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
             </Button>
-          )}
-          {state.mode && (
-            <Badge variant="secondary" title="Your mode">
-              {state.mode}
-            </Badge>
-          )}
+          ))}
+        </div>
+      </div>
+      <div className="flex h-full shrink-0 items-center gap-1">
+        {state.active && (
           <Button
             variant="ghost"
             size="sm"
-            title="Tile every window, or float them all"
-            onClick={() => void runCommand("layout.toggle")}
+            title="The saved layout in use"
+            onClick={() => void desk.open("surface.layouts")}
           >
-            <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
-            <span>{state.layout}</span>
+            <Icon name="layout-dashboard" />
+            <span>{state.active}</span>
           </Button>
-          <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
-            <Icon name="search" />
-            <Kbd>{showKeys("cmd+k")}</Kbd>
-          </Button>
-          <Button
-            variant={agentOpen ? "secondary" : "ghost"}
-            size="icon-sm"
-            title={`Agent ${showKeys("cmd+j")}`}
-            aria-pressed={agentOpen}
-            onClick={() => toggleAgent()}
-          >
-            <Icon name="bot" />
-          </Button>
-          <span
-            className={`mx-1.5 size-2 rounded-full ${up ? "bg-success" : "bg-warning"}`}
-            title={up ? "Connected" : "Reconnecting…"}
-          />
-        </div>
-      </header>
+        )}
+        {state.mode && (
+          <Badge variant="secondary" title="Your mode">
+            {state.mode}
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Tile every window, or float them all"
+          onClick={() => void runCommand("layout.toggle")}
+        >
+          <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
+          <span>{state.layout}</span>
+        </Button>
+        <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
+          <Icon name="search" />
+          <Kbd>{showKeys("cmd+k")}</Kbd>
+        </Button>
+        <Button
+          variant={agentOpen ? "secondary" : "ghost"}
+          size="icon-sm"
+          title={`Agent ${showKeys("cmd+j")}`}
+          aria-pressed={agentOpen}
+          onClick={() => toggleAgent()}
+        >
+          <Icon name="bot" />
+        </Button>
+        <span
+          className={`mx-1.5 size-2 rounded-full ${up ? "bg-success" : "bg-warning"}`}
+          title={up ? "Connected" : "Reconnecting…"}
+        />
+      </div>
+    </>
+  )
 
-      <div className="flex min-h-0 flex-1">
+  return (
+    <>
+      <AppFrame
+        className="fixed inset-0 text-sm"
+        data-layout={state.layout}
+        bar={bar}
+        side={<AgentPanel desk={desk} title="Agent" />}
+        showSide={agentOpen}
+        sideSize={panelWidth}
+        onSideResize={keepPanelWidth}
+      >
         {/* isolate: the windows' stacking order stays inside the canvas, under the bar and the overlays. */}
         <div
-          className="relative isolate min-w-0 flex-1 overflow-hidden bg-muted/40"
+          className="relative isolate size-full overflow-hidden bg-muted/40"
           style={{ "--window-gap": `${gap}px` } as React.CSSProperties}
         >
           <WindowManager
@@ -241,20 +254,23 @@ export function Desktop({ modules }: DesktopProps) {
             {(id) => <WindowBody id={id} modules={modules} />}
           </WindowManager>
         </div>
-        {agentOpen && (
-          <aside
-            className="flex min-h-0 max-w-[60vw] shrink-0 flex-col overflow-hidden border-l bg-background"
-            style={{ width: panelWidth }}
-          >
-            <AgentPanel desk={desk} title="Agent" />
-          </aside>
-        )}
-      </div>
-
+        <AdeGuide />
+      </AppFrame>
+      <AdeAttention />
       <Palette open={palette} onOpenChange={setPalette} commands={commands} />
       <ConfirmHost />
-    </div>
+    </>
   )
+}
+
+/** The agent panel's width is a live setting: a drag is kept once it stops. */
+let widthTimer: ReturnType<typeof setTimeout> | undefined
+function keepPanelWidth(px: number) {
+  clearTimeout(widthTimer)
+  widthTimer = setTimeout(() => {
+    if (px > 0 && px !== getSetting("surface.agent_panel_width"))
+      void setSetting("surface.agent_panel_width", px).catch(() => {})
+  }, 400)
 }
 
 /** One window's body: the view it shows, handed its window, the desk and its module's API. */

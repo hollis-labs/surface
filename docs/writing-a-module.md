@@ -152,6 +152,10 @@ icon by name.
 - `desk.report(win.id, state)` replaces what the window says it is showing; send the whole state each time.
   The keys the desk reads are `kind`, `ref`, `url` and `selection`.
 - `desk.setDirty(win.id, true)` makes closing ask first.
+- `useAnchor(win, name, label)` names a part of the window so the agent can point at it (ring it, spotlight it,
+  draw an arrow to it, or walk the owner to it in a guide). Put the returned ref on the element:
+  `<div ref={useAnchor(win, "marks", "The marks")}>`. The anchor goes when the element does; the agent lists them
+  with `ade_anchors`.
 - `desk.openFile(name, opts)` opens a file in whichever view declares it (`View.Opens`), or resolves to
   `null` when this app has none: a module offers "open" without knowing which other modules are present.
 - Style with the design tokens (`var(--color-…)`), the shared `sf-*` classes in `web/src/desk/desk.css`, or

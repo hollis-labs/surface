@@ -4,7 +4,7 @@
  * window's args, so back and forward survive a reload and a saved layout.
  */
 
-import { type ModuleWeb, useSetting, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useAnchor, useSetting, type ViewProps } from "@surface/sdk"
 import { ArrowLeft, ArrowRight, BookOpenText, ExternalLink, Globe, House, RotateCw } from "lucide-react"
 import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -59,6 +59,8 @@ function BrowserView({ win, desk, api }: ViewProps) {
   const [reader, setReader] = useState<boolean>(readerDefault)
   const [tick, setTick] = useState(0)
   const input = useRef<HTMLInputElement>(null)
+  const addressAnchor = useAnchor(win, "address", "The address bar")
+  const pageAnchor = useAnchor(win, "page", "The page")
 
   useEffect(() => setAddress(url), [url])
   useEffect(() => {
@@ -156,7 +158,10 @@ function BrowserView({ win, desk, api }: ViewProps) {
           </Button>
         </Tip>
         <Input
-          ref={input}
+          ref={(el) => {
+            input.current = el
+            return addressAnchor(el)
+          }}
           className="mx-1 min-w-0 flex-1"
           value={address}
           aria-label="Address"
@@ -191,7 +196,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
         )}
       </form>
       {err && <div className="bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{err}</div>}
-      <div className="min-h-0 flex-1">
+      <div ref={pageAnchor} className="min-h-0 flex-1">
         {!url && (
           <Empty>
             <EmptyHeader>

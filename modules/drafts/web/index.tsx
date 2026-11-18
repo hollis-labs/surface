@@ -11,6 +11,7 @@ import {
   type ModuleWeb,
   replyMark,
   resolveMark,
+  useAnchor,
   useEvent,
   useMarks,
   type ViewProps,
@@ -182,6 +183,9 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   const ref = `drafts:${id}`
   const marks = useMarks(ref)
   const body = useRef<HTMLDivElement>(null)
+  const modesAnchor = useAnchor(win, "modes", "Review, Edit and Compare")
+  const textAnchor = useAnchor(win, "text", "The draft's text")
+  const marksAnchor = useAnchor(win, "marks", "The marks on the draft")
 
   const load = useCallback(async () => {
     try {
@@ -341,6 +345,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
           {draft.lang} · r{draft.rev}
         </span>
         <ToggleGroup
+          ref={modesAnchor}
           size="sm"
           spacing={0}
           value={[mode]}
@@ -379,7 +384,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
         </div>
       )}
       <div className="flex min-h-0 flex-1 @max-2xl:flex-col">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div ref={textAnchor} className="min-h-0 min-w-0 flex-1 overflow-auto">
           {mode === "review" && (
             <div ref={body} className="py-2 font-mono text-xs leading-5" onMouseUp={onSelect} onKeyUp={onSelect}>
               {lines.map((l, i) => (
@@ -449,6 +454,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
           )}
         </div>
         <MarksPanel
+          anchor={marksAnchor}
           marks={marks}
           picked={picked}
           composing={composing}
@@ -461,12 +467,14 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
 }
 
 function MarksPanel({
+  anchor,
   marks,
   picked,
   composing,
   setComposing,
   onMark,
 }: {
+  anchor?: (el: HTMLElement | null) => void
   marks: Mark[]
   picked: { quote: string; start: number; end: number } | null
   composing: string
@@ -478,7 +486,10 @@ function MarksPanel({
   const list = marks.filter((m) => showDone || m.status === "open")
   const open = marks.filter((m) => m.status === "open").length
   return (
-    <aside className="flex min-h-0 w-66 shrink-0 flex-col border-l border-border bg-card @max-2xl:max-h-[42%] @max-2xl:w-full @max-2xl:border-t @max-2xl:border-l-0">
+    <aside
+      ref={anchor}
+      className="flex min-h-0 w-66 shrink-0 flex-col border-l border-border bg-card @max-2xl:max-h-[42%] @max-2xl:w-full @max-2xl:border-t @max-2xl:border-l-0"
+    >
       <div className="flex items-center justify-between gap-2 px-2.5 py-2">
         <span className="text-xs font-semibold">Marks ({open} open)</span>
         <Field orientation="horizontal" className="w-auto">

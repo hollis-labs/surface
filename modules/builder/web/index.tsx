@@ -5,7 +5,7 @@
  * The view composes nothing and takes no description itself: the owner talks to the agent in
  * its panel, whose builder slot knows how, and this window lists the flows the agent saved.
  */
-import { type ModuleWeb, useEvent, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useAnchor, useEvent, type ViewProps } from "@surface/sdk"
 import { Bot, ChevronDown, ChevronUp, Play, Trash2, Workflow } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +40,8 @@ function BuilderView({ win, desk, api }: ViewProps) {
   const [open, setOpen] = useState<string>(typeof win.state?.flow === "string" ? win.state.flow : "")
   const [detail, setDetail] = useState<Flow | null>(null)
   const [err, setErr] = useState("")
+  const agentAnchor = useAnchor(win, "open-agent", "Open the agent")
+  const flowsAnchor = useAnchor(win, "flows", "The saved flows")
 
   const load = useCallback(() => {
     api.get<Flow[]>("flows").then(setFlows, (e: Error) => setErr(e.message))
@@ -94,12 +96,17 @@ function BuilderView({ win, desk, api }: ViewProps) {
           It arranges the windows, sets the mode and its own instructions, adds the reflexes the flow needs, and saves
           it here. To change one, tell the agent what to change; each change is a new version.
         </p>
-        <Button variant="outline" size="sm" onClick={() => void desk.run("agent.toggle", { open: true })}>
+        <Button
+          ref={agentAnchor}
+          variant="outline"
+          size="sm"
+          onClick={() => void desk.run("agent.toggle", { open: true })}
+        >
           <Bot /> Open the agent
         </Button>
         {err && <p className="text-sm text-destructive">{err}</p>}
       </section>
-      <section className="flex-1">
+      <section ref={flowsAnchor} className="flex-1">
         {flows.length === 0 && (
           <Empty>
             <EmptyHeader>

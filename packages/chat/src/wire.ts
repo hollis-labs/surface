@@ -52,6 +52,8 @@ export interface StreamEvent {
   reason?: string
   code?: string
   message?: string
+  message_id?: string
+  role?: string
   part_id?: string
   kind?: string
   meta?: Record<string, unknown>
@@ -67,10 +69,13 @@ export interface StreamEvent {
 export class HostError extends Error {
   readonly status: number
   readonly code: string
-  constructor(status: number, message: string, code = "") {
+  /** The rest of what the host said with the refusal (a new conversation id, a generation). */
+  readonly data: Record<string, unknown>
+  constructor(status: number, message: string, code = "", data: Record<string, unknown> = {}) {
     super(message)
     this.status = status
     this.code = code
+    this.data = data
   }
 }
 

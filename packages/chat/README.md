@@ -42,3 +42,25 @@ row 73 commits, the list 2 (its two new items) and each of the four earlier mess
   goes to that card, every other tool to the plain row.
 
 `npm test` runs the reducer and store tests (`node --test`).
+
+## The conversation wire (in progress)
+
+`conversation.ts`, `conversation-reduce.ts` and `conversation-store.ts` bind the same reducer and
+components to a durable conversation instead of one run at a time: the page attaches as a viewer or a
+controller, reads one event stream from wherever it says, and submits turns when it holds the right to
+type. `createConversationStore` offers what `createChatStore` offers, so a panel draws either.
+
+| What it handles | How |
+|---|---|
+| First paint and reload | Attach, read the stream from 0 (history arrives without deltas), then follow it. No separate history read |
+| The sender's own message | Drawn at once under its request id; the stream's copy takes the same item, so it is never shown twice |
+| A client that takes no deltas | A finished part carries its whole content, so `stream: "committed"` draws the same messages |
+| A dropped connection | Resumes after the last event seen |
+| The agent's side replaced (409 `stale_attachment`) | Attaches again and keeps its cursor |
+| The conversation reset (410 `conversation_closed`) | Moves to the new conversation |
+| Another window typing | A refused send says so; `takeover()` takes the input |
+| A turn the host refuses (422) | The message stays, with the reason under it |
+
+It assumes nothing about which agent runs the turns, only the wire, at any base URL. The tests run it
+against an in-memory host (`test/fake-host.ts`) that follows the wire's rules. Surface's panel still
+uses the run store until the server side is mounted.

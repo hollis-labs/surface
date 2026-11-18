@@ -302,12 +302,21 @@ preview: <URL of the gallery served from %s>
 base: <URL of the same from %s, for comparison>
 pr: <URL of the pull request>
 head: <the full commit SHA the preview shows>
+An approval names one head (approved-head:). Merge that commit only, never a later one: a later commit needs a new round. Nothing can be approved until a reply names the head.
 `, j.ID, j.Branch, or(base, "the base branch"))
 }
 
+// approvedMessage is the go-ahead. Its labeled lines name exactly what was approved, so the
+// team can check the pull request's head against them before merging.
 func approvedMessage(j Job) Message {
-	body := fmt.Sprintf("Design job %s (%s) is approved. Merge the pull request%s and say when it is in.\n", j.ID, j.Title, prSuffix(j))
-	return Message{Kind: "notice", Subject: "Design job " + j.ID + ": approved, merge it", Body: body, Thread: "design-" + j.ID}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Design job %s (%s) is approved at commit %s.\n\n", j.ID, j.Title, j.ApprovedHead)
+	fmt.Fprintf(&b, "job: %s\napproved-head: %s\n", j.ID, j.ApprovedHead)
+	if j.PRURL != "" {
+		fmt.Fprintf(&b, "pr: %s\n", j.PRURL)
+	}
+	fmt.Fprintf(&b, "\nThis approval covers commit %s only. Merge the pull request%s only if its head is exactly that commit; a later commit is not approved and needs a new round. When it is in, reply with a line merged: <the full SHA you merged> (or closed: <why> if it will not be merged).\n", j.ApprovedHead, prSuffix(j))
+	return Message{Kind: "notice", Subject: "Design job " + j.ID + ": approved at " + short(j.ApprovedHead) + ", merge that commit", Body: b.String(), Thread: "design-" + j.ID}
 }
 
 func prSuffix(j Job) string {

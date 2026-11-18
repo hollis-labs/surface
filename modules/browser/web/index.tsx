@@ -5,6 +5,7 @@
  */
 import { Icon, type ModuleWeb, useSetting, type ViewProps } from "@surface/sdk"
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
+import "./browser.css"
 
 interface Page {
   url: string
@@ -14,9 +15,6 @@ interface Page {
   links?: { text: string; url: string }[]
   framable: boolean
 }
-
-const btn =
-  "inline-flex h-7 w-7 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30"
 
 function hostOf(u: string) {
   try {
@@ -48,9 +46,11 @@ function BrowserView({ win, desk, api }: ViewProps) {
     if (win.args.focus_address || !url) input.current?.focus()
   }, [win.args.focus_address, url])
 
+  const showReader = reader || (page !== null && !page.framable)
+
   // Read the page on the server: its title, whether it may be framed, and the reader text.
-  // Only a new address or a reload (tick) reads it again, not a change of reader mode.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick forces a reload; desk and reader are read, not watched
+  // Only a new address or a reload (tick) reads it again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick forces a reload; desk is read, not watched
   useEffect(() => {
     if (!url) return
     let live = true
@@ -62,7 +62,6 @@ function BrowserView({ win, desk, api }: ViewProps) {
         if (!live) return
         setPage(p)
         void desk.setTitle(win.id, p.title || hostOf(url))
-        desk.report(win.id, { title: p.title, reader: reader || !p.framable })
       })
       .catch((e: Error) => live && setErr(e.message))
       .finally(() => live && setLoading(false))
@@ -70,6 +69,11 @@ function BrowserView({ win, desk, api }: ViewProps) {
       live = false
     }
   }, [url, tick, api])
+
+  // desk.report replaces the window's state: report the whole of it.
+  useEffect(() => {
+    if (page) desk.report(win.id, { title: page.title, reader: showReader })
+  }, [page, showReader, desk, win.id])
 
   const go = async (to: string) => {
     if (!to.trim()) return
@@ -90,70 +94,70 @@ function BrowserView({ win, desk, api }: ViewProps) {
     e.preventDefault()
     void go(address)
   }
-
-  const showReader = reader || (page !== null && !page.framable)
   const onReaderSelect = () => {
     const s = window.getSelection()?.toString().trim() ?? ""
     desk.report(win.id, { title: page?.title, reader: true, selection: s.slice(0, 2000) })
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col text-sm">
-      <form
-        className="flex items-center gap-1 border-b border-black/10 px-2 py-1 dark:border-white/10"
-        onSubmit={submit}
-      >
-        <button type="button" className={btn} disabled={at <= 0} title="Back" onClick={() => step(-1)}>
+    <div className="br">
+      <form className="br-bar" onSubmit={submit}>
+        <button type="button" className="br-ibtn" disabled={at <= 0} title="Back" onClick={() => step(-1)}>
           <Icon name="arrow-left" size={15} />
         </button>
         <button
           type="button"
-          className={btn}
+          className="br-ibtn br-wide"
           disabled={at >= history.length - 1}
           title="Forward"
           onClick={() => step(1)}
         >
           <Icon name="arrow-right" size={15} />
         </button>
-        <button type="button" className={btn} title="Reload" onClick={() => setTick((t) => t + 1)}>
-          <Icon name={loading ? "loader" : "rotate-cw"} size={15} className={loading ? "animate-spin" : ""} />
+        <button type="button" className="br-ibtn" title="Reload" onClick={() => setTick((t) => t + 1)}>
+          <Icon name={loading ? "loader" : "rotate-cw"} size={15} className={loading ? "br-spin" : undefined} />
         </button>
-        <button type="button" className={btn} title="Home" onClick={() => void go(home)}>
+        <button type="button" className="br-ibtn br-wide" title="Home" onClick={() => void go(home)}>
           <Icon name="house" size={15} />
         </button>
         <input
           ref={input}
-          className="mx-1 min-w-0 flex-1 rounded border border-black/15 bg-transparent px-2 py-1 dark:border-white/15"
+          className="sf-input br-addr"
           value={address}
+          aria-label="Address"
           placeholder="Search or enter an address"
           onChange={(e) => setAddress(e.target.value)}
           onFocus={(e) => e.target.select()}
         />
         <button
           type="button"
-          className={`${btn} ${showReader ? "bg-black/10 dark:bg-white/15" : ""}`}
+          className="br-ibtn"
+          data-on={showReader}
           disabled={page !== null && !page.framable}
           title={page && !page.framable ? "This site cannot be shown in a frame: reader mode" : "Reader mode"}
-          onClick={() => {
-            setReader(!reader)
-            desk.report(win.id, { title: page?.title, reader: !reader })
-          }}
+          onClick={() => setReader(!reader)}
         >
           <Icon name="book-open-text" size={15} />
         </button>
         {url && (
-          <a className={btn} href={url} target="_blank" rel="noreferrer noopener" title="Open in the system browser">
+          <a
+            className="br-ibtn br-wide"
+            href={url}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Open in the system browser"
+          >
             <Icon name="external-link" size={15} />
           </a>
         )}
       </form>
-      {err && <div className="bg-red-500/10 px-3 py-1 text-xs">{err}</div>}
-      <div className="min-h-0 flex-1">
-        {!url && <div className="p-6 text-sm opacity-60">Type an address or words to search.</div>}
+      {err && <div className="br-error">{err}</div>}
+      <div className="br-content">
+        {!url && <p className="br-empty">Type an address or words to search.</p>}
         {url && !showReader && (
           <iframe
             key={`${url}#${tick}`}
-            className="h-full w-full border-0 bg-white"
+            className="br-frame"
             src={url}
             title={page?.title ?? url}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
@@ -161,39 +165,27 @@ function BrowserView({ win, desk, api }: ViewProps) {
           />
         )}
         {url && showReader && page && (
-          <article
-            className="mx-auto h-full max-w-3xl overflow-auto px-6 py-4 leading-relaxed"
-            onMouseUp={onReaderSelect}
-          >
-            <h1 className="mb-1 text-lg font-semibold">{page.title}</h1>
-            <div className="mb-4 truncate text-xs opacity-60">{page.final_url}</div>
+          <article className="br-reader" onMouseUp={onReaderSelect}>
+            <h1>{page.title}</h1>
+            <div className="br-source">{page.final_url}</div>
             {page.text.split("\n").map((l, i) => {
               // Paragraphs of a fixed text, keyed by position.
               const key = `p${i}`
               const h = /^(#{1,6}) (.*)$/.exec(l)
-              if (h)
-                return (
-                  <h2 key={key} className="mb-1 mt-4 font-semibold">
-                    {h[2]}
-                  </h2>
-                )
+              if (h) return <h2 key={key}>{h[2]}</h2>
               if (!l.trim()) return null
-              return (
-                <p key={key} className="mb-2">
-                  {l}
-                </p>
-              )
+              return <p key={key}>{l}</p>
             })}
             {page.links && page.links.length > 0 && (
-              <details className="mt-6 text-xs">
-                <summary className="cursor-pointer opacity-70">Links ({page.links.length})</summary>
-                <ul className="mt-2 space-y-1">
+              <details className="br-links">
+                <summary>Links ({page.links.length})</summary>
+                <ul>
                   {page.links.map((l) => (
                     <li key={l.url}>
-                      <button type="button" className="text-left underline" onClick={() => void go(l.url)}>
+                      <button type="button" className="br-link" onClick={() => void go(l.url)}>
                         {l.text}
-                      </button>{" "}
-                      <span className="opacity-50">{hostOf(l.url)}</span>
+                      </button>
+                      <span className="br-host">{hostOf(l.url)}</span>
                     </li>
                   ))}
                 </ul>

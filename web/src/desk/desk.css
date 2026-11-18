@@ -615,7 +615,6 @@ textarea.sf-input {
   font-family: var(--sf-mono);
   font-size: 11px;
   color: var(--color-fg-muted);
-  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

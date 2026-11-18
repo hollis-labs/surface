@@ -7,6 +7,7 @@
  */
 import { Icon, type ModuleWeb, useEvent, type ViewProps } from "@surface/sdk"
 import { useCallback, useEffect, useState } from "react"
+import "./builder.css"
 
 interface LayoutWindow {
   view: string
@@ -104,15 +105,15 @@ function BuilderView({ win, desk, api }: ViewProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col text-sm">
-      <section className="border-b border-black/10 p-3 dark:border-white/10">
-        <h2 className="mb-1 font-semibold">Describe a way of working</h2>
-        <p className="mb-2 text-xs opacity-70">
+    <div className="bl">
+      <section className="bl-compose">
+        <h2>Describe a way of working</h2>
+        <p className="sf-dim">
           The agent arranges the windows, sets the mode and its own instructions, adds the reflexes the flow needs, and
           saves it as a flow. Then refine it in plain words.
         </p>
         <textarea
-          className="h-24 w-full resize-none rounded border border-black/15 bg-transparent p-2 dark:border-white/15"
+          aria-label="The flow"
           placeholder="Triage my inbox: mail on the left, a draft reply beside it, and remind me to file what I've answered."
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -120,55 +121,55 @@ function BuilderView({ win, desk, api }: ViewProps) {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") build()
           }}
         />
-        <div className="mt-2 flex flex-wrap items-center gap-1">
+        <div className="bl-actions">
           {EXAMPLES.map((x) => (
-            <button
-              key={x}
-              type="button"
-              className="rounded-full border border-black/15 px-2 py-0.5 text-xs hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
-              onClick={() => setText(x)}
-            >
+            <button key={x} type="button" className="bl-example" onClick={() => setText(x)}>
               {x}
             </button>
           ))}
           <button
             type="button"
-            className="ml-auto inline-flex items-center gap-1 rounded bg-black px-3 py-1 text-xs text-white disabled:opacity-40 dark:bg-white dark:text-black"
+            className="sf-btn bl-build"
+            data-kind="primary"
             disabled={busy || !text.trim()}
+            title="Build (⌘↩)"
             onClick={build}
           >
             <Icon name="wand-sparkles" size={14} /> {busy ? "Asking…" : "Build"}
           </button>
         </div>
-        {err && <div className="mt-2 text-xs text-red-600">{err}</div>}
+        {err && <p className="sf-error">{err}</p>}
       </section>
-      <section className="min-h-0 flex-1 overflow-auto">
-        <h2 className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide opacity-60">Flows</h2>
-        {flows.length === 0 && <p className="px-3 text-xs opacity-60">None yet. Describe one above.</p>}
-        <ul>
+      <section className="bl-flows">
+        <h3 className="bl-head">Flows</h3>
+        {flows.length === 0 && <p className="sf-dim bl-none">None yet. Describe one above.</p>}
+        <ul className="bl-list">
           {flows.map((f) => (
-            <li key={f.name} className="border-b border-black/5 dark:border-white/5">
-              <div className="flex items-center gap-2 px-3 py-2">
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => select(f.name)}>
-                  <div className="truncate font-medium">{f.name}</div>
-                  <div className="truncate text-xs opacity-60">
+            <li key={f.name} className="bl-flow" data-open={open === f.name}>
+              <div className="bl-flow-row">
+                <button type="button" className="bl-flow-name" onClick={() => select(f.name)}>
+                  <strong>{f.name}</strong>
+                  <span>
                     {f.goal} · v{f.version} · {when(f.updated)}
-                  </div>
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                  className="sf-btn"
                   title="Put this flow on the desk"
                   onClick={() => void run(`flows/${encodeURIComponent(f.name)}/open`)}
                 >
-                  <Icon name="play" size={14} /> Open
+                  <Icon name="play" size={14} />
+                  <span className="bl-label">Open</span>
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                  className="sf-btn"
+                  title="Refine it in plain words"
                   onClick={() => setText(`Refine the flow “${f.name}”: `)}
                 >
-                  <Icon name="pencil" size={14} /> Refine
+                  <Icon name="pencil" size={14} />
+                  <span className="bl-label">Refine</span>
                 </button>
               </div>
               {open === f.name && detail && (
@@ -198,52 +199,56 @@ function FlowDetail({
   const setup = flow.layout?.setup ?? {}
   const reflexes = Array.isArray(setup.reflexes) ? (setup.reflexes as string[]) : []
   return (
-    <div className="space-y-2 px-3 pb-3 text-xs">
-      {flow.description && <p className="opacity-80">{flow.description}</p>}
-      <div>
-        <span className="opacity-60">Windows ({flow.layout?.mode ?? "tile"}): </span>
-        {(flow.layout?.windows ?? []).map((w, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a layout's windows have no id; their order is their identity
-          <span key={i} className="mr-1 inline-block rounded bg-black/5 px-1.5 py-0.5 dark:bg-white/10">
-            {w.title || w.view}
-            {w.focus ? " ●" : ""}
-          </span>
-        ))}
-      </div>
+    <div className="bl-detail">
+      {flow.description && <p>{flow.description}</p>}
+      <p>
+        <span className="bl-key">Windows ({flow.layout?.mode ?? "tile"}): </span>
+        <span className="bl-pills">
+          {(flow.layout?.windows ?? []).map((w, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a layout's windows have no id; their order is their identity
+            <span key={i} className="bl-pill">
+              {w.title || w.view}
+              {w.focus ? " ●" : ""}
+            </span>
+          ))}
+        </span>
+      </p>
       {typeof setup.mode === "string" && setup.mode && (
-        <div>
-          <span className="opacity-60">Mode: </span>
+        <p>
+          <span className="bl-key">Mode: </span>
           {setup.mode}
-        </div>
+        </p>
       )}
       {typeof setup.instructions === "string" && setup.instructions && (
-        <div>
-          <span className="opacity-60">Agent instructions: </span>
+        <p>
+          <span className="bl-key">Agent instructions: </span>
           {setup.instructions}
-        </div>
+        </p>
       )}
       {reflexes.length > 0 && (
-        <div>
-          <span className="opacity-60">Reflexes: </span>
-          {reflexes.map((r) => (
-            <code key={r} className="mr-1 rounded bg-black/5 px-1 dark:bg-white/10">
-              {r}
-            </code>
-          ))}
-        </div>
+        <p>
+          <span className="bl-key">Reflexes: </span>
+          <span className="bl-pills">
+            {reflexes.map((r) => (
+              <span key={r} className="bl-pill">
+                <code>{r}</code>
+              </span>
+            ))}
+          </span>
+        </p>
       )}
       {flow.versions && flow.versions.length > 1 && (
-        <details>
-          <summary className="cursor-pointer opacity-70">Versions ({flow.versions.length})</summary>
-          <ul className="mt-1 space-y-1">
+        <details className="bl-versions">
+          <summary>Versions ({flow.versions.length})</summary>
+          <ul>
             {flow.versions.map((v) => (
-              <li key={v.version} className="flex items-center gap-2">
-                <span className="w-8">v{v.version}</span>
-                <span className="flex-1 truncate opacity-70">
+              <li key={v.version}>
+                <span className="bl-v">v{v.version}</span>
+                <span className="bl-v-note">
                   {v.note || "—"} · {when(v.created)}
                 </span>
                 {v.version !== flow.version && (
-                  <button type="button" className="underline" onClick={() => onRestore(v.version)}>
+                  <button type="button" className="sf-link" onClick={() => onRestore(v.version)}>
                     restore
                   </button>
                 )}
@@ -252,7 +257,7 @@ function FlowDetail({
           </ul>
         </details>
       )}
-      <button type="button" className="text-red-600 underline" onClick={onDelete}>
+      <button type="button" className="sf-link bl-delete" onClick={onDelete}>
         Delete flow
       </button>
     </div>

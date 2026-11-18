@@ -80,6 +80,7 @@ func (m *mod) Manifest() module.Manifest {
 - [`docs/writing-a-module.md`](docs/writing-a-module.md) — the contract, with the page's side.
 - [`docs/agent.md`](docs/agent.md) — the embedded agent, context slots, the router and reflexes.
 - [`docs/substrate.md`](docs/substrate.md) — what Substrate supplies and where Surface goes its own way.
+- [`docs/status.md`](docs/status.md) — what is done, how it is checked, and what is not there yet.
 - [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md).
 
 Licensed under the [MIT License](LICENSE).

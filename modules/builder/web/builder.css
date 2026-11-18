@@ -1,0 +1,189 @@
+/* The Interaction Builder. Colours are the design tokens'. The window is a size container;
+ * narrow, the examples and the flow buttons wrap and keep their icons. */
+.bl {
+  container: builder / inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.bl-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.bl-compose h2 {
+  margin: 0;
+  font-size: 14px;
+}
+.bl-compose textarea {
+  height: 84px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  line-height: 1.45;
+}
+.bl-compose textarea::placeholder {
+  color: var(--color-fg-faint);
+}
+.bl-compose textarea:focus-visible {
+  outline: 2px solid var(--color-ring, var(--color-primary));
+  outline-offset: -1px;
+}
+.bl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bl-example {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.bl-example:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-fg);
+}
+.bl-build {
+  margin-left: auto;
+}
+.bl-flows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.bl-head {
+  margin: 0;
+  padding: 12px 16px 4px;
+  color: var(--color-fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bl-none {
+  margin: 0;
+  padding: 0 16px;
+}
+.bl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bl-flow {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.bl-flow-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 8px 16px;
+}
+.bl-flow-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg);
+  text-align: left;
+  cursor: pointer;
+}
+.bl-flow-name strong,
+.bl-flow-name span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bl-flow-name span {
+  color: var(--color-fg-muted);
+  font-size: 12px;
+}
+.bl-flow[data-open="true"] .bl-flow-name strong {
+  color: var(--color-primary);
+}
+.bl-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 14px;
+  font-size: 12px;
+}
+.bl-detail p {
+  margin: 0;
+}
+.bl-key {
+  color: var(--color-fg-muted);
+}
+.bl-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  vertical-align: middle;
+}
+.bl-pill {
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-size: 11px;
+}
+.bl-pill code {
+  font-family: var(--sf-mono);
+}
+.bl-versions summary {
+  color: var(--color-fg-muted);
+  cursor: pointer;
+}
+.bl-versions ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bl-versions li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.bl-versions .bl-v {
+  flex: 0 0 28px;
+  font-weight: 600;
+}
+.bl-versions .bl-v-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--color-fg-secondary);
+}
+.bl-delete {
+  align-self: flex-start;
+  color: var(--color-danger);
+}
+
+@container builder (max-width: 440px) {
+  .bl-compose {
+    padding: 12px;
+  }
+  .bl-label {
+    display: none;
+  }
+  .bl-flow-row {
+    padding-left: 12px;
+  }
+}

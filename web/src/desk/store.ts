@@ -6,7 +6,7 @@
  */
 import { useSyncExternalStore } from "react"
 import type { Desk, OpenOptions, Win } from "../sdk"
-import { call, onEvent } from "../sdk/runtime"
+import { ApiError, call, getSetting, onEvent } from "../sdk/runtime"
 
 export interface DeskWin {
   id: string
@@ -182,6 +182,11 @@ export async function runCommand<T = unknown>(id: string, args?: Record<string, 
 /** Close a window, asking first when it holds unsaved work. */
 export async function closeWindow(id: string): Promise<void> {
   const w = state.wins.find((x) => x.id === id)
+  // Asking first is a live setting: turn it off and the next close goes straight through.
+  if (w?.dirty && getSetting("surface.confirm_close_dirty") === false) {
+    await act({ type: "close", id, force: true })
+    return
+  }
   if (w?.dirty) {
     const yes = await confirmImpl({
       title: `Close “${w.title}”?`,
@@ -194,6 +199,15 @@ export async function closeWindow(id: string): Promise<void> {
     return
   }
   await act({ type: "close", id })
+}
+
+/**
+ * A view's last word about its own window can arrive after the window is gone (the desk was
+ * rearranged while a request was on its way). That is not an error worth raising.
+ */
+function unlessGone(err: unknown): undefined {
+  if (err instanceof ApiError && /no window/.test(err.message)) return undefined
+  throw err
 }
 
 /** The Desk a view is handed. */
@@ -209,13 +223,13 @@ export const desk: Desk = {
   },
   close: closeWindow,
   async focus(id) {
-    await act({ type: "focus", id })
+    await act({ type: "focus", id }).catch(unlessGone)
   },
   async setTitle(id, title) {
-    await act({ type: "title", id, title })
+    await act({ type: "title", id, title }).catch(unlessGone)
   },
   async setArgs(id, args) {
-    await act({ type: "args", id, args })
+    await act({ type: "args", id, args }).catch(unlessGone)
   },
   report(id, st) {
     pendingReports.set(id, st)

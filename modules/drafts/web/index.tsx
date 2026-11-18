@@ -54,7 +54,11 @@ function DraftsView({ win, desk, api }: ViewProps) {
   const id = typeof win.args.id === "string" ? win.args.id : ""
   return (
     <div className="dr">
-      {id ? <DraftEditor key={id} id={id} win={win} desk={desk} api={api} /> : <DraftList desk={desk} api={api} win={win} />}
+      {id ? (
+        <DraftEditor key={id} id={id} win={win} desk={desk} api={api} />
+      ) : (
+        <DraftList desk={desk} api={api} win={win} />
+      )}
     </div>
   )
 }
@@ -77,7 +81,12 @@ function DraftList({ win, desk, api }: ViewProps) {
   return (
     <>
       <div className="dr-find">
-        <input className="sf-input sf-grow" placeholder="Find a draft" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input
+          className="sf-input sf-grow"
+          placeholder="Find a draft"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
         <button type="button" className="sf-btn" onClick={() => void create()}>
           <Icon name="file-plus-2" size={14} /> New
         </button>
@@ -131,6 +140,11 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   useEffect(() => {
     void load()
   }, [load])
+  // A window opened by a layout or the agent may carry another title: show the draft's.
+  const savedTitle = draft?.title
+  useEffect(() => {
+    if (savedTitle && savedTitle !== win.title) void desk.setTitle(win.id, savedTitle)
+  }, [savedTitle, win.title, win.id, desk])
 
   // Another hand (the agent, another window) saved it.
   useEvent<{ id: string; rev: number; author: string }>("drafts.changed", (ev) => {
@@ -154,7 +168,10 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
 
   // desk.report replaces the window's state: every report says the whole of it.
   const report = (m: Mode, sel?: { quote: string; start: number; end: number } | null) =>
-    desk.report(win.id, sel ? { mode: m, selection: sel.quote.slice(0, 2000), line_start: sel.start, line_end: sel.end } : { mode: m })
+    desk.report(
+      win.id,
+      sel ? { mode: m, selection: sel.quote.slice(0, 2000), line_start: sel.start, line_end: sel.end } : { mode: m },
+    )
 
   const switchMode = (m: Mode) => {
     setMode(m)
@@ -172,14 +189,20 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   const save = async () => {
     if (!draft) return
     try {
-      const d = await api.put<Draft>(`drafts/${id}`, { body: text, title, expect_rev: draft.rev, summary: "edited by the owner" })
+      const d = await api.put<Draft>(`drafts/${id}`, {
+        body: text,
+        title,
+        expect_rev: draft.rev,
+        summary: "edited by the owner",
+      })
       setDraft(d)
       setDirty(false)
       desk.setDirty(win.id, false)
       setNotice("")
       if (d.title !== win.title) void desk.setTitle(win.id, d.title)
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setNotice("The draft changed since you opened it. Copy your text, then reload.")
+      if (e instanceof ApiError && e.status === 409)
+        setNotice("The draft changed since you opened it. Copy your text, then reload.")
       else setNotice(e instanceof Error ? e.message : String(e))
     }
   }
@@ -211,7 +234,12 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
 
   const mark = async () => {
     if (!picked || !composing.trim()) return
-    await addMark({ ref, body: composing.trim(), quote: picked.quote, anchor: { lines: { start: picked.start, end: picked.end } } })
+    await addMark({
+      ref,
+      body: composing.trim(),
+      quote: picked.quote,
+      anchor: { lines: { start: picked.start, end: picked.end } },
+    })
     setComposing("")
     setPicked(null)
     report(mode)
@@ -248,7 +276,14 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
           {draft.lang} · r{draft.rev}
         </span>
         {MODES.map(({ mode: m, icon }) => (
-          <button key={m} type="button" className="dr-tool" data-on={mode === m} title={m} onClick={() => switchMode(m)}>
+          <button
+            key={m}
+            type="button"
+            className="dr-tool"
+            data-on={mode === m}
+            title={m}
+            onClick={() => switchMode(m)}
+          >
             <Icon name={icon} size={14} />
             <span className="dr-tool-label">{m}</span>
           </button>
@@ -303,7 +338,11 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
             <>
               <div className="dr-compare-head">
                 <span>Revision</span>
-                <select className="sf-input" value={from || Math.max(1, draft.rev - 1)} onChange={(e) => setFrom(Number(e.target.value))}>
+                <select
+                  className="sf-input"
+                  value={from || Math.max(1, draft.rev - 1)}
+                  onChange={(e) => setFrom(Number(e.target.value))}
+                >
                   {revs
                     .filter((r) => r.rev < draft.rev)
                     .map((r) => (
@@ -331,7 +370,13 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
             </>
           )}
         </div>
-        <MarksPanel marks={marks} picked={picked} composing={composing} setComposing={setComposing} onMark={() => void mark()} />
+        <MarksPanel
+          marks={marks}
+          picked={picked}
+          composing={composing}
+          setComposing={setComposing}
+          onMark={() => void mark()}
+        />
       </div>
     </>
   )
@@ -383,7 +428,9 @@ function MarksPanel({
           </div>
         </div>
       )}
-      {!picked && list.length === 0 && <p className="dr-hint">Select a passage in Review to mark it. The agent sees your marks and answers them.</p>}
+      {!picked && list.length === 0 && (
+        <p className="dr-hint">Select a passage in Review to mark it. The agent sees your marks and answers them.</p>
+      )}
       <ul className="dr-marks-list">
         {list.map((m) => (
           <MarkCard key={m.id} mark={m} />

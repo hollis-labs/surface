@@ -25,7 +25,3 @@ CREATE TABLE marks (
   replies    TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX marks_ref ON marks (ref, created_at);
-CREATE TABLE keybindings (
-  command TEXT PRIMARY KEY,
-  keys    TEXT NOT NULL
-);

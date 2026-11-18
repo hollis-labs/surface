@@ -72,7 +72,7 @@ one. The Interaction Builder is built on exactly this.
 
 | Store | Where | Holds |
 |---|---|---|
-| Core database | `<data>/surface.db` (opened by Substrate's database module) | settings, desk state, layouts, marks, key bindings; the agent's threads, slot notes, reflexes and rules |
+| Core database | `<data>/surface.db` (opened by Substrate's database module) | settings, desk state, layouts, marks; the agent's threads, slot notes, reflexes and rules |
 | A module's store | `<data>/modules/<id>/<id>.db` | whatever the module's migrations define (`module.Store`) |
 | A module's files | `<data>/modules/<id>/` (`Host.DataDir`) | files that are not rows |
 

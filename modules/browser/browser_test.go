@@ -42,3 +42,16 @@ func TestNormalizeAndNavigate(t *testing.T) {
 		t.Error("DENY framable")
 	}
 }
+
+func TestReaderPrefersMain(t *testing.T) {
+	base, _ := url.Parse("https://example.com/")
+	long := strings.Repeat("Real words about the subject. ", 30)
+	_, text, links := extract(`<html><body><nav><a href="/a">Menu A</a> Skip to content</nav>
+<main><h1>Title</h1><p>`+long+`</p></main><footer><a href="/f">Footer</a></footer></body></html>`, base)
+	if strings.Contains(text, "Skip to content") || strings.Contains(text, "Footer") || !strings.Contains(text, "# Title") {
+		t.Fatalf("%q", text[:120])
+	}
+	if len(links) != 2 {
+		t.Fatalf("links from the whole page: %+v", links)
+	}
+}

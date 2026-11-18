@@ -15,7 +15,6 @@ import (
 var coreSettings = []module.Setting{
 	{Key: "theme", Title: "Theme", About: "How the desk is drawn.", Type: module.SettingEnum, Default: "dark", Options: []string{"dark", "light", "dusk"}},
 	{Key: "gap", Title: "Window gap", About: "Space between tiled windows, in pixels.", Type: module.SettingInt, Default: 10},
-	{Key: "open_layout", Title: "New desks start", About: "How windows are arranged on a desk with no saved state.", Type: module.SettingEnum, Default: "tile", Options: []string{"tile", "float"}},
 	{Key: "agent_panel_width", Title: "Agent panel width", About: "Width of the agent panel, in pixels.", Type: module.SettingInt, Default: 420},
 	{Key: "confirm_close_dirty", Title: "Ask before closing unsaved work", Type: module.SettingBool, Default: true},
 }

@@ -149,7 +149,10 @@ func framable(h http.Header) bool {
 	return true
 }
 
-var skip = map[string]bool{"script": true, "style": true, "noscript": true, "svg": true, "template": true, "iframe": true, "head": true, "nav": false}
+var skip = map[string]bool{"script": true, "style": true, "noscript": true, "svg": true, "template": true, "iframe": true, "head": true}
+
+// chrome is the site around the content: left out of the reader text, read for links.
+var chrome = map[string]bool{"nav": true, "aside": true, "form": true, "button": true}
 var block = map[string]bool{"p": true, "div": true, "br": true, "li": true, "tr": true, "section": true, "article": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "pre": true, "blockquote": true, "header": true, "footer": true, "table": true, "ul": true, "ol": true}
 
@@ -161,11 +164,15 @@ func extract(doc string, base *url.URL) (title, text string, links []Link) {
 	}
 	var b strings.Builder
 	seen := map[string]bool{}
+	textOnly := false
 	var walk func(n *html.Node, pre bool)
 	walk = func(n *html.Node, pre bool) {
 		if n.Type == html.ElementNode {
 			if n.Data == "title" && title == "" && n.FirstChild != nil {
 				title = strings.TrimSpace(n.FirstChild.Data)
+				return
+			}
+			if textOnly && chrome[n.Data] {
 				return
 			}
 			if skip[n.Data] {
@@ -225,7 +232,16 @@ func extract(doc string, base *url.URL) (title, text string, links []Link) {
 			b.WriteString("\n")
 		}
 	}
+	// The whole page, for its title and links; then, for the text, its main content when it
+	// marks one (main, else the largest article), so the reader skips the site's chrome.
 	walk(root, false)
+	b.Reset()
+	textOnly = true
+	if content := mainContent(root); content != nil {
+		walk(content, false)
+	} else {
+		walk(root, false)
+	}
 	// Collapse runs of blank lines.
 	var out []string
 	blank := 0
@@ -242,6 +258,40 @@ func extract(doc string, base *url.URL) (title, text string, links []Link) {
 		out = append(out, l)
 	}
 	return title, strings.TrimSpace(strings.Join(out, "\n")), links
+}
+
+// mainContent is the page's main element, else its largest article, when it holds a fair
+// amount of text; nil means use the whole page.
+func mainContent(root *html.Node) *html.Node {
+	var main, best *html.Node
+	bestLen := 0
+	var find func(n *html.Node)
+	find = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			switch {
+			case n.Data == "main" || attr(n, "role") == "main":
+				if main == nil {
+					main = n
+				}
+			case n.Data == "article":
+				if l := len(strings.Join(strings.Fields(textOf(n)), " ")); l > bestLen {
+					best, bestLen = n, l
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			find(c)
+		}
+	}
+	find(root)
+	const enough = 400
+	if main != nil && len(strings.Join(strings.Fields(textOf(main)), " ")) >= enough {
+		return main
+	}
+	if best != nil && bestLen >= enough {
+		return best
+	}
+	return nil
 }
 
 func textOf(n *html.Node) string {

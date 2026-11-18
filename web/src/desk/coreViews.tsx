@@ -175,7 +175,7 @@ function Layouts(_: ViewProps) {
   )
 }
 
-function Marks({ desk }: ViewProps) {
+function Marks(_: ViewProps) {
   const [marks, setMarks] = useState<Mark[]>([])
   const refresh = useCallback(() => void call<Mark[]>("GET", "/api/marks").then(setMarks), [])
   useEffect(refresh, [refresh])
@@ -183,23 +183,24 @@ function Marks({ desk }: ViewProps) {
   return (
     <div className="sf-pane">
       <p className="sf-note">
-        Marks are notes pinned to a part of something, by you or the agent. These are the open ones.
+        Marks are notes pinned to a part of something, by you or the agent. These are the open ones, across every
+        module.
       </p>
       {marks.length === 0 && <p className="sf-dim">No open marks.</p>}
       {marks.map((m) => (
-        <MarkCard key={m.id} mark={m} onOpen={() => void desk.run("marks.open", { ref: m.ref }).catch(() => {})} />
+        <MarkCard key={m.id} mark={m} />
       ))}
     </div>
   )
 }
 
-export function MarkCard({ mark, onOpen }: { mark: Mark; onOpen?: () => void }) {
+function MarkCard({ mark }: { mark: Mark }) {
   const [reply, setReply] = useState("")
   return (
     <div className="sf-card sf-mark" data-author={mark.author}>
       <div className="sf-card-head">
         <Icon name={mark.author === "agent" ? "bot" : "user"} size={14} />
-        <code className="sf-mark-ref" title={mark.ref} onClick={onOpen}>
+        <code className="sf-mark-ref" title={mark.ref}>
           {mark.ref}
         </code>
         <span className="sf-grow" />

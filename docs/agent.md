@@ -51,16 +51,25 @@ a file:
 
 `~/.config/<app>/agent.json` (or the file `SURFACE_AGENT_CONFIG` names)
 
+The minimum, to copy and fill in (for the app `desk`, at `~/.config/desk/agent.json`):
+
 ```json
 {
-  "model": "a-model-name",
+  "model": "your-model-name",
   "gateway_url": "https://your-gateway.example",
-  "key_file": "~/.config/<app>/agent-key",
-  "system": "Optional extra standing instructions.",
-  "max_tokens": 8192,
-  "max_steps": 24
+  "key_file": "~/.config/desk/agent-key"
 }
 ```
+
+```sh
+mkdir -p ~/.config/desk && chmod 700 ~/.config/desk
+$EDITOR ~/.config/desk/agent.json          # the three fields above
+printf '%s' "$YOUR_KEY" > ~/.config/desk/agent-key && chmod 600 ~/.config/desk/agent-key
+```
+
+Then restart the app. Optional fields: `system` (extra standing instructions), `max_tokens` (default 8192),
+`max_steps` (tool rounds per message, default 24) and `compact_at` (thread size in tokens before older turns are
+summarised).
 
 - `gateway_url` is an Anthropic-compatible endpoint. The engine posts to `<gateway_url>/v1/messages`.
 - `key_file` holds the bearer key. It is read on every request, so it can be rotated without a restart. The key
@@ -70,8 +79,8 @@ a file:
 - For a development run, `SURFACE_AGENT_GATEWAY`, `SURFACE_AGENT_MODEL` and `SURFACE_AGENT_KEY_FILE` override
   single fields.
 
-The file is read at start. With no file the app runs normally, a message is refused with `503`, and the panel says
-where to write the file.
+The file is read at start. With no file the app runs normally: the panel shows a setup card with the path and the
+example above, and a message is refused with `503` and the same path.
 
 ## Context slots
 

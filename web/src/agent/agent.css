@@ -43,6 +43,13 @@
 .sf-agent-also {
   opacity: 0.7;
 }
+.sf-agent-why {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sf-agent-link {
   margin-left: auto;
   font: inherit;
@@ -135,4 +142,35 @@
 .sf-agent .ade-chat-ask {
   background: var(--color-primary-muted);
   border-color: var(--color-primary);
+}
+
+.sf-agent-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-secondary);
+  line-height: 1.45;
+}
+.sf-agent-setup strong {
+  color: var(--color-fg);
+}
+.sf-agent-setup code {
+  overflow-wrap: anywhere;
+  color: var(--color-fg);
+}
+.sf-agent-setup pre {
+  margin: 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-size: 11px;
+  overflow-x: auto;
+}
+.sf-agent-setup .sf-agent-link {
+  margin-left: 0;
 }

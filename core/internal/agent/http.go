@@ -143,7 +143,7 @@ func (s *Service) turn(w http.ResponseWriter, r *http.Request) {
 	res, err := s.Send(r.Context(), in.Text, in.ClientID, in.Auto)
 	switch {
 	case errors.Is(err, ErrNotReady):
-		fail(w, 503, "No model is configured for the agent. Write "+ConfigPath(s.k.AppName())+" (model, gateway_url, key_file).")
+		fail(w, 503, "The agent is not set up yet: write "+ConfigPath(s.k.AppName())+" and restart the app (see docs/agent.md).")
 	case errors.Is(err, ErrBusy):
 		fail(w, 409, "The agent is still working on the last message.")
 	case err != nil:

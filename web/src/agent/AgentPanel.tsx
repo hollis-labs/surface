@@ -110,15 +110,44 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
           </div>
         )}
         {open && asm && <pre className="sf-agent-block">{asm.block}</pre>}
-        {setup && !setup.ready && (
-          <div className="sf-agent-off">
-            No model is configured. Write <code>{setup.config_path}</code> with <code>model</code>,{" "}
-            <code>gateway_url</code> and <code>key_file</code>; it is read when the app starts.
-          </div>
-        )}
+        {setup && !setup.ready && <SetupCard path={setup.config_path} />}
         {err && <div className="sf-agent-off">{err}</div>}
       </section>
       <Chat session={session} title={title} placeholder="Ask, or /open, /layout, /run" />
+    </div>
+  )
+}
+
+/** The minimal agent.json, with the key file beside it. */
+const example = (path: string) => `{
+  "model": "your-model-name",
+  "gateway_url": "https://your-gateway.example",
+  "key_file": "${path.replace(/[^/]*$/, "") || "./"}agent-key"
+}`
+
+/** Shown until a model is configured: what to write where, ready to copy. */
+function SetupCard({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false)
+  const text = example(path)
+  const copy = () => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+  return (
+    <div className="sf-agent-setup">
+      <strong>The agent is not set up yet.</strong>
+      <span>
+        Everything else works by hand. To talk to the agent, write <code>{path}</code>:
+      </span>
+      <pre>{text}</pre>
+      <span>
+        The gateway is any Anthropic-compatible endpoint; the key file holds its key. Restart the app after writing it.{" "}
+        <button type="button" className="sf-agent-link" onClick={copy}>
+          {copied ? "copied" : "copy the example"}
+        </button>
+      </span>
     </div>
   )
 }

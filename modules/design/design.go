@@ -6,7 +6,8 @@
 // (make design-preview); the job's window frames that preview beside the same page from the
 // base, the files the branch changes, and the owner's notes, which are marks on the job. Notes
 // go back as the next round; approval goes back as the go-ahead to merge. Progress is read from
-// the branch and its pull request. Surface never merges.
+// the branch and its pull request, and from what comes back (inbox.go): the Designer's replies
+// on the job's thread and the job's Torque task. Surface never merges.
 package design
 
 import (
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/surface/module"
@@ -34,6 +36,10 @@ type mod struct {
 	gh *github
 	// dispatch replaces the configured Dispatcher (tests).
 	dispatch Dispatcher
+	// every is how often open jobs are checked (tests shorten it); stop ends the checking.
+	every    time.Duration
+	stop     context.CancelFunc
+	checking sync.Mutex
 }
 
 // ref is what a job's marks are pinned to.
@@ -81,14 +87,15 @@ func (m *mod) Manifest() module.Manifest {
 			{Key: "tether_url", Title: "Tether MCP URL", About: "Tether's MCP endpoint over HTTP. Or set a command instead.", Type: module.SettingString, Default: ""},
 			{Key: "tether_token_file", Title: "Tether token file", About: "A file holding the bearer token for the MCP URL. The token is read when needed and never shown.", Type: module.SettingString, Default: ""},
 			{Key: "tether_command", Title: "Tether MCP command", About: "A command that speaks MCP over stdio, words separated by spaces. Used when no URL is set.", Type: module.SettingString, Default: ""},
+			{Key: "check_seconds", Title: "Check every (seconds)", About: "How often open jobs are checked for the Designer's replies and their task's state. Read at start; at least 15.", Type: module.SettingInt, Default: 60},
 			{Key: "github_token_file", Title: "GitHub token file", About: "Optional: a file holding a token for reading the repository (a public one reads without).", Type: module.SettingString, Default: ""},
 		},
 		Slots: []module.Slot{{
 			Name: "design", About: "design work: interface changes the Design team makes on a branch, reviewed live in the job's window",
 			Views:        []string{"design", "design.job"},
-			Tools:        []string{"design_request", "design_jobs", "design_job", "design_set", "design_feedback", "design_approve", "design_open"},
+			Tools:        []string{"design_request", "design_jobs", "design_job", "design_refresh", "design_set", "design_feedback", "design_approve", "design_open"},
 			Where:        "the design jobs (design_jobs, design_job); notes are marks on design:<job id>",
-			Instructions: "A change to how the interface looks is design work: hand it to the Design team with design_request rather than editing components yourself. Notes the owner pins in the job's window are the next round's feedback; send them with design_feedback when the owner says so. Only design_approve approves, and the Design team merges.",
+			Instructions: "A change to how the interface looks is design work: hand it to the Design team with design_request rather than editing components yourself. A job follows itself: the Designer's replies, its task and its preview are read on a timer; before saying where a job stands, read it (design_job) or check now (design_refresh), and say when it was last checked. Notes the owner pins in the job's window are the next round's feedback; send them with design_feedback when the owner says so. Only design_approve approves, and the Design team merges.",
 			Knowledge:    m.knowledge,
 		}},
 	}
@@ -102,6 +109,23 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	}
 	m.gh.tokenFile = func() string { return h.Config().String("github_token_file") }
 	m.routes(h)
+	every := m.every
+	if every == 0 {
+		every = defaultEvery
+		if n := h.Config().Int("check_seconds"); n > 0 {
+			every = time.Duration(max(n, 15)) * time.Second
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.stop = cancel
+	go m.poll(ctx, every)
+	return nil
+}
+
+func (m *mod) Stop(context.Context) error {
+	if m.stop != nil {
+		m.stop()
+	}
 	return nil
 }
 
@@ -159,15 +183,23 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 		return View{}, err
 	}
 	p := m.gh.progress(ctx, m.h.Config().String("repo"), or(m.h.Config().String("base_branch"), "main"), j.Branch, fresh)
-	change := Change{}
+	// What the branch says moves the job forward only from the status just read, and fills a
+	// missing pull request only: an owner's write since is never undone.
+	moved := false
 	if next := advance(j.Status, p); next != j.Status {
-		change.Status = &next
+		if moved, err = m.st.moveStatus(ctx, id, j.Status, next); err != nil {
+			return View{}, err
+		}
 	}
 	if p.PR != nil && j.PRURL == "" {
-		change.PRURL = &p.PR.URL
+		filled, fillErr := m.st.fillPR(ctx, id, p.PR.URL)
+		if fillErr != nil {
+			return View{}, fillErr
+		}
+		moved = moved || filled
 	}
-	if change.Status != nil || change.PRURL != nil {
-		if j, err = m.st.update(ctx, id, change); err != nil {
+	if moved {
+		if j, err = m.st.get(ctx, id); err != nil {
 			return View{}, err
 		}
 		m.changed(id)
@@ -210,7 +242,7 @@ func (m *mod) request(ctx context.Context, title, brief, refs string) (map[strin
 	}
 	msg, task := m.briefMessage(j)
 	out := m.deliver(ctx, msg, &task)
-	if err = m.st.addRound(ctx, j.ID, j.Brief, out.Sent); err != nil {
+	if err = m.st.addRound(ctx, j.ID, j.Brief, out); err != nil {
 		return nil, err
 	}
 	if out.TaskID != "" {
@@ -246,7 +278,7 @@ func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, er
 	for _, nl := range notes {
 		fmt.Fprintf(&asked, "\n- [%s] %s", nl.Where, nl.Body)
 	}
-	if err = m.st.addRound(ctx, id, strings.TrimSpace(asked.String()), out.Sent); err != nil {
+	if err = m.st.addRound(ctx, id, strings.TrimSpace(asked.String()), out); err != nil {
 		return nil, err
 	}
 	// The notes are in this round now: they are closed, with a line saying where they went.
@@ -314,6 +346,31 @@ func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[stri
 	return map[string]any{"approved": true, "status": j.Status, "outbox": out}, nil
 }
 
+// followed is what came back for a job and when it was looked at, so the agent never reports
+// a state older than it says.
+func followed(j Job) string {
+	var b strings.Builder
+	if j.TaskID != "" {
+		fmt.Fprintf(&b, " Task %s: %s", j.TaskID, or(j.TaskStatus, "not read yet"))
+		if j.TaskChecked != "" {
+			fmt.Fprintf(&b, " (checked %s)", j.TaskChecked)
+		}
+		b.WriteString(".")
+	}
+	if n := len(j.Replies); n > 0 {
+		fmt.Fprintf(&b, " %d repl(ies) from the Designer, the latest %s.", n, j.Replies[n-1].Sent)
+	} else {
+		b.WriteString(" No reply from the Designer yet.")
+	}
+	if j.InboxChecked != "" {
+		fmt.Fprintf(&b, " Mail checked %s.", j.InboxChecked)
+	}
+	if j.PRURL != "" {
+		fmt.Fprintf(&b, " PR %s.", j.PRURL)
+	}
+	return b.String()
+}
+
 // knowledge is the slot's: the job in front, its status and its open notes.
 func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) (string, error) {
 	var b strings.Builder
@@ -325,8 +382,9 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 		}
 		fmt.Fprintf(&b, "The design job in front: %s “%s”, status %s, branch %s.", j.ID, j.Title, j.Status, j.Branch)
 		if j.PreviewURL == "" {
-			b.WriteString(" No preview URL yet (design_set sets it when the Design team gives one).")
+			b.WriteString(" No preview URL yet (it is set from the Designer's reply).")
 		}
+		b.WriteString(followed(j))
 		if v, ok := s.Focused.Extra["showing"]; ok {
 			fmt.Fprintf(&b, " The window shows the %v", v)
 			if sec, ok := s.Focused.Extra["section"]; ok {
@@ -355,7 +413,7 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 		if i == 8 {
 			break
 		}
-		fmt.Fprintf(&b, "- %s “%s”: %s\n", j.ID, j.Title, j.Status)
+		fmt.Fprintf(&b, "- %s “%s”: %s.%s\n", j.ID, j.Title, j.Status, followed(j))
 	}
 	return b.String(), nil
 }

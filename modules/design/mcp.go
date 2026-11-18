@@ -72,8 +72,12 @@ func toolText(raw json.RawMessage) (string, error) {
 var errRefused = errors.New("tether: the call was refused")
 
 // allowed are the only tools the dispatcher may call. Whatever the far side offers, nothing
-// else is reachable through it.
-var allowed = map[string]bool{"tether_message_send": true, "torque_task_create": true}
+// else is reachable through it: send and create a task out; list, mark read and read the
+// task back.
+var allowed = map[string]bool{
+	"tether_message_send": true, "torque_task_create": true,
+	"tether_message_list": true, "tether_message_mark_read": true, "torque_task_get": true,
+}
 
 func checkTool(tool string) error {
 	if !allowed[tool] {

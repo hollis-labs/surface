@@ -34,7 +34,7 @@ func (m *mod) tools() []module.Tool {
 				return m.request(ctx, a.Title, a.Brief, a.References)
 			}},
 		{Name: "design_jobs", Level: module.LevelRead,
-			Description: "List the design jobs, most recently changed first, with their status. Merged jobs are left out unless all is true.",
+			Description: "List the design jobs, most recently changed first: status, pull request, preview, the Designer's replies (bodies cut short), the task's status and latest comment, and when the mail (inbox_checked) and the task (task_checked) were last read. Merged jobs are left out unless all is true. To check now, design_refresh.",
 			Input:       raw(`{"type":"object","properties":{"all":{"type":"boolean"}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct{ All bool }
@@ -42,7 +42,7 @@ func (m *mod) tools() []module.Tool {
 				return m.st.list(ctx, !a.All)
 			}},
 		{Name: "design_job", Level: module.LevelRead,
-			Description: "One design job as it stands: its status, rounds, branch head, the files the branch changes, its pull request and its open notes. Reads the branch from GitHub afresh. Defaults to the job whose window is in front.",
+			Description: "One design job as it stands: its status, rounds, the Designer's replies in full, the task's status and latest comment, branch head, the files the branch changes, its pull request, preview and open notes, with when each was last read (inbox_checked, task_checked, progress.read). Reads the branch from GitHub afresh. Defaults to the job whose window is in front.",
 			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a idArg
@@ -53,9 +53,26 @@ func (m *mod) tools() []module.Tool {
 				}
 				return m.view(ctx, id, true)
 			}},
+		{Name: "design_refresh", Level: module.LevelRead,
+			Description: "Check now, rather than waiting for the timer: read the Designer's new replies and the task's state for one job (id), or for every open job, and apply them (preview, base, pull request, head, status). Returns what each check found.",
+			Input:       raw(`{"type":"object","properties":{"id":{"type":"string","description":"One job; every open job when left out."}}}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				var a idArg
+				_ = json.Unmarshal(in, &a)
+				checked, err := m.refresh(ctx, a.ID)
+				if err != nil {
+					return nil, err
+				}
+				if a.ID != "" {
+					v, viewErr := m.view(ctx, a.ID, true)
+					return map[string]any{"checked": checked, "job": v}, viewErr
+				}
+				jobs, err := m.st.list(ctx, true)
+				return map[string]any{"checked": checked, "jobs": jobs}, err
+			}},
 		{Name: "design_set", Level: module.LevelWrite,
-			Description: "Record what the Design team said about a job: preview_url (the gallery served from their branch), base_url (the same from main), pr_url, branch, or status (requested, in progress, ready for review, changes requested, approved, merged). Use approve and feedback through their own tools, not status here.",
-			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","approved","merged"]}}}`),
+			Description: "Correct what is recorded about a job by hand (the Designer's replies set these on their own): preview_url (the gallery served from their branch), base_url (the same from main), pr_url, branch, or status (requested, in progress, ready for review, changes requested, approved, merged). Use approve and feedback through their own tools, not status here.",
+			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"head_sha":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","approved","merged"]}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct {
 					ID string `json:"id"`
@@ -68,11 +85,7 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				j, err := m.st.update(ctx, id, a.Change)
-				if err == nil {
-					m.changed(id)
-				}
-				return j, err
+				return m.set(ctx, id, a.Change)
 			}},
 		{Name: "design_feedback", Level: module.LevelWrite,
 			Description: "Send the next round to the Design team: the job's open notes (pinned in its window) plus text, if any. The notes are closed as sent and the job becomes changes requested. Defaults to the job in front.",
@@ -148,10 +161,7 @@ func (m *mod) routes(h module.Host) {
 			reply(w, nil, err)
 			return
 		}
-		j, err := m.st.update(r.Context(), r.PathValue("id"), c)
-		if err == nil {
-			m.changed(j.ID)
-		}
+		j, err := m.set(r.Context(), r.PathValue("id"), c)
 		reply(w, j, err)
 	}))
 	h.Handle("POST /jobs/{id}/feedback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +203,33 @@ func (m *mod) routes(h module.Host) {
 		}
 		reply(w, probe(r.Context(), target), nil)
 	}))
+}
+
+// set applies a change made by hand: only the fields a person may set, then the same status
+// rule the replies follow (a preview makes a requested job ready for review), then the
+// announcement if this is the job's first preview.
+func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
+	c = Change{Branch: c.Branch, PRURL: c.PRURL, PreviewURL: c.PreviewURL, BaseURL: c.BaseURL, Status: c.Status, TaskID: c.TaskID, HeadSHA: c.HeadSHA}
+	if c.HeadSHA != nil && *c.HeadSHA != "" && !shaPattern.MatchString(strings.ToLower(*c.HeadSHA)) {
+		return Job{}, fmt.Errorf("head_sha %q is not a full commit SHA", *c.HeadSHA)
+	}
+	j, err := m.st.update(ctx, id, c)
+	if err != nil {
+		return Job{}, err
+	}
+	if c.Status == nil {
+		if next := derive(j.Status, j.TaskStatus, j.PreviewURL, false, false); next != j.Status {
+			if _, err = m.st.moveStatus(ctx, id, j.Status, next); err != nil {
+				return Job{}, err
+			}
+			if j, err = m.st.get(ctx, id); err != nil {
+				return Job{}, err
+			}
+		}
+	}
+	m.changed(id)
+	m.announce(ctx, j)
+	return j, nil
 }
 
 // Probe is whether a preview answered.

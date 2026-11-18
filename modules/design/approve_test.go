@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -282,5 +283,158 @@ func TestGitHubBackoff(t *testing.T) {
 	p = g.progress(ctx, "o/r", "main", "b", true)
 	if hits.Load() != before || p.Head != headA || !strings.Contains(p.Problem, "not asked again until") {
 		t.Fatalf("not backed off: hits %d -> %d, %+v", before, hits.Load(), p)
+	}
+}
+
+// githubAt serves one branch whose head and pull request the test sets as it goes.
+type githubAt struct {
+	mu        sync.Mutex
+	head      string
+	prJSON    string
+	pullsHits int
+}
+
+func (g *githubAt) set(head, pr string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.head, g.prJSON = head, pr
+}
+
+func (g *githubAt) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if strings.Contains(r.URL.Path, "/compare/") {
+		_, _ = io.WriteString(w, `{"commits":[{"sha":"`+g.head+`","commit":{"message":"m","author":{"date":"2026-11-18T10:00:00Z"}}}],"files":[]}`)
+		return
+	}
+	g.pullsHits++
+	_, _ = io.WriteString(w, or(g.prJSON, "[]"))
+}
+
+func mergedPR(head string) string {
+	return `[{"number":9,"html_url":"https://github.com/o/r/pull/9","state":"closed","draft":false,"title":"t","merged_at":"2026-11-18T22:00:00Z","head":{"sha":"` + head + `"}}]`
+}
+
+func cardsWithSubject(h *moduletest.Host, subject string) int {
+	cards, _ := h.CardStore.List(context.Background(), true)
+	n := 0
+	for _, c := range cards {
+		if c.Subject == subject {
+			n++
+		}
+	}
+	return n
+}
+
+// A pull request merged on GitHub moves a job to merged only if the job was approved and the
+// merged commit is the approved one; anything else is a loud warning, once, and the status stays.
+func TestMergedOnGitHubNeedsTheApprovedCommit(t *testing.T) {
+	h, m, box := startWith(t, time.Hour)
+	ctx := context.Background()
+	set(t, h, map[string]string{"repo": "o/r"})
+	gh := &githubAt{}
+	srv := httptest.NewServer(gh)
+	defer srv.Close()
+	m.gh.api = srv.URL
+
+	// Never approved.
+	j := newJob(t, h, "Never approved")
+	box.put(designerReply("n1", j.ID, "preview: http://laptop.test:1/\nhead: "+headA, 1))
+	_, _ = m.refresh(ctx, j.ID)
+	gh.set(headA, mergedPR(headA))
+	v, err := m.view(ctx, j.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Status != StatusReady || v.ApprovedHead != "" || !strings.Contains(v.MergeWarning, "never approved") || !strings.Contains(v.MergeWarning, headA) {
+		t.Fatalf("never approved: %+v", v.Job)
+	}
+	_, _ = m.view(ctx, j.ID, true)
+	if n := cardsWithSubject(h, ref(j.ID)+":merge"); n != 1 {
+		t.Fatalf("merge warnings shown: %d", n)
+	}
+
+	// Approved at A, merged at B.
+	k := newJob(t, h, "Other commit")
+	box.put(designerReply("k1", k.ID, "preview: http://laptop.test:1/\nhead: "+headA, 1))
+	_, _ = m.refresh(ctx, k.ID)
+	gh.set(headA, "[]")
+	card, err := m.askApproval(ctx, k.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := m.settle(ctx, k.ID, approve(t, h, *card)); res["approved"] != true {
+		t.Fatal(res)
+	}
+	gh.set(headB, mergedPR(headB))
+	if v, _ = m.view(ctx, k.ID, true); v.Status != StatusApproved || !strings.Contains(v.MergeWarning, "the approved commit is "+headA) || !strings.Contains(v.MergeWarning, headB) {
+		t.Fatalf("merged at another commit: %+v", v.Job)
+	}
+	if cardsWithSubject(h, ref(k.ID)+":merge") != 1 {
+		t.Fatal("no warning card")
+	}
+
+	// Approved at A, merged at A: merged.
+	l := newJob(t, h, "Right commit")
+	box.put(designerReply("l1", l.ID, "preview: http://laptop.test:1/\nhead: "+headA, 1))
+	_, _ = m.refresh(ctx, l.ID)
+	gh.set(headA, "[]")
+	card, _ = m.askApproval(ctx, l.ID, time.Minute)
+	_, _ = m.settle(ctx, l.ID, approve(t, h, *card))
+	gh.set(headA, mergedPR(headA))
+	if v, _ = m.view(ctx, l.ID, true); v.Status != StatusMerged || v.MergeWarning != "" {
+		t.Fatalf("merged at the approved commit: %+v", v.Job)
+	}
+}
+
+// A closed job cannot be approved by a card raised before it closed: closing ends the card,
+// the approval's compare-and-set refuses it, and no go-ahead is sent. Nothing else reopens it.
+func TestClosedJobCannotBeApproved(t *testing.T) {
+	h, m, box := startWith(t, time.Hour)
+	ctx := context.Background()
+	j := newJob(t, h, "Composer")
+	box.put(designerReply("c1", j.ID, "preview: http://laptop.test:1/\nhead: "+headA, 1))
+	_, _ = m.refresh(ctx, j.ID)
+	card, err := m.askApproval(ctx, j.ID, time.Minute)
+	if err != nil || card == nil {
+		t.Fatal(card, err)
+	}
+	if _, err = h.Tool("design_set", `{"id":"`+j.ID+`","status":"closed"}`); err != nil {
+		t.Fatal(err)
+	}
+	if c, _, _ := h.CardStore.Get(ctx, card.ID); c.Status != "superseded" {
+		t.Fatalf("the open card was left: %+v", c)
+	}
+	sent := len(box.sent)
+	stale := module.Card{ID: card.ID, Status: "submitted", Outcome: &module.CardOutcome{Decisions: []module.CardDecision{{Action: "approve"}}}}
+	if res, _ := m.settle(ctx, j.ID, stale); res["approved"] != false {
+		t.Fatalf("a stale card approved a closed job: %v", res)
+	}
+	// Even with the card still recorded as pending (the race the card's end may lose).
+	if err = m.st.pendApproval(ctx, j.ID, card.ID, headA); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := m.st.approve(ctx, j.ID, card.ID, headA); ok {
+		t.Fatal("store.approve approved a closed job")
+	}
+	got, _ := m.st.get(ctx, j.ID)
+	if got.Status != StatusClosed || got.ApprovedHead != "" || len(box.sent) != sent {
+		t.Fatalf("closed job: %+v, messages %d -> %d", got, sent, len(box.sent))
+	}
+	if _, err = h.Tool("design_feedback", `{"id":"`+j.ID+`","text":"more"}`); err == nil {
+		t.Fatal("feedback reopened a closed job")
+	}
+	if c, _ := m.askApproval(ctx, j.ID, time.Minute); c != nil {
+		t.Fatal("a closed job was asked for approval")
+	}
+	box.put(designerReply("c2", j.ID, "preview: http://laptop.test:2/\nhead: "+headB, 2))
+	_, _ = m.refresh(ctx, j.ID)
+	if got, _ = m.st.get(ctx, j.ID); got.Status != StatusClosed || got.HeadSHA != headA {
+		t.Fatalf("a reply moved a closed job: %+v", got)
+	}
+	for _, st := range []string{"approved", "merged"} {
+		if _, err = h.Tool("design_set", `{"id":"`+j.ID+`","status":"`+st+`"}`); err == nil {
+			t.Fatalf("design_set set %s by hand", st)
+		}
 	}
 }

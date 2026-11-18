@@ -70,6 +70,7 @@ interface Job {
   latest_head?: string
   head_differs?: boolean
   update_received?: boolean
+  merge_warning?: string
   rounds: Round[]
   replies: Reply[]
   created: string
@@ -407,7 +408,7 @@ function JobPane({ win, desk, api }: ViewProps) {
                 size="sm"
                 variant="outline"
                 className="flex-1"
-                disabled={busy !== "" || open.length === 0 || job.status === "merged"}
+                disabled={busy !== "" || open.length === 0 || ["approved", "merged", "closed"].includes(job.status)}
                 onClick={() =>
                   run("feedback", api.post(`jobs/${job.id}/feedback`, {}), (r) => {
                     const o = (r as { outbox: { sent: boolean; problem?: string } }).outbox
@@ -440,6 +441,7 @@ function JobPane({ win, desk, api }: ViewProps) {
                   : "Nothing to approve until the Designer names a head"}
               {job.update_received ? " · an update came back without a preview" : ""}
             </p>
+            {job.merge_warning && <p className="text-xs font-medium text-destructive">{job.merge_warning}</p>}
             {outcome && <p className="text-xs text-muted-foreground">{outcome}</p>}
           </div>
           <Separator />

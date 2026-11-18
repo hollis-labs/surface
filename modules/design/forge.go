@@ -37,6 +37,9 @@ type PullRequest struct {
 	State  string `json:"state"` // open, closed, merged
 	Draft  bool   `json:"draft,omitempty"`
 	Title  string `json:"title,omitempty"`
+	// HeadSHA is the pull request's head: for a merged one, the commit that was merged (not the
+	// merge commit).
+	HeadSHA string `json:"head_sha,omitempty"`
 }
 
 // github reads branches, comparisons and pull requests over GitHub's REST API. A token is
@@ -179,6 +182,9 @@ func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
 		Draft    bool   `json:"draft"`
 		Title    string `json:"title"`
 		MergedAt string `json:"merged_at"`
+		Head     struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
 	}
 	if err := g.get(ctx, fmt.Sprintf("/repos/%s/pulls?state=all&head=%s", repo, url.QueryEscape(owner+":"+branch)), &prs); err != nil {
 		p.Problem = "the pull request could not be read: " + err.Error()
@@ -191,18 +197,33 @@ func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
 		if pr.MergedAt != "" {
 			state = "merged"
 		}
-		p.PR = &PullRequest{Number: pr.Number, URL: pr.HTMLURL, State: state, Draft: pr.Draft, Title: pr.Title}
+		p.PR = &PullRequest{Number: pr.Number, URL: pr.HTMLURL, State: state, Draft: pr.Draft, Title: pr.Title, HeadSHA: strings.ToLower(pr.Head.SHA)}
 	}
 	return p
 }
 
-// advance moves a job's status along from what the branch shows. It never moves a job back,
-// and leaves the reviewer's own statuses (changes requested, approved) until the pull request
-// is merged.
-func advance(status string, p Progress) string {
-	if p.PR != nil && p.PR.State == "merged" {
-		return StatusMerged
+// mergedOnGitHub reads a merged pull request against the approval. It is the same rule as a
+// merged: line: the job is merged only if it was approved and the merged commit is the approved
+// head. Otherwise it returns a warning naming both commits, and the status stays.
+func mergedOnGitHub(j Job, pr *PullRequest) (merged bool, warning string) {
+	if pr == nil || pr.State != "merged" || j.Status == StatusMerged {
+		return false, ""
 	}
+	switch {
+	case j.ApprovedHead == "":
+		return false, fmt.Sprintf("merged on GitHub without approval of this commit: %s was merged at %s, and the job was never approved", pr.URL, or(pr.HeadSHA, "an unknown commit"))
+	case pr.HeadSHA != j.ApprovedHead:
+		return false, fmt.Sprintf("merged on GitHub without approval of this commit: %s was merged at %s, but the approved commit is %s", pr.URL, or(pr.HeadSHA, "an unknown commit"), j.ApprovedHead)
+	case j.Status != StatusApproved:
+		return false, fmt.Sprintf("merged on GitHub at the approved commit %s, but the job is %s; not moved", j.ApprovedHead, j.Status)
+	}
+	return true, ""
+}
+
+// advance moves a job's status along from what the branch shows. It never moves a job back and
+// never touches the reviewer's own statuses (changes requested, approved) or a settled job. A
+// merged pull request is not read here: mergedOnGitHub holds it to the approval.
+func advance(status string, p Progress) string {
 	switch status {
 	case StatusRequested:
 		if p.PR != nil && p.PR.State == "open" && !p.PR.Draft {

@@ -60,6 +60,8 @@ type Job struct {
 	// UpdateReceived says work came back (a head or a pull request) with no preview to review
 	// yet; ready for review still needs a preview.
 	UpdateReceived bool `json:"update_received"`
+	// MergeWarning says a pull request was merged on GitHub that is not the approved commit.
+	MergeWarning string `json:"merge_warning,omitempty"`
 	// approvalCard is the open approval card and approvalHead the head it shows.
 	approvalCard, approvalHead string
 	Rounds                     []Round `json:"rounds"`
@@ -163,14 +165,14 @@ func (s *store) create(ctx context.Context, title, brief, refs string) (Job, err
 	return j, nil
 }
 
-const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, approval_card, approval_head, approved_head, approved_at, update_received, created_at, updated_at`
+const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, approval_card, approval_head, approved_head, approved_at, update_received, merge_warning, created_at, updated_at`
 
 func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var announced, update int
 	err := sc.Scan(&j.ID, &j.Title, &j.Brief, &j.Refs, &j.Branch, &j.PRURL, &j.PreviewURL, &j.BaseURL, &j.Status, &j.TaskID,
 		&j.HeadSHA, &j.TaskStatus, &j.TaskComment, &j.TaskChecked, &j.InboxChecked, &announced,
-		&j.approvalCard, &j.approvalHead, &j.ApprovedHead, &j.ApprovedAt, &update, &j.Created, &j.Updated)
+		&j.approvalCard, &j.approvalHead, &j.ApprovedHead, &j.ApprovedAt, &update, &j.MergeWarning, &j.Created, &j.Updated)
 	j.announced = announced == 1
 	j.UpdateReceived = update == 1
 	return j, err
@@ -577,7 +579,7 @@ func (s *store) approve(ctx context.Context, id, card, head string) (bool, error
 		return false, nil
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status = ?, approved_head = ?, approved_at = ?, approval_card = '', approval_head = '', update_received = 0, updated_at = ?
-		WHERE id = ? AND approval_card = ? AND approval_head = ? AND head_sha = ? AND status NOT IN ('approved', 'merged')`,
+		WHERE id = ? AND approval_card = ? AND approval_head = ? AND head_sha = ? AND status IN ('requested', 'in progress', 'ready for review', 'changes requested')`,
 		StatusApproved, head, stamp(), stamp(), id, card, head, head)
 	if err != nil {
 		return false, err
@@ -590,6 +592,27 @@ func (s *store) approve(ctx context.Context, id, card, head string) (bool, error
 func (s *store) roundSent(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET update_received = 0 WHERE id = ?`, id)
 	return err
+}
+
+// mergeApproved moves an approved job to merged, only if it is still approved at head.
+func (s *store) mergeApproved(ctx context.Context, id, head string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status = ?, updated_at = ? WHERE id = ? AND status = ? AND approved_head = ? AND approved_head <> ''`,
+		StatusMerged, stamp(), id, StatusApproved, head)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// warnMerge records a merge warning once. It says whether it is new.
+func (s *store) warnMerge(ctx context.Context, id, warning string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET merge_warning = ? WHERE id = ? AND merge_warning <> ?`, warning, id, warning)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // dropApproval clears the open approval card if it is still card.

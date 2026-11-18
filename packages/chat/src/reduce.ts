@@ -47,6 +47,12 @@ export interface ChatState {
   /** A question waiting for the person. */
   approval: Approval | null
   error: string
+  /** On the conversation wire: the last event taken, so a reconnect resumes after it. */
+  cursor?: number
+  /** On the conversation wire: the attachment that may type now, or null when nobody holds it. */
+  holder?: string | null
+  /** On the conversation wire: rises when the agent's side was replaced. */
+  generation?: number
 }
 
 export const initialState: ChatState = {

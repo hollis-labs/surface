@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/desk"
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/module"
@@ -46,6 +47,11 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("POST /api/marks", s.addMark)
 	mux.HandleFunc("POST /api/marks/{id}/replies", s.replyMark)
 	mux.HandleFunc("POST /api/marks/{id}/resolve", s.resolveMark)
+
+	mux.HandleFunc("GET /api/cards", s.cards)
+	mux.HandleFunc("POST /api/cards", s.showCard)
+	mux.HandleFunc("GET /api/cards/{id}", s.card)
+	mux.HandleFunc("POST /api/cards/{id}/response", s.respondCard)
 
 	mux.HandleFunc("GET /api/layouts", s.layouts)
 	mux.HandleFunc("POST /api/layouts", s.saveLayout)
@@ -328,6 +334,67 @@ func (s *server) resolveMark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, map[string]bool{"ok": true})
+}
+
+// cards lists the open cards; with ?all=1 the closed ones as well.
+func (s *server) cards(w http.ResponseWriter, r *http.Request) {
+	out, err := s.a.Cards().List(r.Context(), r.URL.Query().Get("all") != "")
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	ok(w, out)
+}
+
+// showCard lets an outside client (a script, another agent) put a card in front of the user.
+func (s *server) showCard(w http.ResponseWriter, r *http.Request) {
+	var c module.Card
+	if err := read(r, &c); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if c.Source == "" {
+		c.Source = "api"
+	}
+	out, err := s.a.Cards().Show(r.Context(), c)
+	if err != nil {
+		fail(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	ok(w, out)
+}
+
+func (s *server) card(w http.ResponseWriter, r *http.Request) {
+	c, found, err := s.a.Cards().Get(r.Context(), r.PathValue("id"))
+	switch {
+	case err != nil:
+		fail(w, http.StatusInternalServerError, err)
+	case !found:
+		fail(w, http.StatusNotFound, cards.ErrNotFound)
+	default:
+		ok(w, c)
+	}
+}
+
+// respondCard records the user's answer. A card that is no longer open answers 409 with
+// the card as it stands, so the page can show what happened instead.
+func (s *server) respondCard(w http.ResponseWriter, r *http.Request) {
+	var o module.CardOutcome
+	if err := read(r, &o); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	c, err := s.a.Cards().Respond(r.Context(), r.PathValue("id"), o)
+	switch {
+	case errors.Is(err, cards.ErrClosed):
+		write(w, http.StatusConflict, map[string]any{"error": err.Error(), "card": c})
+	case errors.Is(err, cards.ErrNotFound):
+		fail(w, http.StatusNotFound, err)
+	case err != nil:
+		fail(w, http.StatusUnprocessableEntity, err)
+	default:
+		ok(w, c)
+	}
 }
 
 func (s *server) layouts(w http.ResponseWriter, r *http.Request) {

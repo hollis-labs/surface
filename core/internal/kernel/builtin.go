@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/desk"
 	"github.com/hollis-labs/surface/module"
 )
@@ -24,6 +26,7 @@ var coreViews = []module.View{
 	{ID: "surface.settings", Title: "Settings", Icon: "settings", Width: 640, Height: 620, Menu: true, Render: module.Component("surface/settings")},
 	{ID: "surface.layouts", Title: "Layouts", Icon: "layout-dashboard", Width: 520, Height: 560, Menu: true, Render: module.Component("surface/layouts")},
 	{ID: "surface.marks", Title: "Marks", Icon: "message-square-quote", Width: 480, Height: 600, Menu: true, Render: module.Component("surface/marks")},
+	{ID: "surface.cards", Title: "Cards", Icon: "gallery-vertical-end", Width: 480, Height: 640, Menu: true, Render: module.Component("surface/cards")},
 }
 
 func schema(s string) json.RawMessage { return json.RawMessage(s) }
@@ -374,6 +377,97 @@ func coreTools(a *App) []module.Tool {
 					return "done", nil
 				}
 				return out, nil
+			}},
+		{Name: "card_show", Level: module.LevelAct,
+			Description: "Put a card in front of the user, outside the conversation's text: a notice, progress on long work, or a plan. It does not wait for an answer; use card_ask to ask something. kind and payload: info {body, tone?: info|success|warning}; error {body, detail?}; progress {label?, value?, max?, status?: running|done|failed, detail?}; plan {steps: [{id, title, status?: pending|active|done|skipped, detail?}]}. Give a subject (what it is about) to have a later card of the same kind replace this one, and keep the id to update it with card_update.",
+			Input:       schema(`{"type":"object","required":["kind"],"properties":{"kind":{"type":"string","enum":["info","error","progress","plan"]},"title":{"type":"string"},"subject":{"type":"string"},"payload":{"type":"object"}}}`),
+			Describe:    func(json.RawMessage) string { return "Show a card" },
+			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
+				in, err := decode[module.Card](raw)
+				if err != nil {
+					return nil, err
+				}
+				if cards.Answerable(in.Kind) {
+					return nil, fmt.Errorf("a %s card asks the user something: use card_ask", in.Kind)
+				}
+				in.Source = "agent"
+				c, err := a.cards.Show(ctx, in)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"id": c.ID}, nil
+			}},
+		{Name: "card_ask", Level: module.LevelAct,
+			Description: "Ask the user something with a card and wait for the answer. Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. The result has status (submitted, canceled, expired) and the answer: data for a form, answers for prompt and choice, decisions for approval. canceled means the user declined: do not ask again unasked.",
+			Input:       schema(`{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
+			Describe:    func(json.RawMessage) string { return "Ask you something" },
+			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
+				in, err := decode[struct {
+					module.Card
+					Timeout int `json:"timeout_seconds"`
+				}](raw)
+				if err != nil {
+					return nil, err
+				}
+				if !cards.Answerable(in.Kind) {
+					return nil, fmt.Errorf("a %s card does not ask anything: use card_show", in.Kind)
+				}
+				wait := time.Duration(min(max(in.Timeout, 0), 3600)) * time.Second
+				if wait == 0 {
+					wait = 10 * time.Minute
+				}
+				c := in.Card
+				c.Source, c.Blocking = "agent", true
+				c.ExpiresAt = time.Now().Add(wait).UTC().Format(time.RFC3339)
+				shown, err := a.cards.Show(ctx, c)
+				if err != nil {
+					return nil, err
+				}
+				done, err := a.cards.Await(ctx, shown.ID)
+				if err != nil {
+					// The run was stopped while the card was up: it should not stay open.
+					_, _ = a.cards.End(context.WithoutCancel(ctx), shown.ID, "canceled")
+					return nil, err
+				}
+				out := map[string]any{"id": done.ID, "status": done.Status}
+				if o := done.Outcome; o != nil {
+					if len(o.Data) > 0 {
+						out["data"] = o.Data
+					}
+					if len(o.Answers) > 0 {
+						out["answers"] = o.Answers
+					}
+					if len(o.Decisions) > 0 {
+						out["decisions"] = o.Decisions
+					}
+				}
+				return out, nil
+			}},
+		{Name: "card_update", Level: module.LevelAct,
+			Description: "Change a card you showed with card_show: give the new payload (progress moving on, a plan step done), or end it with status done to close it.",
+			Input:       schema(`{"type":"object","required":["id"],"properties":{"id":{"type":"string"},"title":{"type":"string"},"payload":{"type":"object"},"end":{"type":"boolean","description":"Close the card: it is finished with."}}}`),
+			Describe:    func(json.RawMessage) string { return "Update a card" },
+			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
+				in, err := decode[struct {
+					ID      string          `json:"id"`
+					Title   string          `json:"title"`
+					Payload json.RawMessage `json:"payload"`
+					End     bool            `json:"end"`
+				}](raw)
+				if err != nil {
+					return nil, err
+				}
+				if len(in.Payload) > 0 || in.Title != "" {
+					if _, err := a.cards.Update(ctx, in.ID, in.Title, in.Payload); err != nil {
+						return nil, err
+					}
+				}
+				if in.End {
+					if _, err := a.cards.End(ctx, in.ID, "canceled"); err != nil {
+						return nil, err
+					}
+				}
+				return "done", nil
 			}},
 		{Name: "marks_list", Level: module.LevelRead,
 			Description: "List the marks (notes pinned to a part of a document, page or file) on a ref, with their replies. With no ref: every open mark.",

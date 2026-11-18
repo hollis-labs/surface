@@ -22,6 +22,43 @@
       ]
     },
     {
+      "name": "app-frame",
+      "type": "registry:ui",
+      "title": "App Frame",
+      "description": "An app's frame: optional bar, rail and resizable side panel around the content. Layout only.",
+      "dependencies": [
+        "cn"
+      ],
+      "registryDependencies": [
+        "@surface/resizable"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/app-frame.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "attention-layer",
+      "type": "registry:ui",
+      "title": "Attention Layer",
+      "description": "Rings, a spotlight, arrows and a note over the whole window, at rectangles the caller resolves. Takes no input.",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/attention-layer.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "avatar",
       "type": "registry:ui",
       "title": "Avatar",
@@ -80,6 +117,207 @@
       "files": [
         {
           "path": "registry/ui/button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-approval",
+      "type": "registry:ui",
+      "title": "Card Approval",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/badge",
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/input",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-approval.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-choice",
+      "type": "registry:ui",
+      "title": "Card Choice",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/input",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-choice.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-confirm",
+      "type": "registry:ui",
+      "title": "Card Confirm",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-confirm.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-form",
+      "type": "registry:ui",
+      "title": "Card Form",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/checkbox",
+        "@surface/field",
+        "@surface/input",
+        "@surface/select",
+        "@surface/spinner",
+        "@surface/switch",
+        "@surface/textarea"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-form.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-frame",
+      "type": "registry:ui",
+      "title": "Card Frame",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/badge",
+        "@surface/button",
+        "@surface/card",
+        "@surface/markdown"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-frame.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-miss",
+      "type": "registry:ui",
+      "title": "Card Miss",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/card-frame"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-miss.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-notice",
+      "type": "registry:ui",
+      "title": "Card Notice",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/card-frame"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-notice.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-plan",
+      "type": "registry:ui",
+      "title": "Card Plan",
+      "dependencies": [
+        "cn",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/card-frame",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-plan.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-progress",
+      "type": "registry:ui",
+      "title": "Card Progress",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/card-frame",
+        "@surface/progress",
+        "@surface/spinner"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-progress.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-prompt",
+      "type": "registry:ui",
+      "title": "Card Prompt",
+      "dependencies": [
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/card-frame",
+        "@surface/input",
+        "@surface/spinner",
+        "@surface/textarea"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/card-prompt.tsx",
           "type": "registry:ui"
         }
       ]
@@ -248,6 +486,25 @@
       "files": [
         {
           "path": "registry/ui/field.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "guide-bar",
+      "type": "registry:ui",
+      "title": "Guide Bar",
+      "description": "A guide's caption, progress and controls (back, next or skip, pause or resume, stop). Draws only; the caller owns the guide.",
+      "dependencies": [
+        "cn"
+      ],
+      "registryDependencies": [
+        "@surface/button",
+        "@surface/progress"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/guide-bar.tsx",
           "type": "registry:ui"
         }
       ]

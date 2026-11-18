@@ -19,6 +19,7 @@
     "paths": {
       "@surface/sdk": ["src/sdk/index.ts"],
       "@surface/chat": ["../packages/chat/src/index.ts"],
+      "@surface/cards": ["../packages/cards/src/index.ts"],
       "@surface/app": ["src/generated/desk.ts"],
       "@/*": ["src/*"]
     }

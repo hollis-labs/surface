@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-approval",
+  "title": "Card Approval",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@surface/badge",
+    "@surface/button",
+    "@surface/card-frame",
+    "@surface/input",
+    "@surface/spinner"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/card-approval.tsx",
+      "content": "\"use client\"\n\nimport { ArrowRightIcon, ShieldAlertIcon, ShieldCheckIcon } from \"lucide-react\"\nimport * as React from \"react\"\n\nimport { Badge } from \"@/components/ui/badge\"\nimport { Button } from \"@/components/ui/button\"\nimport { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardRespond } from \"@/components/ui/card-frame\"\nimport { Input } from \"@/components/ui/input\"\nimport { Spinner } from \"@/components/ui/spinner\"\n\n/**\n * A request to approve something consequential: what will change, how risky it is, who\n * asked. A high-risk approval makes the person type a phrase first. A risk the card does\n * not know is treated as high. Surface's own.\n */\ninterface CardApprovalChange {\n  label: string\n  before?: string\n  after?: string\n}\n\ninterface CardApprovalProps extends AnswerableCardProps {\n  summary?: string\n  risk?: string\n  changes?: CardApprovalChange[]\n  requestedBy?: string\n  /** The phrase a high-risk approval asks the person to type. */\n  phrase?: string\n  approveLabel?: string\n  rejectLabel?: string\n}\n\nfunction CardApproval({ title, summary, risk = \"low\", changes = [], requestedBy, phrase = \"approve\", approveLabel = \"Approve\", rejectLabel = \"Reject\", className, ...a }: CardApprovalProps) {\n  const { disabled, working, respond } = useCardRespond(a)\n  const [typed, setTyped] = React.useState(\"\")\n  const level = risk === \"low\" || risk === \"medium\" ? risk : \"high\"\n  const armed = level !== \"high\" || typed.trim().toLowerCase() === phrase.toLowerCase()\n  const decide = (action: \"approve\" | \"reject\") => void respond({ status: \"submitted\", decisions: [{ itemId: \"approval\", action }] })\n  const open = a.state === \"open\" || a.state === \"pending\"\n  return (\n    <CardFrame\n      data-slot=\"card-approval\"\n      title={title ?? \"Approval needed\"}\n      icon={level === \"low\" ? <ShieldCheckIcon /> : <ShieldAlertIcon className={level === \"high\" ? \"text-destructive\" : \"text-warning\"} />}\n      tone={level === \"high\" ? \"danger\" : level === \"medium\" ? \"warning\" : \"default\"}\n      meta={\n        <>\n          <Badge variant={level === \"high\" ? \"destructive\" : \"outline\"}>{level} risk</Badge>\n          <CardStatus state={a.state} />\n        </>\n      }\n      className={className}\n      footer={\n        <CardFoot {...a}>\n          <Button variant=\"outline\" size=\"sm\" disabled={disabled} onClick={() => decide(\"reject\")}>\n            {rejectLabel}\n          </Button>\n          <Button variant={level === \"high\" ? \"destructive\" : \"default\"} size=\"sm\" disabled={disabled || !armed} onClick={() => decide(\"approve\")}>\n            {working && <Spinner />}\n            {approveLabel}\n          </Button>\n        </CardFoot>\n      }\n    >\n      <CardBody className=\"text-foreground\">{summary}</CardBody>\n      {changes.length > 0 && (\n        <dl className=\"flex flex-col gap-1.5 rounded-md border p-2 text-xs\">\n          {changes.map((c) => (\n            <div key={c.label} className=\"flex flex-col gap-0.5\">\n              <dt className=\"text-muted-foreground\">{c.label}</dt>\n              <dd className=\"flex min-w-0 flex-wrap items-center gap-1.5 font-mono\">\n                {c.before !== undefined && <span className=\"text-muted-foreground line-through\">{c.before}</span>}\n                {c.before !== undefined && c.after !== undefined && <ArrowRightIcon className=\"size-3 shrink-0 text-muted-foreground\" />}\n                {c.after !== undefined && <span>{c.after}</span>}\n              </dd>\n            </div>\n          ))}\n        </dl>\n      )}\n      {requestedBy && <p className=\"text-xs text-muted-foreground\">Asked by {requestedBy}</p>}\n      {open && level === \"high\" && (\n        <label className=\"flex flex-col gap-1.5 text-xs text-muted-foreground\">\n          <span>\n            Type <span className=\"font-mono text-foreground\">{phrase}</span> to approve.\n          </span>\n          <Input value={typed} disabled={disabled} autoComplete=\"off\" onChange={(e) => setTyped(e.target.value)} />\n        </label>\n      )}\n    </CardFrame>\n  )\n}\n\nexport { CardApproval }\nexport type { CardApprovalChange, CardApprovalProps }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

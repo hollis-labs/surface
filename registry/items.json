@@ -29,5 +29,17 @@
   "tool": {
     "title": "Tool",
     "description": "A plain, folded row for a tool the agent called: its name and status; open, its input and result."
+  },
+  "attention-layer": {
+    "title": "Attention Layer",
+    "description": "Rings, a spotlight, arrows and a note over the whole window, at rectangles the caller resolves. Takes no input."
+  },
+  "guide-bar": {
+    "title": "Guide Bar",
+    "description": "A guide's caption, progress and controls (back, next or skip, pause or resume, stop). Draws only; the caller owns the guide."
+  },
+  "app-frame": {
+    "title": "App Frame",
+    "description": "An app's frame: optional bar, rail and resizable side panel around the content. Layout only."
   }
 }

@@ -29,7 +29,7 @@ type Kernel interface {
 	Config(scope string) module.Config
 
 	// Tools is every tool in the app, bound to the Host of the module that brought it:
-	// each module's own, and the desk's (desk_*, window_context, marks_*).
+	// each module's own, and the desk's (desk_*, window_context, marks_*, card_*).
 	Tools() []BoundTool
 	// Slots is every module's context slots, bound likewise.
 	Slots() []BoundSlot

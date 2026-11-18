@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-plan",
+  "title": "Card Plan",
+  "dependencies": [
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@surface/card-frame",
+    "@surface/spinner"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/card-plan.tsx",
+      "content": "import { CheckIcon, CircleDashedIcon, ListTodoIcon, MinusIcon } from \"lucide-react\"\n\nimport { cn } from \"cn\"\nimport { CardFrame } from \"@/components/ui/card-frame\"\nimport { Spinner } from \"@/components/ui/spinner\"\n\n/** The steps of a piece of work, and where it has got to. Surface's own. */\ninterface CardPlanStep {\n  id: string\n  title: string\n  status?: \"pending\" | \"active\" | \"done\" | \"skipped\"\n  detail?: string\n}\n\ninterface CardPlanProps {\n  title?: string\n  steps: CardPlanStep[]\n  className?: string\n}\n\nfunction CardPlan({ title, steps, className }: CardPlanProps) {\n  const done = steps.filter((s) => s.status === \"done\").length\n  return (\n    <CardFrame\n      data-slot=\"card-plan\"\n      title={title ?? \"Plan\"}\n      icon={<ListTodoIcon />}\n      meta={<span className=\"text-xs text-muted-foreground tabular-nums\">{done} of {steps.length}</span>}\n      className={className}\n    >\n      <ol className=\"flex flex-col gap-1.5\">\n        {steps.map((s) => {\n          const status = s.status ?? \"pending\"\n          return (\n            <li key={s.id} data-status={status} className=\"flex items-start gap-2 text-sm\">\n              <span className=\"mt-0.5 flex size-4 shrink-0 items-center justify-center text-muted-foreground\">\n                {status === \"done\" ? <CheckIcon className=\"size-4 text-success\" /> : status === \"active\" ? <Spinner className=\"size-3.5\" /> : status === \"skipped\" ? <MinusIcon className=\"size-4\" /> : <CircleDashedIcon className=\"size-4\" />}\n              </span>\n              <span className=\"flex min-w-0 flex-col\">\n                <span className={cn(status === \"done\" && \"text-muted-foreground\", status === \"skipped\" && \"text-muted-foreground line-through\", status === \"active\" && \"font-medium\")}>{s.title}</span>\n                {s.detail && <span className=\"text-xs text-muted-foreground\">{s.detail}</span>}\n              </span>\n            </li>\n          )\n        })}\n      </ol>\n    </CardFrame>\n  )\n}\n\nexport { CardPlan }\nexport type { CardPlanProps, CardPlanStep }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

@@ -9,12 +9,75 @@ import { Markdown } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
 import { Spinner } from "@/components/ui/spinner"
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ui/tool"
+import { CardView } from "../cards/renderers"
+import { type ServerCard, useCard } from "../cards/store"
 
 type Of<K extends ChatItem["kind"]> = Extract<ChatItem, { kind: K }>
 export type ToolItem = Of<"tool">
 
-/** Tool name → the card that draws its calls. Empty until the cards step. */
-export const toolCards: Record<string, ComponentType<{ item: ToolItem }>> = {}
+/**
+ * A card the agent raised, in the conversation. While the agent waits, the card itself is
+ * docked above the composer and the conversation only says a question is up; once it is
+ * answered the card is drawn here, closed, with what was answered.
+ */
+function AskedCard({ item }: { item: ToolItem }) {
+  const input = (item.input ?? {}) as {
+    kind?: string
+    title?: string
+    risk?: string
+    payload?: Record<string, unknown>
+  }
+  let result: { id?: string; status?: string; data?: Record<string, unknown>; answers?: never[]; decisions?: never[] } =
+    {}
+  try {
+    if (item.result) result = JSON.parse(item.result)
+  } catch {
+    // The result is not the tool's JSON (an error message): the plain row shows it.
+  }
+  const live = useCard(result.id ?? "")
+  if (item.status === "error") return <ToolRow item={item} />
+  if (item.status === "running" || !input.kind) {
+    return (
+      <MessageNotice className="flex items-center gap-1.5">
+        <Spinner className="size-3" /> Waiting on your answer{input.title ? `: ${input.title}` : ""}
+      </MessageNotice>
+    )
+  }
+  const card: ServerCard = live ?? {
+    id: result.id ?? item.id,
+    kind: input.kind,
+    title: input.title,
+    risk: input.risk,
+    payload: input.payload,
+    status: result.status || "submitted",
+    outcome:
+      result.status === "submitted"
+        ? { status: "submitted", data: result.data, answers: result.answers, decisions: result.decisions }
+        : undefined,
+  }
+  return <CardView card={card} />
+}
+
+/** A card the agent showed or changed without waiting: a quiet line; the card is in the dock. */
+function ShownCard({ item }: { item: ToolItem }) {
+  const input = (item.input ?? {}) as { kind?: string; title?: string; end?: boolean }
+  if (item.status === "error") return <ToolRow item={item} />
+  const what =
+    item.name === "card_update" ? (input.end ? "Closed a card" : "Updated a card") : `Showed a ${input.kind ?? ""} card`
+  return (
+    <MessageNotice>
+      {what}
+      {input.title ? `: ${input.title}` : ""}
+    </MessageNotice>
+  )
+}
+
+/** Tool name → the card that draws its calls. */
+export const toolCards: Record<string, ComponentType<{ item: ToolItem }>> = {
+  card_ask: AskedCard,
+  card_show: ShownCard,
+  card_update: ShownCard,
+}
 
 function ToolRow({ item }: { item: ToolItem }) {
   return (

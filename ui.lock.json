@@ -7,6 +7,16 @@
         "web/src/components/ui/alert-dialog.tsx": "d39348ea094dea9b83ecf1baac1cd0ef98b73944bcca1e592da04fd30f452787"
       }
     },
+    "app-frame": {
+      "files": {
+        "web/src/components/ui/app-frame.tsx": "fba70b7f3c8e491abc0a64be6f6ded34e79da722d4e05e4f06339aa8beaf1078"
+      }
+    },
+    "attention-layer": {
+      "files": {
+        "web/src/components/ui/attention-layer.tsx": "bcd9bb78582724273e529a081e65160656ec3bf8aa6be49a3b7ac1f699aa303a"
+      }
+    },
     "avatar": {
       "files": {
         "web/src/components/ui/avatar.tsx": "bff76087ea9af25c6aa5a5306088dc66e62204a126752c38561736acff00717f"
@@ -30,6 +40,56 @@
     "card": {
       "files": {
         "web/src/components/ui/card.tsx": "8ad3a18d36bda0598dc0e9aa96ea22854944d5443ee4946f1d173815e115375f"
+      }
+    },
+    "card-approval": {
+      "files": {
+        "web/src/components/ui/card-approval.tsx": "e1308ab4d9e13b79ec08a4d24c2e383e12be9108100922b301a0e854a2f0e31e"
+      }
+    },
+    "card-choice": {
+      "files": {
+        "web/src/components/ui/card-choice.tsx": "9f18fa2808b5dd2a9ac12761b75724756e5163cf01ca8b94e429dd80dc22ece6"
+      }
+    },
+    "card-confirm": {
+      "files": {
+        "web/src/components/ui/card-confirm.tsx": "89577cf45d77bae1362f12c3b3ad129ec8ec85b299774297fb481b0876378a87"
+      }
+    },
+    "card-form": {
+      "files": {
+        "web/src/components/ui/card-form.tsx": "7af822b16e76efa8fc601d8c3564e179d13b2f1864288a8b2c6df61d67199961"
+      }
+    },
+    "card-frame": {
+      "files": {
+        "web/src/components/ui/card-frame.tsx": "a6dba31e1ab8a0336ab6c604bb67cf4e5e78b57c1f7fa731e1382b66c8307eba"
+      }
+    },
+    "card-miss": {
+      "files": {
+        "web/src/components/ui/card-miss.tsx": "6e844939e3bc24f9ec960757e423e32b7b0cacad2e546ebe4f342bc09d206bd5"
+      }
+    },
+    "card-notice": {
+      "files": {
+        "web/src/components/ui/card-notice.tsx": "12b3c9e1764f3169b81265c44616cf9efc59e8ba511b38fa65e8c800e25cfe17"
+      }
+    },
+    "card-plan": {
+      "files": {
+        "web/src/components/ui/card-plan.tsx": "74dcb4c4f7c534c75d762dd2f1e496ef0f6fe3bd9fbeeeee5235f4559f87b9d6"
+      }
+    },
+    "card-progress": {
+      "files": {
+        "web/src/components/ui/card-progress.tsx": "a6b97d34b60e6a5fe7a54f939cce0b0dd938b3c2070fbe1e8c3e9179fc5b83de"
+      }
+    },
+    "card-prompt": {
+      "files": {
+        "web/src/components/ui/card-prompt.tsx": "10208e6e8d13c7e071f4fc4a16f93a0a14b45b265e6b148393e66e7dc256d9e9"
       }
     },
     "checkbox": {
@@ -75,6 +135,11 @@
     "field": {
       "files": {
         "web/src/components/ui/field.tsx": "8e54d2838051eeb741f6925863b690c98928b25bbb26f3cd26a5b75121d06acb"
+      }
+    },
+    "guide-bar": {
+      "files": {
+        "web/src/components/ui/guide-bar.tsx": "a4397722e725c64f143a7b55579a533144cf183b49fe271102216ac8eddf8da0"
       }
     },
     "input": {

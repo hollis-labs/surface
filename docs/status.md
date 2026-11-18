@@ -30,7 +30,8 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 | A plain frame for apps that are not a desk | done: the registry's `app-frame` (bar, rail and a resizable side panel, each optional, around the content). Surface's own page is on it, the agent panel in the side region, its width a live setting |
 | The ADE overlays | done: `attention-layer` and `guide-bar` in the registry, `@hollis-labs/ade-core`'s hub in the page, and the agent's `ade_*` tools (point, spotlight, arrow, guide) on the server; views declare anchors with `useAnchor` |
 | Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Typing redraws only the composer, a token only its message, and the thread is read on one stated policy (`packages/chat/README.md`) |
-| Cards, generated UI | not started |
+| Cards | done | server-held cards (`core/internal/cards`): show, update, answer once, lapse by the server's clock; modules through `Host.Cards()`, the agent through `card_show`, `card_ask` (waits for the answer) and `card_update`; `packages/cards` (engine, outcome contract, form subset, renderer table) and ten `card-*` registry components; the agent's cards dock in its panel, others pop up, a blocking one takes the middle, all in the Cards window |
+| Generated UI | not started | |
 | A baseline palette | undecided; the theme holds shadcn's neutral defaults |
 
 ## Not there yet

@@ -27,6 +27,9 @@ type Host interface {
 	Events() Events
 	// Marks are the collaboration marks: notes pinned to a part of something.
 	Marks() Marks
+	// Cards are what the app shows the user outside a window: a notice, a question, a
+	// request to approve, progress.
+	Cards() Cards
 	// Handle serves an HTTP handler for the module's views at /api/m/<id>/<pattern>.
 	// pattern is a net/http pattern without the prefix ("GET /items/{id}"). Call it from
 	// Start; routes cannot be added once the app serves.
@@ -218,4 +221,88 @@ type Marks interface {
 	List(ctx context.Context, ref string) ([]Mark, error)
 	Reply(ctx context.Context, id string, r MarkReply) (Mark, error)
 	Resolve(ctx context.Context, id string) error
+}
+
+// Card is something shown to the user outside a window: a notice, a question, a request to
+// approve, progress on work. The sender says what it is (Kind and Payload); the page picks
+// how it is drawn and where. What the user answers comes back as its Outcome. The server
+// holds the card's state: a card is open until it has a Status.
+type Card struct {
+	ID string `json:"id"`
+	// Kind names the card's shape. The core's own are "info", "error", "confirm", "prompt",
+	// "choice", "form", "approval", "progress" and "plan"; a module may show a kind of its
+	// own, which the page draws with the renderer registered for it.
+	Kind string `json:"kind"`
+	// Version is the version of the kind's payload. Empty means "1".
+	Version string `json:"version,omitempty"`
+	Title   string `json:"title,omitempty"`
+	// Source is who showed it: a module's id, or "agent".
+	Source string `json:"source,omitempty"`
+	// Subject is what the card is about (a run, a file). A new card with the same kind,
+	// source and subject as an open one replaces it.
+	Subject string `json:"subject,omitempty"`
+	// Risk is "low", "medium" or "high", for a card that asks to approve something.
+	Risk string `json:"risk,omitempty"`
+	// Blocking says the sender is waiting on the answer.
+	Blocking bool `json:"blocking,omitempty"`
+	// Payload is the kind's own content.
+	Payload json.RawMessage `json:"payload,omitempty"`
+	// Status is empty while the card is open, then "submitted", "canceled", "expired",
+	// "superseded" or "failed".
+	Status string `json:"status,omitempty"`
+	// Outcome is what the user answered, once they have.
+	Outcome *CardOutcome `json:"outcome,omitempty"`
+	// Revision counts changes, so a page can tell a newer card from an older one.
+	Revision int `json:"revision,omitempty"`
+	// SupersededBy is the id of the card that replaced this one.
+	SupersededBy string `json:"superseded_by,omitempty"`
+	Created      string `json:"created,omitempty"`
+	Updated      string `json:"updated,omitempty"`
+	Responded    string `json:"responded,omitempty"`
+	// ExpiresAt is when an unanswered card lapses (RFC 3339). Empty: it does not.
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
+
+// CardOutcome is what the user did with a card: answered it ("submitted") or declined
+// ("canceled"). The three channels are kept apart because they are different things:
+// free-form data (a form's values), answers to questions, and decisions about items.
+type CardOutcome struct {
+	Status    string         `json:"status"`
+	Data      map[string]any `json:"data,omitempty"`
+	Answers   []CardAnswer   `json:"answers,omitempty"`
+	Decisions []CardDecision `json:"decisions,omitempty"`
+}
+
+// CardAnswer is one answer to one question.
+type CardAnswer struct {
+	QuestionID string `json:"questionId"`
+	Value      any    `json:"value"`
+	Note       string `json:"note,omitempty"`
+}
+
+// CardDecision is one decision about one item ("approve", "reject", "skip").
+type CardDecision struct {
+	ItemID string `json:"itemId"`
+	Action string `json:"action"`
+	Note   string `json:"note,omitempty"`
+}
+
+// Cards shows cards to the user and reads what they answered.
+type Cards interface {
+	// Show puts a card in front of the user and returns it with its id.
+	Show(ctx context.Context, c Card) (Card, error)
+	// Update replaces an open card's payload (progress moving on), and its title when one
+	// is given.
+	Update(ctx context.Context, id string, title string, payload json.RawMessage) (Card, error)
+	// End closes a card from the sender's side: status is "superseded", "expired",
+	// "canceled" or "failed". A card already closed is returned as it is.
+	End(ctx context.Context, id, status string) (Card, error)
+	// Respond records the user's answer. A card that is no longer open refuses it.
+	Respond(ctx context.Context, id string, o CardOutcome) (Card, error)
+	// Await returns the card once it is closed, or when ctx ends.
+	Await(ctx context.Context, id string) (Card, error)
+	Get(ctx context.Context, id string) (Card, bool, error)
+	// List returns the open cards, oldest first; with all, the closed ones as well
+	// (newest 200).
+	List(ctx context.Context, all bool) ([]Card, error)
 }

@@ -1,0 +1,13 @@
+{
+  "name": "@surface/cards",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cards without any styling: the outcome a card reports and the status it reads back, a lifecycle engine that decides where each card shows, a form compiled from a JSON Schema subset, and a table of renderers by kind and version. Visuals are the @surface registry's card components.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

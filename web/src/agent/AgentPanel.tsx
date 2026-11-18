@@ -12,6 +12,7 @@
  * here as an "agent.context" event whenever the window in front changes. The page sends no
  * context and no tools of its own.
  */
+
 import {
   type ChatStore,
   createChatStore,
@@ -38,6 +39,7 @@ import { Label } from "@/components/ui/label"
 import { MessageNotice } from "@/components/ui/message"
 import { PromptInput, PromptInputFooter, PromptInputSubmit, PromptInputTextarea } from "@/components/ui/prompt-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CardDock } from "../cards/views"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
 import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
 import { ItemView } from "./items"
@@ -84,6 +86,7 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
       <ContextStrip store={store} />
       <ChatHeader store={store} title={title} />
       <Thread store={store} />
+      <CardDock />
       <ApprovalBar store={store} />
       <Composer store={store} />
     </div>

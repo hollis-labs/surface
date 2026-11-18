@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/config"
 	"github.com/hollis-labs/surface/core/internal/desk"
 	"github.com/hollis-labs/surface/core/internal/events"
@@ -50,6 +51,7 @@ type App struct {
 	cfg   *config.Store
 	desk  *desk.Desk
 	marks *marks.Store
+	cards *cards.Store
 
 	mods     []*host
 	byModule map[string]*host
@@ -117,6 +119,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, a.fail(err)
 	}
 	a.marks = marks.New(a.db, a.bus)
+	a.cards = cards.New(a.db, a.bus)
 
 	ids := o.Modules
 	if ids == nil {
@@ -352,6 +355,9 @@ func (a *App) Bus() *events.Bus { return a.bus }
 // Marks are the collaboration marks.
 func (a *App) Marks() module.Marks { return a.marks }
 
+// Cards are what the app shows the user outside a window.
+func (a *App) Cards() module.Cards { return a.cards }
+
 // Config is one scope's live settings.
 func (a *App) Config(scope string) module.Config { return a.cfg.Scoped(scope) }
 
@@ -465,6 +471,7 @@ func (h *host) DataDir() string       { return h.dir }
 func (h *host) Config() module.Config { return h.app.cfg.Scoped(h.id) }
 func (h *host) Events() module.Events { return h.app.bus }
 func (h *host) Marks() module.Marks   { return h.app.marks }
+func (h *host) Cards() module.Cards   { return h.app.cards }
 func (h *host) RunCommand(ctx context.Context, id string, args map[string]any) (any, error) {
 	return h.app.RunCommand(ctx, id, args)
 }

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-choice",
+  "title": "Card Choice",
+  "dependencies": [
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@surface/button",
+    "@surface/card-frame",
+    "@surface/input",
+    "@surface/spinner"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/card-choice.tsx",
+      "content": "\"use client\"\n\nimport { CheckIcon, ListChecksIcon } from \"lucide-react\"\nimport * as React from \"react\"\n\nimport { cn } from \"cn\"\nimport { Button } from \"@/components/ui/button\"\nimport { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardRespond } from \"@/components/ui/card-frame\"\nimport { Input } from \"@/components/ui/input\"\nimport { Spinner } from \"@/components/ui/spinner\"\n\n/** Pick one of a few options, or several, or write another. Surface's own. */\ninterface CardChoiceOption {\n  id: string\n  label: string\n  description?: string\n}\n\ninterface CardChoiceProps extends AnswerableCardProps {\n  question: string\n  body?: string\n  options: CardChoiceOption[]\n  /** More than one may be picked. */\n  multiple?: boolean\n  /** The person may write an answer that is not on the list. */\n  allowOther?: boolean\n}\n\nfunction CardChoice({ title, question, body, options, multiple, allowOther, className, ...a }: CardChoiceProps) {\n  const { disabled, working, respond } = useCardRespond(a)\n  const [picked, setPicked] = React.useState<string[]>([])\n  const [other, setOther] = React.useState(\"\")\n  const toggle = (id: string) =>\n    setPicked((was) => (multiple ? (was.includes(id) ? was.filter((x) => x !== id) : [...was, id]) : was.includes(id) ? [] : [id]))\n  const otherOn = picked.includes(\"other\")\n  const ready = picked.length > 0 && (!otherOn || other.trim() !== \"\")\n  const send = () =>\n    void respond({\n      status: \"submitted\",\n      answers: [{ questionId: \"choice\", value: multiple ? picked : picked[0], ...(otherOn ? { note: other.trim() } : {}) }],\n    })\n  const open = a.state === \"open\" || a.state === \"pending\"\n  const all = allowOther ? [...options, { id: \"other\", label: \"Something else\" }] : options\n  return (\n    <CardFrame\n      data-slot=\"card-choice\"\n      title={title ?? \"A choice\"}\n      icon={<ListChecksIcon />}\n      meta={<CardStatus state={a.state} />}\n      className={className}\n      footer={\n        <CardFoot {...a}>\n          <Button variant=\"outline\" size=\"sm\" disabled={disabled} onClick={() => void respond({ status: \"canceled\" })}>\n            Skip\n          </Button>\n          <Button size=\"sm\" disabled={disabled || !ready} onClick={send}>\n            {working && <Spinner />}\n            {multiple ? \"Choose these\" : \"Choose\"}\n          </Button>\n        </CardFoot>\n      }\n    >\n      <CardBody>{body}</CardBody>\n      <p className=\"text-sm font-medium\">{question}</p>\n      {open && (\n        <fieldset className=\"flex flex-col gap-1.5\" aria-label={question}>\n          {all.map((o) => {\n            const on = picked.includes(o.id)\n            return (\n              <Button\n                key={o.id}\n                variant=\"outline\"\n                role={multiple ? \"checkbox\" : \"radio\"}\n                aria-checked={on}\n                disabled={disabled}\n                className={cn(\"h-auto justify-start gap-2 px-2.5 py-1.5 text-left whitespace-normal\", on && \"border-ring bg-muted\")}\n                onClick={() => toggle(o.id)}\n              >\n                <span className={cn(\"flex size-4 shrink-0 items-center justify-center rounded-full border\", multiple && \"rounded-[4px]\", on && \"border-primary bg-primary text-primary-foreground\")}>\n                  {on && <CheckIcon className=\"size-3\" />}\n                </span>\n                <span className=\"flex min-w-0 flex-col\">\n                  <span>{o.label}</span>\n                  {o.description && <span className=\"text-xs font-normal text-muted-foreground\">{o.description}</span>}\n                </span>\n              </Button>\n            )\n          })}\n          {otherOn && (\n            <Input autoFocus value={other} placeholder=\"Say what\" disabled={disabled} aria-label=\"Something else\" onChange={(e) => setOther(e.target.value)} />\n          )}\n        </fieldset>\n      )}\n    </CardFrame>\n  )\n}\n\nexport { CardChoice }\nexport type { CardChoiceOption, CardChoiceProps }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

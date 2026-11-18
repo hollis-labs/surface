@@ -1,6 +1,7 @@
 import { modules } from "@surface/app"
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { CardHost } from "./cards/views"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
 import { loadManifest } from "./desk/store"
@@ -31,7 +32,12 @@ function Boot() {
       </div>
     )
   if (!ready) return <div className="grid h-full place-items-center text-muted-foreground">…</div>
-  return <Desktop modules={{ ...modules, surface: coreWeb }} />
+  return (
+    <>
+      <Desktop modules={{ ...modules, surface: coreWeb }} />
+      <CardHost />
+    </>
+  )
 }
 
 const root = document.getElementById("root")

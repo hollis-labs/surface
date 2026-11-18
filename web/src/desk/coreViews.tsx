@@ -1,10 +1,11 @@
-/** The core's own windows: Settings, Layouts and Marks. They are views like any module's. */
+/** The core's own windows: Settings, Layouts, Marks and Cards. They are views like any module's. */
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { CardsWindow } from "../cards/views"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
 import { app, deleteLayout, deskState, type LayoutDef, listLayouts, loadLayout, saveLayout } from "./store"
@@ -245,5 +246,10 @@ function MarkCard({ mark }: { mark: Mark }) {
 }
 
 export const coreWeb: ModuleWeb = {
-  views: { "surface/settings": Settings, "surface/layouts": Layouts, "surface/marks": Marks },
+  views: {
+    "surface/settings": Settings,
+    "surface/layouts": Layouts,
+    "surface/marks": Marks,
+    "surface/cards": CardsWindow,
+  },
 }

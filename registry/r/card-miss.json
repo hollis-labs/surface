@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-miss",
+  "title": "Card Miss",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@surface/card-frame"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/card-miss.tsx",
+      "content": "import { PuzzleIcon } from \"lucide-react\"\n\nimport { CardFrame } from \"@/components/ui/card-frame\"\n\n/**\n * What is drawn for a card this app has no renderer for, or whose renderer threw: it says\n * so, and shows what the card holds, instead of drawing nothing. Surface's own.\n */\ninterface CardMissProps {\n  kind: string\n  version?: string\n  /** Why there is no card: the kind is unknown, the version is, or drawing it failed. */\n  reason: \"unknown-kind\" | \"version-skew\" | \"failed\"\n  title?: string\n  /** The card's content, shown as it came. */\n  payload?: unknown\n  detail?: string\n  className?: string\n}\n\nconst WHY = {\n  \"unknown-kind\": \"This app has no way to draw this kind of card.\",\n  \"version-skew\": \"This card is a version this app does not draw.\",\n  failed: \"This card could not be drawn.\",\n}\n\nfunction CardMiss({ kind, version, reason, title, payload, detail, className }: CardMissProps) {\n  return (\n    <CardFrame\n      data-slot=\"card-miss\"\n      title={title ?? kind}\n      icon={<PuzzleIcon />}\n      tone=\"warning\"\n      meta={<span className=\"font-mono text-xs text-muted-foreground\">{version ? `${kind}@${version}` : kind}</span>}\n      className={className}\n    >\n      <p className=\"text-sm text-muted-foreground\">\n        {WHY[reason]}\n        {detail ? ` ${detail}` : \"\"}\n      </p>\n      {payload !== undefined && (\n        <pre className=\"max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap text-muted-foreground\">\n          {typeof payload === \"string\" ? payload : JSON.stringify(payload, null, 2)}\n        </pre>\n      )}\n    </CardFrame>\n  )\n}\n\nexport { CardMiss }\nexport type { CardMissProps }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

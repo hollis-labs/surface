@@ -46,6 +46,8 @@ type Host struct {
 	DeskState *Desk
 	Bus       *Bus
 	MarkStore *Marks
+	// CardStore records the cards the module showed.
+	CardStore *Cards
 	Settings  *Config
 
 	mu       sync.Mutex
@@ -57,7 +59,7 @@ func New(t testing.TB, m module.Module) *Host {
 	t.Helper()
 	man := m.Manifest()
 	h := &Host{t: t, m: m, man: man, dir: t.TempDir(), mux: http.NewServeMux(),
-		DeskState: newDesk(), Bus: &Bus{}, MarkStore: &Marks{},
+		DeskState: newDesk(), Bus: &Bus{}, MarkStore: &Marks{}, CardStore: &Cards{},
 		commands: map[string]func(context.Context, map[string]any) (any, error){}}
 	h.Settings = &Config{defs: map[string]module.Setting{}, values: map[string]any{}, bus: h.Bus, scope: man.ID}
 	for _, s := range man.Settings {
@@ -164,6 +166,7 @@ func (h *Host) DataDir() string       { return h.dir }
 func (h *Host) Config() module.Config { return h.Settings }
 func (h *Host) Events() module.Events { return h.Bus }
 func (h *Host) Marks() module.Marks   { return h.MarkStore }
+func (h *Host) Cards() module.Cards   { return h.CardStore }
 
 func (h *Host) Handle(pattern string, handler http.Handler) {
 	method, p, ok := strings.Cut(pattern, " ")

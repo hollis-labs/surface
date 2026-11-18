@@ -6,7 +6,7 @@ Surface has one version. A tag `vX.Y.Z` on this repository is, all at once:
 - the Go module version (`go get github.com/hollis-labs/surface@vX.Y.Z`);
 - the version of every npm package: `@hollis-labs/surface-chat`, `-cards`, `-genui`, `-page` and `-ui`.
 
-So "which Surface is this app on" has one answer. Tags and releases are the owner's decision.
+So "which Surface is this app on" has one answer. Releases are run by the release manager (the `hollis-release-manager` GitHub App, acting for an agent with the owner's standing permission) or by the owner.
 
 ## Steps
 
@@ -26,7 +26,9 @@ So "which Surface is this app on" has one answer. Tags and releases are the owne
    gh workflow run release-surface -R hollis-labs/frontend-support -f ref=vX.Y.Z -f dry_run=false
    ```
 
-   The run waits for the owner to approve the environment. Dry run is the default.
+   There is no approval click: the workflow's gate job refuses a dispatcher not in frontend-support's
+   `RELEASE_ACTORS` variable, a tag that is not on this repository's `main`, or a commit whose `ci` did not
+   pass. Dry run is the default.
 4. **Verify.** `npm view @hollis-labs/surface-page version` answers `X.Y.Z` (a new name can 404 for a minute),
    and `go get github.com/hollis-labs/surface@vX.Y.Z` resolves from an empty module.
 

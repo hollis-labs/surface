@@ -183,7 +183,9 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	p := m.gh.progress(ctx, m.h.Config().String("repo"), or(m.h.Config().String("base_branch"), "main"), j.Branch, fresh)
+	repo := m.h.Config().String("repo")
+	// The pull request read is the job's own, by its number, once one is recorded.
+	p := m.gh.progress(ctx, repo, or(m.h.Config().String("base_branch"), "main"), j.Branch, prNumberIn(j.PRURL, repo), fresh)
 	// What the branch says moves the job forward only from the status just read, and fills a
 	// missing pull request only: an owner's write since is never undone.
 	moved := false
@@ -201,9 +203,15 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 	}
 	// A merged pull request counts only as the merge of the approved commit; anything else is
 	// said loudly, once, and changes nothing.
-	switch merged, warning := mergedOnGitHub(j, p.PR); {
+	// For an approved job, also every pull request that contains the approved commit: another
+	// one merged at the same commit is not the approved merge.
+	var atHead []PullRequest
+	if j.Status == StatusApproved && j.ApprovedHead != "" {
+		atHead, _ = m.gh.pullsAt(ctx, repo, j.ApprovedHead, fresh)
+	}
+	switch merged, warning := mergedOnGitHub(j, p.PR, atHead); {
 	case merged:
-		ok, mergeErr := m.st.mergeApproved(ctx, id, p.PR.HeadSHA)
+		ok, mergeErr := m.st.mergeApproved(ctx, id, j.ApprovedHead, j.ApprovedPR)
 		if mergeErr != nil {
 			return View{}, mergeErr
 		}
@@ -215,10 +223,7 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 		}
 		if isNew {
 			moved = true
-			payload, _ := json.Marshal(map[string]any{"body": warning, "tone": "warning"})
-			if _, showErr := m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Merged without approval of this commit: " + j.Title, Source: "design", Subject: ref(id) + ":merge", Payload: payload}); showErr != nil {
-				m.h.Log().Warn("design: the merge warning did not show", "job", id, "err", showErr)
-			}
+			m.mergeNotice(ctx, j, warning)
 		}
 	}
 	if moved {
@@ -233,6 +238,14 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 		return View{}, err
 	}
 	return View{Job: j, Progress: p, Notes: notes}, nil
+}
+
+// mergeNotice raises the merge warning as a notice, once per warning.
+func (m *mod) mergeNotice(ctx context.Context, j Job, warning string) {
+	payload, _ := json.Marshal(map[string]any{"body": warning, "tone": "warning"})
+	if _, err := m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Merged without approval of this commit: " + j.Title, Source: "design", Subject: ref(j.ID) + ":merge", Payload: payload}); err != nil {
+		m.h.Log().Warn("design: the merge warning did not show", "job", j.ID, "err", err)
+	}
 }
 
 // focusedJob is the job whose window is in front, if one is.
@@ -324,6 +337,9 @@ func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, er
 	return map[string]any{"round": n, "notes": len(notes), "outbox": out}, nil
 }
 
+// errNoPR: an approval names a pull request, and none in the repository is recorded.
+var errNoPR = errors.New("no pull request in the repository is recorded for this job, so there is nothing to approve: ask the Designer for a reply with a line pr: <pull request URL> (design_refresh reads it)")
+
 // errNoHead: an approval names a commit, and none is recorded.
 var errNoHead = errors.New("no head is recorded for this job, so there is nothing to approve: ask the Designer for a reply with a line head: <full commit SHA> (design_refresh reads it)")
 
@@ -344,8 +360,12 @@ func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*
 	if j.HeadSHA == "" {
 		return nil, errNoHead
 	}
-	p := m.gh.progress(ctx, m.h.Config().String("repo"), or(m.h.Config().String("base_branch"), "main"), j.Branch, true)
-	if p.Problem == "" && p.Exists && p.Head != "" && !strings.EqualFold(p.Head, j.HeadSHA) { // only a fresh read is compared
+	repo := m.h.Config().String("repo")
+	if prNumberIn(j.PRURL, repo) == 0 {
+		return nil, fmt.Errorf("%w (recorded: %q)", errNoPR, j.PRURL)
+	}
+	p := m.gh.progress(ctx, repo, or(m.h.Config().String("base_branch"), "main"), j.Branch, prNumberIn(j.PRURL, repo), true)
+	if !p.stale && p.Exists && p.Head != "" && !strings.EqualFold(p.Head, j.HeadSHA) { // only a fresh read of the branch is compared
 		why := fmt.Sprintf("GitHub shows %s at %s, but the head the Designer named is %s. Nothing can be approved until the job is refreshed with a reply naming the branch's head.", j.Branch, short(p.Head), short(j.HeadSHA))
 		payload, _ := json.Marshal(map[string]any{"body": why, "tone": "warning"})
 		_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Not approvable yet: " + j.Title, Source: "design", Subject: ref(id), Payload: payload})
@@ -357,10 +377,8 @@ func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*
 		{"label": "Commit", "after": j.HeadSHA},
 		{"label": "Branch", "after": j.Branch},
 	}
-	if j.PRURL != "" {
-		changes = append(changes, map[string]string{"label": "Pull request", "after": j.PRURL})
-	}
-	summary := "Approve “" + j.Title + "” at commit " + short(j.HeadSHA) + "? The Design team is told to merge exactly that commit; a later one needs a new round."
+	changes = append(changes, map[string]string{"label": "Pull request", "after": j.PRURL})
+	summary := "Approve “" + j.Title + "”: " + j.PRURL + " at commit " + short(j.HeadSHA) + "? The Design team is told to merge exactly that pull request at that commit; a later commit needs a new round."
 	if len(notes) > 0 {
 		summary += fmt.Sprintf(" %d note(s) are still open and would not be sent.", len(notes))
 	}
@@ -372,7 +390,7 @@ func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := m.st.pendApproval(ctx, id, card.ID, j.HeadSHA); err != nil {
+	if err := m.st.pendApproval(ctx, id, card.ID, j.HeadSHA, j.PRURL); err != nil {
 		return nil, err
 	}
 	return &card, nil
@@ -402,11 +420,11 @@ func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[stri
 		}
 		return out, nil
 	}
-	head := ""
+	head, pr := "", ""
 	if j.approvalCard == done.ID {
-		head = j.approvalHead
+		head, pr = j.approvalHead, j.approvalPR
 	}
-	ok, err := m.st.approve(ctx, id, done.ID, head)
+	ok, err := m.st.approve(ctx, id, done.ID, head, pr)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +436,7 @@ func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[stri
 	}
 	out := m.deliver(ctx, approvedMessage(j), nil)
 	m.changed(id)
-	return map[string]any{"approved": true, "status": j.Status, "approved_head": j.ApprovedHead, "outbox": out}, nil
+	return map[string]any{"approved": true, "status": j.Status, "approved_head": j.ApprovedHead, "approved_pr": j.ApprovedPR, "outbox": out}, nil
 }
 
 // awaitSettle waits for the owner's answer to card in the background and settles it.
@@ -438,7 +456,7 @@ func (m *mod) awaitSettle(id string, card module.Card) {
 // merged, closed), so no stale card is left to answer; or its head is no longer the job's, and
 // then the owner is asked again on the new head.
 func (m *mod) supersede(ctx context.Context, j Job) {
-	if j.approvalCard == "" || (j.approvalHead == j.HeadSHA && !settled(j.Status)) {
+	if j.approvalCard == "" || (j.approvalHead == j.HeadSHA && j.approvalPR == j.PRURL && !settled(j.Status)) {
 		return
 	}
 	_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")

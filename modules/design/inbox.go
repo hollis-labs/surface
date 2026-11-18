@@ -249,13 +249,27 @@ func (m *mod) check(ctx context.Context, r Reader, j Job) Checked {
 			if len(subject) > maxSubject {
 				subject = strings.ToValidUTF8(subject[:maxSubject], "")
 			}
+			reply := Reply{
+				MessageID: msg.ID, From: msg.From, Subject: subject, Body: body, Sent: msg.Sent, Received: stamp(),
+				PreviewURL: p.Preview, BaseURL: p.Base, PRURL: p.PR, HeadSHA: p.Head, Merged: p.Merged, Closed: p.Closed, Ignored: strings.Join(p.Ignored, "\n"),
+			}
+			// Before a merged: line is taken, what GitHub shows merged at that commit: another pull
+			// request there is not the approved merge.
+			if p.Merged != "" && j.Status == StatusApproved && j.ApprovedPR != "" {
+				if prs, ghErr := m.gh.pullsAt(ctx, cfg.String("repo"), p.Merged, true); ghErr == nil {
+					var others []string
+					for _, pr := range prs {
+						if pr.State == "merged" && !samePR(pr.URL, j.ApprovedPR) {
+							others = append(others, pr.URL)
+						}
+					}
+					reply.OtherMerged = strings.Join(others, ", ")
+				}
+			}
 			// Stored and applied together; marked read only once that is done. On a failure the
 			// message stays unread and this pass stops, so the next one takes it, and the ones
 			// after it, again in order.
-			isNew, ingestErr := m.st.ingest(ctx, j.ID, Reply{
-				MessageID: msg.ID, From: msg.From, Subject: subject, Body: body, Sent: msg.Sent, Received: stamp(),
-				PreviewURL: p.Preview, BaseURL: p.Base, PRURL: p.PR, HeadSHA: p.Head, Merged: p.Merged, Closed: p.Closed, Ignored: strings.Join(p.Ignored, "\n"),
-			})
+			isNew, ingestErr := m.st.ingest(ctx, j.ID, reply)
 			if ingestErr != nil {
 				problems = append(problems, "taking a reply: "+ingestErr.Error())
 				break
@@ -302,8 +316,12 @@ func (m *mod) check(ctx context.Context, r Reader, j Job) Checked {
 	}
 
 	// The status, from a fresh read, moved only forward and only if no one changed it since.
+	warned := j.MergeWarning
 	if cur, err := m.st.get(ctx, j.ID); err == nil {
 		j = cur
+		if j.MergeWarning != "" && j.MergeWarning != warned { // a reply's merged: line was refused
+			m.mergeNotice(ctx, j, j.MergeWarning)
+		}
 		if next := derive(j.Status, j.TaskStatus, j.PreviewURL, false, false); next != j.Status {
 			moved, moveErr := m.st.moveStatus(ctx, j.ID, j.Status, next)
 			if moveErr != nil {

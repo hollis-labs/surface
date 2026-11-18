@@ -28,6 +28,8 @@ type Progress struct {
 	Read    string `json:"read"`
 	// limited: GitHub refused for its rate limit (or the token); the reader backs off.
 	limited bool
+	// stale: an earlier read shown while GitHub is left alone.
+	stale bool
 }
 
 // PullRequest is the part of a pull request a review needs.
@@ -52,7 +54,8 @@ type github struct {
 	mu    sync.Mutex
 	cache map[string]cached
 	// quiet is until when GitHub is not asked again after it refused.
-	quiet time.Time
+	quiet   time.Time
+	atCache map[string]cachedPulls
 }
 
 // backoff is how long GitHub is left alone after it refuses.
@@ -97,8 +100,8 @@ func (g *github) get(ctx context.Context, path string, out any) error {
 
 // progress reads a branch against base. Answers are kept 20 seconds, so a pane that polls
 // and an agent that asks share one read.
-func (g *github) progress(ctx context.Context, repo, base, branch string, fresh bool) Progress {
-	key := repo + "|" + base + "|" + branch
+func (g *github) progress(ctx context.Context, repo, base, branch string, prNumber int, fresh bool) Progress {
+	key := fmt.Sprintf("%s|%s|%s|%d", repo, base, branch, prNumber)
 	g.mu.Lock()
 	c, ok := g.cache[key]
 	if ok && !fresh && time.Since(c.at) < 20*time.Second {
@@ -110,7 +113,7 @@ func (g *github) progress(ctx context.Context, repo, base, branch string, fresh 
 		return lastKnown(c, ok, "GitHub refused (rate limit); not asked again until "+g.quiet.UTC().Format(time.RFC3339))
 	}
 	g.mu.Unlock()
-	p := g.read(ctx, repo, base, branch)
+	p := g.read(ctx, repo, base, branch, prNumber)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if p.limited {
@@ -131,10 +134,13 @@ func lastKnown(c cached, ok bool, why string) Progress {
 	}
 	p := c.p
 	p.Problem = why + "; showing what was read at " + p.Read
+	p.stale = true
 	return p
 }
 
-func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
+// read reads the branch against base, and its pull request: the one numbered prNumber (the
+// job's recorded pull request) when given, else the first opened from the branch.
+func (g *github) read(ctx context.Context, repo, base, branch string, prNumber int) Progress {
 	p := Progress{Files: []string{}, Read: stamp()}
 	if repo == "" || branch == "" {
 		p.Problem = "no repository or branch to read"
@@ -174,50 +180,171 @@ func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
 	for _, f := range cmp.Files {
 		p.Files = append(p.Files, f.Filename)
 	}
-	owner, _, _ := strings.Cut(repo, "/")
-	var prs []struct {
-		Number   int    `json:"number"`
-		HTMLURL  string `json:"html_url"`
-		State    string `json:"state"`
-		Draft    bool   `json:"draft"`
-		Title    string `json:"title"`
-		MergedAt string `json:"merged_at"`
-		Head     struct {
-			SHA string `json:"sha"`
-		} `json:"head"`
+	if prNumber > 0 {
+		var pr ghPull
+		if err := g.get(ctx, fmt.Sprintf("/repos/%s/pulls/%d", repo, prNumber), &pr); err != nil {
+			p.Problem = "the pull request could not be read: " + err.Error()
+			p.limited = errors.Is(err, errRefusedGH)
+			return p
+		}
+		p.PR = pr.toPR()
+		return p
 	}
+	owner, _, _ := strings.Cut(repo, "/")
+	var prs []ghPull
 	if err := g.get(ctx, fmt.Sprintf("/repos/%s/pulls?state=all&head=%s", repo, url.QueryEscape(owner+":"+branch)), &prs); err != nil {
 		p.Problem = "the pull request could not be read: " + err.Error()
 		p.limited = errors.Is(err, errRefusedGH)
 		return p
 	}
 	if len(prs) > 0 {
-		pr := prs[0]
-		state := pr.State
-		if pr.MergedAt != "" {
-			state = "merged"
-		}
-		p.PR = &PullRequest{Number: pr.Number, URL: pr.HTMLURL, State: state, Draft: pr.Draft, Title: pr.Title, HeadSHA: strings.ToLower(pr.Head.SHA)}
+		p.PR = prs[0].toPR()
 	}
 	return p
 }
 
-// mergedOnGitHub reads a merged pull request against the approval. It is the same rule as a
-// merged: line: the job is merged only if it was approved and the merged commit is the approved
-// head. Otherwise it returns a warning naming both commits, and the status stays.
-func mergedOnGitHub(j Job, pr *PullRequest) (merged bool, warning string) {
-	if pr == nil || pr.State != "merged" || j.Status == StatusMerged {
+// ghPull is a pull request as GitHub's REST API gives it.
+type ghPull struct {
+	Number   int    `json:"number"`
+	HTMLURL  string `json:"html_url"`
+	State    string `json:"state"`
+	Draft    bool   `json:"draft"`
+	Title    string `json:"title"`
+	MergedAt string `json:"merged_at"`
+	Head     struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+func (pr ghPull) toPR() *PullRequest {
+	state := pr.State
+	if pr.MergedAt != "" {
+		state = "merged"
+	}
+	return &PullRequest{Number: pr.Number, URL: pr.HTMLURL, State: state, Draft: pr.Draft, Title: pr.Title, HeadSHA: strings.ToLower(pr.Head.SHA)}
+}
+
+// pullsAt lists the pull requests GitHub associates with a commit: what else may have merged it.
+// Answers are kept 20 seconds; while GitHub is being left alone it is not asked.
+func (g *github) pullsAt(ctx context.Context, repo, sha string, fresh bool) ([]PullRequest, error) {
+	key := "at|" + repo + "|" + sha
+	g.mu.Lock()
+	if c, ok := g.atCache[key]; ok && !fresh && time.Since(c.at) < 20*time.Second {
+		g.mu.Unlock()
+		return c.prs, nil
+	}
+	if time.Now().Before(g.quiet) {
+		g.mu.Unlock()
+		return nil, errRefusedGH
+	}
+	g.mu.Unlock()
+	var raw []ghPull
+	if err := g.get(ctx, fmt.Sprintf("/repos/%s/commits/%s/pulls", repo, url.PathEscape(sha)), &raw); err != nil {
+		if errors.Is(err, errRefusedGH) {
+			g.mu.Lock()
+			g.quiet = time.Now().Add(backoff)
+			g.mu.Unlock()
+		}
+		return nil, err
+	}
+	out := make([]PullRequest, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, *r.toPR())
+	}
+	g.mu.Lock()
+	if g.atCache == nil {
+		g.atCache = map[string]cachedPulls{}
+	}
+	g.atCache[key] = cachedPulls{time.Now(), out}
+	g.mu.Unlock()
+	return out, nil
+}
+
+type cachedPulls struct {
+	at  time.Time
+	prs []PullRequest
+}
+
+// prRef reads a GitHub pull request URL: its repository (lower case) and number.
+func prRef(u string) (repo string, n int, ok bool) {
+	pu, err := url.Parse(u)
+	if err != nil || !strings.EqualFold(pu.Host, "github.com") {
+		return "", 0, false
+	}
+	parts := strings.Split(strings.Trim(pu.Path, "/"), "/")
+	if len(parts) != 4 || parts[2] != "pull" {
+		return "", 0, false
+	}
+	if _, err := fmt.Sscanf(parts[3], "%d", &n); err != nil || n <= 0 || fmt.Sprint(n) != parts[3] {
+		return "", 0, false
+	}
+	return strings.ToLower(parts[0] + "/" + parts[1]), n, true
+}
+
+// samePR says two pull request URLs name the same pull request (repository and number).
+func samePR(a, b string) bool {
+	ra, na, oka := prRef(a)
+	rb, nb, okb := prRef(b)
+	return oka && okb && ra == rb && na == nb
+}
+
+// prNumberIn is the number of the job's recorded pull request when it is one in repo, else 0.
+func prNumberIn(u, repo string) int {
+	r, n, ok := prRef(u)
+	if !ok || r != strings.ToLower(repo) {
+		return 0
+	}
+	return n
+}
+
+// mergedOnGitHub reads what GitHub says was merged against the approval: the job's own pull
+// request (pr) and the pull requests that contain the approved commit (atHead). A job is merged
+// only when all three hold: the merged pull request is the approved one (same repository and
+// number), its head is the approved commit, and the job is still approved. Any other merged pull
+// request is a warning naming both pull requests and both commits, and the status stays.
+func mergedOnGitHub(j Job, pr *PullRequest, atHead []PullRequest) (merged bool, warning string) {
+	if j.Status == StatusMerged {
 		return false, ""
 	}
-	switch {
-	case j.ApprovedHead == "":
-		return false, fmt.Sprintf("merged on GitHub without approval of this commit: %s was merged at %s, and the job was never approved", pr.URL, or(pr.HeadSHA, "an unknown commit"))
-	case pr.HeadSHA != j.ApprovedHead:
-		return false, fmt.Sprintf("merged on GitHub without approval of this commit: %s was merged at %s, but the approved commit is %s", pr.URL, or(pr.HeadSHA, "an unknown commit"), j.ApprovedHead)
-	case j.Status != StatusApproved:
-		return false, fmt.Sprintf("merged on GitHub at the approved commit %s, but the job is %s; not moved", j.ApprovedHead, j.Status)
+	var seen []PullRequest
+	if pr != nil {
+		seen = append(seen, *pr)
 	}
-	return true, ""
+	seen = append(seen, atHead...)
+	var warnings []string
+	for _, m := range seen {
+		if m.State != "merged" {
+			continue
+		}
+		switch {
+		case j.ApprovedHead == "":
+			warnings = append(warnings, fmt.Sprintf("%s was merged at %s, and the job was never approved", m.URL, or(m.HeadSHA, "an unknown commit")))
+		case !samePR(m.URL, j.ApprovedPR):
+			warnings = append(warnings, fmt.Sprintf("%s was merged at %s, but the approval is for %s at %s", m.URL, or(m.HeadSHA, "an unknown commit"), or(j.ApprovedPR, "no pull request"), j.ApprovedHead))
+		case m.HeadSHA != j.ApprovedHead:
+			warnings = append(warnings, fmt.Sprintf("%s was merged at %s, but the approved commit is %s", m.URL, or(m.HeadSHA, "an unknown commit"), j.ApprovedHead))
+		case j.Status != StatusApproved:
+			warnings = append(warnings, fmt.Sprintf("%s was merged at the approved commit %s, but the job is %s; not moved", m.URL, j.ApprovedHead, j.Status))
+		default:
+			merged = true
+		}
+	}
+	if merged || len(warnings) == 0 {
+		return merged, ""
+	}
+	return false, "merged on GitHub without approval of this commit: " + strings.Join(dedupe(warnings), "; ")
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	out := in[:0]
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // advance moves a job's status along from what the branch shows. It never moves a job back and

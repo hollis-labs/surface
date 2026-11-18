@@ -1,8 +1,9 @@
 @import "tailwindcss";
 @import "../../registry/theme/surface.css";
+@import "./desk/desk.css";
+
 /* The modules' views live outside the page's root; point Tailwind at them. */
 @source "../../modules";
-@import "./desk/desk.css";
 
 /* Native controls (checkboxes, selects, scrollbars) follow the app's theme, not the OS's. */
 :root {
@@ -21,11 +22,4 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   overflow: hidden;
-}
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
 }

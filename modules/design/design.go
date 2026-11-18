@@ -39,6 +39,7 @@ type mod struct {
 	// every is how often open jobs are checked (tests shorten it); stop ends the checking.
 	every    time.Duration
 	stop     context.CancelFunc
+	life     context.Context // ends at Stop: what the module does on its own runs under it
 	checking sync.Mutex
 }
 
@@ -117,7 +118,7 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m.stop = cancel
+	m.stop, m.life = cancel, ctx
 	go m.poll(ctx, every)
 	return nil
 }
@@ -290,42 +291,70 @@ func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, er
 	if _, err := m.st.update(ctx, id, Change{Status: &st}); err != nil {
 		return nil, err
 	}
+	if err := m.st.roundSent(ctx, id); err != nil {
+		return nil, err
+	}
 	m.changed(id)
 	return map[string]any{"round": n, "notes": len(notes), "outbox": out}, nil
 }
 
-// askApproval puts the approval card in front of the owner. It returns nil when the job is
-// already approved or merged.
+// errNoHead: an approval names a commit, and none is recorded.
+var errNoHead = errors.New("no head is recorded for this job, so there is nothing to approve: ask the Designer for a reply with a line head: <full commit SHA> (design_refresh reads it)")
+
+func short(sha string) string { return sha[:min(len(sha), 7)] }
+
+// askApproval puts the approval card in front of the owner, for the job's recorded head and
+// that head only. It returns nil when the job is already settled. It refuses when no head is
+// recorded, and when GitHub shows the branch at another commit (saying so on a notice), so the
+// owner never approves a commit they were not shown.
 func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*module.Card, error) {
 	j, err := m.st.get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if j.Status == StatusApproved || j.Status == StatusMerged {
+	if settled(j.Status) {
 		return nil, nil
 	}
+	if j.HeadSHA == "" {
+		return nil, errNoHead
+	}
+	p := m.gh.progress(ctx, m.h.Config().String("repo"), or(m.h.Config().String("base_branch"), "main"), j.Branch, true)
+	if p.Problem == "" && p.Exists && p.Head != "" && !strings.EqualFold(p.Head, j.HeadSHA) { // only a fresh read is compared
+		why := fmt.Sprintf("GitHub shows %s at %s, but the head the Designer named is %s. Nothing can be approved until the job is refreshed with a reply naming the branch's head.", j.Branch, short(p.Head), short(j.HeadSHA))
+		payload, _ := json.Marshal(map[string]any{"body": why, "tone": "warning"})
+		_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Not approvable yet: " + j.Title, Source: "design", Subject: ref(id), Payload: payload})
+		return nil, errors.New(why)
+	}
 	notes, _ := m.openNotes(ctx, id)
-	changes := []map[string]string{{"label": "Status", "before": j.Status, "after": StatusApproved}, {"label": "Branch", "after": j.Branch}}
+	changes := []map[string]string{
+		{"label": "Status", "before": j.Status, "after": StatusApproved},
+		{"label": "Commit", "after": j.HeadSHA},
+		{"label": "Branch", "after": j.Branch},
+	}
 	if j.PRURL != "" {
 		changes = append(changes, map[string]string{"label": "Pull request", "after": j.PRURL})
 	}
-	summary := "Approve “" + j.Title + "”? The Design team is then told to merge it."
+	summary := "Approve “" + j.Title + "” at commit " + short(j.HeadSHA) + "? The Design team is told to merge exactly that commit; a later one needs a new round."
 	if len(notes) > 0 {
 		summary += fmt.Sprintf(" %d note(s) are still open and would not be sent.", len(notes))
 	}
-	payload, _ := json.Marshal(map[string]any{"summary": summary, "changes": changes, "requested_by": "design"})
+	payload, _ := json.Marshal(map[string]any{"summary": summary, "changes": changes, "requested_by": "design", "head": j.HeadSHA, "pr": j.PRURL})
 	card, err := m.h.Cards().Show(ctx, module.Card{
-		Kind: "approval", Title: "Approve the design: " + j.Title, Source: "design", Subject: ref(id),
+		Kind: "approval", Title: "Approve the design at " + short(j.HeadSHA) + ": " + j.Title, Source: "design", Subject: ref(id),
 		Risk: "medium", Blocking: true, Payload: payload, ExpiresAt: time.Now().Add(wait).UTC().Format(time.RFC3339),
 	})
 	if err != nil {
 		return nil, err
 	}
+	if err := m.st.pendApproval(ctx, id, card.ID, j.HeadSHA); err != nil {
+		return nil, err
+	}
 	return &card, nil
 }
 
-// settle acts on the owner's answer to the approval card: on approve the job is approved and
-// the Design team is told to merge.
+// settle acts on the owner's answer to an approval card. The approval is recorded only for the
+// head on that card, only while that card is still the job's open approval and the job's head
+// is still that head (store.approve); then the Design team is told to merge that commit.
 func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[string]any, error) {
 	approved := false
 	if done.Status == "submitted" && done.Outcome != nil {
@@ -333,17 +362,68 @@ func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[stri
 			approved = approved || d.Action == "approve"
 		}
 	}
-	if !approved {
-		return map[string]any{"approved": false, "card": or(done.Status, "open")}, nil
-	}
-	st := StatusApproved
-	j, err := m.st.update(ctx, id, Change{Status: &st})
+	j, err := m.st.get(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if !approved {
+		if done.Status != "" { // answered or ended; an open card (a wait that ran out) stays pending
+			_ = m.st.dropApproval(ctx, id, done.ID)
+		}
+		out := map[string]any{"approved": false, "card": or(done.Status, "open")}
+		if done.Status == "superseded" {
+			out["reason"] = "the head changed while the card was open; the owner is asked again on the new head"
+		}
+		return out, nil
+	}
+	head := ""
+	if j.approvalCard == done.ID {
+		head = j.approvalHead
+	}
+	ok, err := m.st.approve(ctx, id, done.ID, head)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return map[string]any{"approved": false, "reason": "not recorded: the job's head changed, or the job was settled, after this card was raised; nothing was approved"}, nil
+	}
+	if j, err = m.st.get(ctx, id); err != nil {
 		return nil, err
 	}
 	out := m.deliver(ctx, approvedMessage(j), nil)
 	m.changed(id)
-	return map[string]any{"approved": true, "status": j.Status, "outbox": out}, nil
+	return map[string]any{"approved": true, "status": j.Status, "approved_head": j.ApprovedHead, "outbox": out}, nil
+}
+
+// awaitSettle waits for the owner's answer to card in the background and settles it.
+func (m *mod) awaitSettle(id string, card module.Card) {
+	go func() { //nolint:gosec // detached on purpose: the owner answers long after the ask
+		ctx, cancel := context.WithTimeout(m.life, 31*time.Minute)
+		defer cancel()
+		if done, err := m.h.Cards().Await(ctx, card.ID); err == nil {
+			if _, err := m.settle(context.WithoutCancel(ctx), id, done); err != nil {
+				m.h.Log().Warn("design: approval", "job", id, "err", err)
+			}
+		}
+	}()
+}
+
+// supersede ends an open approval card whose head is no longer the job's, and asks the owner
+// again on the new head.
+func (m *mod) supersede(ctx context.Context, j Job) {
+	if j.approvalCard == "" || j.approvalHead == j.HeadSHA || settled(j.Status) {
+		return
+	}
+	_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")
+	_ = m.st.dropApproval(ctx, j.ID, j.approvalCard)
+	card, err := m.askApproval(ctx, j.ID, 30*time.Minute)
+	if err != nil || card == nil {
+		if err != nil {
+			m.h.Log().Warn("design: asking again on the new head", "job", j.ID, "err", err)
+		}
+		return
+	}
+	m.awaitSettle(j.ID, *card)
 }
 
 // followed is what came back for a job and when it was looked at, so the agent never reports

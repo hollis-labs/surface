@@ -34,7 +34,7 @@ func (m *mod) tools() []module.Tool {
 				return m.request(ctx, a.Title, a.Brief, a.References)
 			}},
 		{Name: "design_jobs", Level: module.LevelRead,
-			Description: "List the design jobs, most recently changed first: status, pull request, preview, the Designer's replies (bodies cut short), the task's status and latest comment, and when the mail (inbox_checked) and the task (task_checked) were last read. Merged jobs are left out unless all is true. To check now, design_refresh.",
+			Description: "List the design jobs, most recently changed first: status, pull request, preview, head_sha, latest_head, approved_head, head_differs, update_received, the Designer's replies (bodies cut short), the task's status and latest comment, and when the mail (inbox_checked) and the task (task_checked) were last read. Merged and closed jobs are left out unless all is true. To check now, design_refresh.",
 			Input:       raw(`{"type":"object","properties":{"all":{"type":"boolean"}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct{ All bool }
@@ -42,7 +42,7 @@ func (m *mod) tools() []module.Tool {
 				return m.st.list(ctx, !a.All)
 			}},
 		{Name: "design_job", Level: module.LevelRead,
-			Description: "One design job as it stands: its status, rounds, the Designer's replies in full, the task's status and latest comment, branch head, the files the branch changes, its pull request, preview and open notes, with when each was last read (inbox_checked, task_checked, progress.read). Reads the branch from GitHub afresh. Defaults to the job whose window is in front.",
+			Description: "One design job as it stands: its status, rounds, the Designer's replies in full, the task's status and latest comment, branch head, the files the branch changes, its pull request, preview and open notes; head_sha, latest_head, approved_head and head_differs (a commit came after the approval); update_received (work came back without a preview); with when each was last read (inbox_checked, task_checked, progress.read). Reads the branch from GitHub afresh. Defaults to the job whose window is in front.",
 			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a idArg
@@ -72,7 +72,7 @@ func (m *mod) tools() []module.Tool {
 			}},
 		{Name: "design_set", Level: module.LevelWrite,
 			Description: "Correct what is recorded about a job by hand (the Designer's replies set these on their own): preview_url (the gallery served from their branch), base_url (the same from main), pr_url, branch, or status (requested, in progress, ready for review, changes requested, approved, merged). Use approve and feedback through their own tools, not status here.",
-			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"head_sha":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","approved","merged"]}}}`),
+			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"head_sha":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","approved","merged","closed"]}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct {
 					ID string `json:"id"`
@@ -104,7 +104,7 @@ func (m *mod) tools() []module.Tool {
 		// write level the chat would ask first and the card again, two asks for one decision. What
 		// leaves the app on approve (the go-ahead) is only sent once the owner approves the card.
 		{Name: "design_approve", Level: module.LevelAct,
-			Description: "Ask the owner to approve a design job with an approval card and wait for the answer. On approve the job is approved and the Design team is told to merge; Surface never merges. Defaults to the job in front.",
+			Description: "Ask the owner to approve a design job at its recorded head (the commit the Designer last named) with an approval card, and wait for the answer. Refused when no head is recorded (ask the Designer for a reply with head:) or GitHub shows the branch at another commit. On approve the job records approved_head and the Design team is told to merge exactly that commit; if the head changes while the card is open, the card is superseded and the owner asked again. Surface never merges. Defaults to the job in front.",
 			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"timeout_seconds":{"type":"integer","description":"How long to wait for the owner. Default 600, at most 3600."}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct {
@@ -178,15 +178,7 @@ func (m *mod) routes(h module.Host) {
 			reply(w, map[string]any{"status": "already settled"}, err)
 			return
 		}
-		go func() { //nolint:gosec // detached on purpose: the owner answers long after the request
-			ctx, cancel := context.WithTimeout(context.Background(), 31*time.Minute)
-			defer cancel()
-			if done, err := m.h.Cards().Await(ctx, card.ID); err == nil {
-				if _, err := m.settle(ctx, id, done); err != nil {
-					m.h.Log().Warn("design: approval", "job", id, "err", err)
-				}
-			}
-		}()
+		m.awaitSettle(id, *card)
 		reply(w, map[string]any{"card": card.ID}, nil)
 	}))
 	// Whether a preview answers, from the server (which sits beside the reviewer's browser):
@@ -229,6 +221,7 @@ func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
 	}
 	m.changed(id)
 	m.announce(ctx, j)
+	m.supersede(ctx, j)
 	return j, nil
 }
 

@@ -330,7 +330,11 @@ func TestNotesGoOutAsFeedbackAndApprovalSendsTheGoAhead(t *testing.T) {
 		t.Fatalf("after feedback: %+v", got)
 	}
 
-	// Approval: the card is raised; the owner's answer settles it.
+	// Approval: the card is raised for the recorded head; the owner's answer settles it.
+	head := "b600fc99dffb1c895c4b6d908e988378f632a467"
+	if _, err = m.st.update(ctx, j.ID, Change{HeadSHA: &head}); err != nil {
+		t.Fatal(err)
+	}
 	card, err := m.askApproval(ctx, j.ID, 60e9)
 	if err != nil || card == nil || card.Kind != "approval" || !card.Blocking || card.Subject != ref(j.ID) {
 		t.Fatalf("card: %+v %v", card, err)
@@ -347,7 +351,7 @@ func TestNotesGoOutAsFeedbackAndApprovalSendsTheGoAhead(t *testing.T) {
 	if err != nil || ok["approved"] != true || ok["status"] != StatusApproved {
 		t.Fatalf("approve: %v %v", ok, err)
 	}
-	if last := rec.sent[len(rec.sent)-1]; last.Kind != "notice" || !strings.Contains(last.Body, "Merge the pull request") {
+	if last := rec.sent[len(rec.sent)-1]; last.Kind != "notice" || !strings.Contains(last.Body, "Merge the pull request") || !strings.Contains(last.Body, "\napproved-head: "+head+"\n") {
 		t.Fatalf("go-ahead: %+v", last)
 	}
 	if again, _ := m.askApproval(ctx, j.ID, 60e9); again != nil {

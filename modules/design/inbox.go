@@ -38,7 +38,9 @@ var shaPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 // parsed is what a reply's labeled lines set, and what was refused.
 type parsed struct {
 	Preview, Base, PR, Head string
-	Ignored                 []string
+	// Merged is a full SHA the Design team says it merged; Closed why it closed the job.
+	Merged, Closed string
+	Ignored        []string
 }
 
 // parseReply reads the labeled lines of a reply. Each is "label: value" on a line of its own;
@@ -54,7 +56,13 @@ func parseReply(body, repo string) parsed {
 			continue
 		}
 		key = strings.ToLower(strings.TrimSpace(key))
-		if key != "preview" && key != "base" && key != "pr" && key != "head" {
+		if key != "preview" && key != "base" && key != "pr" && key != "head" && key != "merged" && key != "closed" {
+			continue
+		}
+		if key == "closed" { // a reason, in words
+			if reason := strings.TrimSpace(val); reason != "" {
+				p.Closed = strings.ToValidUTF8(reason[:min(len(reason), 300)], "")
+			}
 			continue
 		}
 		fields := strings.Fields(val)
@@ -84,12 +92,16 @@ func parseReply(body, repo string) parsed {
 				continue
 			}
 			p.PR = v
-		case "head":
+		case "head", "merged":
 			if v = strings.ToLower(v); !shaPattern.MatchString(v) {
 				refuse("not a full commit SHA")
 				continue
 			}
-			p.Head = v
+			if key == "head" {
+				p.Head = v
+			} else {
+				p.Merged = v
+			}
 		}
 	}
 	return p
@@ -242,7 +254,7 @@ func (m *mod) check(ctx context.Context, r Reader, j Job) Checked {
 			// after it, again in order.
 			isNew, ingestErr := m.st.ingest(ctx, j.ID, Reply{
 				MessageID: msg.ID, From: msg.From, Subject: subject, Body: body, Sent: msg.Sent, Received: stamp(),
-				PreviewURL: p.Preview, BaseURL: p.Base, PRURL: p.PR, HeadSHA: p.Head, Ignored: strings.Join(p.Ignored, "\n"),
+				PreviewURL: p.Preview, BaseURL: p.Base, PRURL: p.PR, HeadSHA: p.Head, Merged: p.Merged, Closed: p.Closed, Ignored: strings.Join(p.Ignored, "\n"),
 			})
 			if ingestErr != nil {
 				problems = append(problems, "taking a reply: "+ingestErr.Error())
@@ -309,6 +321,7 @@ func (m *mod) check(ctx context.Context, r Reader, j Job) Checked {
 		m.changed(j.ID)
 	}
 	m.announce(ctx, j)
+	m.supersede(ctx, j)
 	res.Status = j.Status
 	res.Problem = strings.Join(problems, "; ")
 	return res

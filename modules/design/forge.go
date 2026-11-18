@@ -26,6 +26,8 @@ type Progress struct {
 	// Problem is why it could not be read, in a line.
 	Problem string `json:"problem,omitempty"`
 	Read    string `json:"read"`
+	// limited: GitHub refused for its rate limit (or the token); the reader backs off.
+	limited bool
 }
 
 // PullRequest is the part of a pull request a review needs.
@@ -46,7 +48,14 @@ type github struct {
 
 	mu    sync.Mutex
 	cache map[string]cached
+	// quiet is until when GitHub is not asked again after it refused.
+	quiet time.Time
 }
+
+// backoff is how long GitHub is left alone after it refuses.
+const backoff = 5 * time.Minute
+
+var errRefusedGH = errors.New("GitHub refused")
 
 type cached struct {
 	at time.Time
@@ -76,7 +85,7 @@ func (g *github) get(ctx context.Context, path string, out any) error {
 	case res.StatusCode == http.StatusNotFound:
 		return errNoBranch
 	case res.StatusCode == http.StatusForbidden || res.StatusCode == http.StatusTooManyRequests:
-		return fmt.Errorf("GitHub refused (%s): the rate limit, or a token without access (design.github_token_file)", res.Status)
+		return fmt.Errorf("%w (%s): the rate limit, or a token without access (design.github_token_file)", errRefusedGH, res.Status)
 	case res.StatusCode/100 != 2:
 		return fmt.Errorf("GitHub answered %s", res.Status)
 	}
@@ -88,18 +97,37 @@ func (g *github) get(ctx context.Context, path string, out any) error {
 func (g *github) progress(ctx context.Context, repo, base, branch string, fresh bool) Progress {
 	key := repo + "|" + base + "|" + branch
 	g.mu.Lock()
-	if c, ok := g.cache[key]; ok && !fresh && time.Since(c.at) < 20*time.Second {
+	c, ok := g.cache[key]
+	if ok && !fresh && time.Since(c.at) < 20*time.Second {
 		g.mu.Unlock()
 		return c.p
+	}
+	if time.Now().Before(g.quiet) { // backing off: the last good read, said to be old
+		g.mu.Unlock()
+		return lastKnown(c, ok, "GitHub refused (rate limit); not asked again until "+g.quiet.UTC().Format(time.RFC3339))
 	}
 	g.mu.Unlock()
 	p := g.read(ctx, repo, base, branch)
 	g.mu.Lock()
+	defer g.mu.Unlock()
+	if p.limited {
+		g.quiet = time.Now().Add(backoff)
+		return lastKnown(c, ok, p.Problem)
+	}
 	if g.cache == nil {
 		g.cache = map[string]cached{}
 	}
 	g.cache[key] = cached{time.Now(), p}
-	g.mu.Unlock()
+	return p
+}
+
+// lastKnown is the last good read with a line saying why it is not fresh, or the problem alone.
+func lastKnown(c cached, ok bool, why string) Progress {
+	if !ok || c.p.Problem != "" {
+		return Progress{Files: []string{}, Read: stamp(), Problem: why}
+	}
+	p := c.p
+	p.Problem = why + "; showing what was read at " + p.Read
 	return p
 }
 
@@ -130,6 +158,7 @@ func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
 		return p
 	case err != nil:
 		p.Problem = err.Error()
+		p.limited = errors.Is(err, errRefusedGH)
 		return p
 	}
 	p.Exists = true
@@ -153,6 +182,7 @@ func (g *github) read(ctx context.Context, repo, base, branch string) Progress {
 	}
 	if err := g.get(ctx, fmt.Sprintf("/repos/%s/pulls?state=all&head=%s", repo, url.QueryEscape(owner+":"+branch)), &prs); err != nil {
 		p.Problem = "the pull request could not be read: " + err.Error()
+		p.limited = errors.Is(err, errRefusedGH)
 		return p
 	}
 	if len(prs) > 0 {

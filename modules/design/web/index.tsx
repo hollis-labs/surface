@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-type Status = "requested" | "in progress" | "ready for review" | "changes requested" | "approved" | "merged"
+type Status = "requested" | "in progress" | "ready for review" | "changes requested" | "approved" | "merged" | "closed"
 
 interface Round {
   n: number
@@ -46,6 +46,7 @@ interface Reply {
   pr_url?: string
   head_sha?: string
   ignored?: string
+  note?: string
 }
 
 interface Job {
@@ -64,6 +65,11 @@ interface Job {
   task_comment?: string
   task_checked?: string
   inbox_checked?: string
+  approved_head?: string
+  approved_at?: string
+  latest_head?: string
+  head_differs?: boolean
+  update_received?: boolean
   rounds: Round[]
   replies: Reply[]
   created: string
@@ -100,6 +106,7 @@ const STATUS_VARIANT: Record<Status, "default" | "secondary" | "outline" | "dest
   "changes requested": "destructive",
   approved: "default",
   merged: "secondary",
+  closed: "outline",
 }
 
 function Tip({ label, children }: { label: ReactNode; children: ReactElement }) {
@@ -413,12 +420,26 @@ function JobPane({ win, desk, api }: ViewProps) {
               <Button
                 size="sm"
                 className="flex-1"
-                disabled={busy !== "" || job.status === "approved" || job.status === "merged"}
+                disabled={
+                  busy !== "" ||
+                  !job.head_sha ||
+                  job.status === "approved" ||
+                  job.status === "merged" ||
+                  job.status === "closed"
+                }
                 onClick={() => run("approve", api.post(`jobs/${job.id}/approve`), () => "Approve it on the card.")}
               >
                 Approve…
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              {job.approved_head
+                ? `Approved at ${job.approved_head.slice(0, 7)}${job.head_differs ? `; a new commit ${job.latest_head?.slice(0, 7)} came after the approval` : ""}`
+                : job.head_sha
+                  ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
+                  : "Nothing to approve until the Designer names a head"}
+              {job.update_received ? " · an update came back without a preview" : ""}
+            </p>
             {outcome && <p className="text-xs text-muted-foreground">{outcome}</p>}
           </div>
           <Separator />
@@ -645,6 +666,7 @@ function Replies({ job }: { job: Job }) {
             {set(r).length > 0 ? ` · set ${set(r).join(", ")}` : ""}
           </span>
           <p className="line-clamp-6 whitespace-pre-wrap">{r.body}</p>
+          {r.note && <p className="whitespace-pre-wrap text-muted-foreground">{r.note}</p>}
           {r.ignored && <p className="whitespace-pre-wrap text-muted-foreground">Not taken: {r.ignored}</p>}
         </div>
       ))}

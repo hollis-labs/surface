@@ -19,11 +19,13 @@ const (
 	StatusChangesRequested = "changes requested"
 	StatusApproved         = "approved"
 	StatusMerged           = "merged"
+	// StatusClosed is a job the Design team closed without merging, after approval.
+	StatusClosed = "closed"
 )
 
 var statuses = map[string]bool{
 	StatusRequested: true, StatusInProgress: true, StatusReady: true,
-	StatusChangesRequested: true, StatusApproved: true, StatusMerged: true,
+	StatusChangesRequested: true, StatusApproved: true, StatusMerged: true, StatusClosed: true,
 }
 
 // Job is one piece of design work handed to the Design team.
@@ -44,14 +46,26 @@ type Job struct {
 	HeadSHA string `json:"head_sha,omitempty"`
 	// TaskStatus and TaskComment are the Torque task's status and its latest comment, as read
 	// at TaskChecked. InboxChecked is when the Designer's replies were last looked for.
-	TaskStatus   string  `json:"task_status,omitempty"`
-	TaskComment  string  `json:"task_comment,omitempty"`
-	TaskChecked  string  `json:"task_checked,omitempty"`
-	InboxChecked string  `json:"inbox_checked,omitempty"`
-	Rounds       []Round `json:"rounds"`
-	Replies      []Reply `json:"replies"`
-	Created      string  `json:"created"`
-	Updated      string  `json:"updated"`
+	TaskStatus   string `json:"task_status,omitempty"`
+	TaskComment  string `json:"task_comment,omitempty"`
+	TaskChecked  string `json:"task_checked,omitempty"`
+	InboxChecked string `json:"inbox_checked,omitempty"`
+	// ApprovedHead is the commit the owner approved, at ApprovedAt; the approval covers it only.
+	ApprovedHead string `json:"approved_head,omitempty"`
+	ApprovedAt   string `json:"approved_at,omitempty"`
+	// LatestHead is the head the Designer last named, also after an approval (when HeadSHA
+	// stays the approved one); HeadDiffers says it is not the approved head.
+	LatestHead  string `json:"latest_head,omitempty"`
+	HeadDiffers bool   `json:"head_differs"`
+	// UpdateReceived says work came back (a head or a pull request) with no preview to review
+	// yet; ready for review still needs a preview.
+	UpdateReceived bool `json:"update_received"`
+	// approvalCard is the open approval card and approvalHead the head it shows.
+	approvalCard, approvalHead string
+	Rounds                     []Round `json:"rounds"`
+	Replies                    []Reply `json:"replies"`
+	Created                    string  `json:"created"`
+	Updated                    string  `json:"updated"`
 	// announced: the review window was opened and the owner told when the preview first came.
 	announced bool
 }
@@ -71,6 +85,11 @@ type Reply struct {
 	PRURL      string `json:"pr_url,omitempty"`
 	HeadSHA    string `json:"head_sha,omitempty"`
 	Ignored    string `json:"ignored,omitempty"`
+	// Note says what the reply did to a settled job, or why its merged:/closed: line was not taken.
+	Note string `json:"note,omitempty"`
+	// Merged and Closed are its merged:/closed: lines, read only once the job is approved.
+	Merged string `json:"-"`
+	Closed string `json:"-"`
 }
 
 // Round is one ask of the Design team: the first is the brief, later ones are feedback.
@@ -144,14 +163,16 @@ func (s *store) create(ctx context.Context, title, brief, refs string) (Job, err
 	return j, nil
 }
 
-const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, created_at, updated_at`
+const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, approval_card, approval_head, approved_head, approved_at, update_received, created_at, updated_at`
 
 func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 	var j Job
-	var announced int
+	var announced, update int
 	err := sc.Scan(&j.ID, &j.Title, &j.Brief, &j.Refs, &j.Branch, &j.PRURL, &j.PreviewURL, &j.BaseURL, &j.Status, &j.TaskID,
-		&j.HeadSHA, &j.TaskStatus, &j.TaskComment, &j.TaskChecked, &j.InboxChecked, &announced, &j.Created, &j.Updated)
+		&j.HeadSHA, &j.TaskStatus, &j.TaskComment, &j.TaskChecked, &j.InboxChecked, &announced,
+		&j.approvalCard, &j.approvalHead, &j.ApprovedHead, &j.ApprovedAt, &update, &j.Created, &j.Updated)
 	j.announced = announced == 1
+	j.UpdateReceived = update == 1
 	return j, err
 }
 
@@ -166,15 +187,29 @@ func (s *store) get(ctx context.Context, id string) (Job, error) {
 	if j.Rounds, err = s.rounds(ctx, id); err != nil {
 		return Job{}, err
 	}
-	j.Replies, err = s.replies(ctx, id, 0)
-	return j, err
+	if j.Replies, err = s.replies(ctx, id, 0); err != nil {
+		return Job{}, err
+	}
+	j.heads()
+	return j, nil
+}
+
+// heads fills LatestHead and HeadDiffers from the job and its replies.
+func (j *Job) heads() {
+	j.LatestHead = j.HeadSHA
+	for _, r := range j.Replies { // oldest first: the last naming a head wins
+		if r.HeadSHA != "" {
+			j.LatestHead = r.HeadSHA
+		}
+	}
+	j.HeadDiffers = j.ApprovedHead != "" && j.LatestHead != j.ApprovedHead
 }
 
 // list returns the jobs, the most recently changed first. With open, merged jobs are left out.
 func (s *store) list(ctx context.Context, open bool) ([]Job, error) {
 	q := `SELECT ` + jobCols + ` FROM jobs`
 	if open {
-		q += ` WHERE status <> 'merged'`
+		q += ` WHERE status NOT IN ('merged', 'closed')`
 	}
 	rows, err := s.db.QueryContext(ctx, q+` ORDER BY updated_at DESC, id`)
 	if err != nil {
@@ -198,13 +233,14 @@ func (s *store) list(ctx context.Context, open bool) ([]Job, error) {
 		if out[i].Replies, err = s.replies(ctx, out[i].ID, 600); err != nil {
 			return nil, err
 		}
+		out[i].heads()
 	}
 	return out, nil
 }
 
 // replies are a job's replies, oldest first. With cut > 0 each body is cut to that many bytes.
 func (s *store) replies(ctx context.Context, id string, cut int) ([]Reply, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT message_id, from_urn, subject, body, sent_at, received_at, preview_url, base_url, pr_url, head_sha, ignored
+	rows, err := s.db.QueryContext(ctx, `SELECT message_id, from_urn, subject, body, sent_at, received_at, preview_url, base_url, pr_url, head_sha, ignored, note
 		FROM replies WHERE job_id = ? ORDER BY sent_at, received_at, message_id`, id)
 	if err != nil {
 		return nil, err
@@ -213,7 +249,7 @@ func (s *store) replies(ctx context.Context, id string, cut int) ([]Reply, error
 	out := []Reply{}
 	for rows.Next() {
 		var r Reply
-		if err := rows.Scan(&r.MessageID, &r.From, &r.Subject, &r.Body, &r.Sent, &r.Received, &r.PreviewURL, &r.BaseURL, &r.PRURL, &r.HeadSHA, &r.Ignored); err != nil {
+		if err := rows.Scan(&r.MessageID, &r.From, &r.Subject, &r.Body, &r.Sent, &r.Received, &r.PreviewURL, &r.BaseURL, &r.PRURL, &r.HeadSHA, &r.Ignored, &r.Note); err != nil {
 			return nil, err
 		}
 		if cut > 0 && len(r.Body) > cut {
@@ -232,12 +268,22 @@ func (s *store) open(ctx context.Context) ([]Job, error) {
 	}
 	out := jobs[:0]
 	for _, j := range jobs {
-		if j.Status != StatusApproved && j.Status != StatusMerged {
+		switch j.Status {
+		case StatusMerged, StatusClosed:
+		case StatusApproved:
+			// Read on until the Design team says merged or closed, for a week at most.
+			if at, err := time.Parse(time.RFC3339, j.ApprovedAt); err == nil && time.Since(at) < approvedWatch {
+				out = append(out, j)
+			}
+		default:
 			out = append(out, j)
 		}
 	}
 	return out, nil
 }
+
+// approvedWatch is how long an approved job's thread is still read for the merge.
+const approvedWatch = 7 * 24 * time.Hour
 
 func (s *store) rounds(ctx context.Context, id string) ([]Round, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT n, asked, sent, message_id, created_at FROM rounds WHERE job_id = ? ORDER BY n`, id)
@@ -322,7 +368,7 @@ func (s *store) update(ctx context.Context, id string, c Change) (Job, error) {
 		}
 	}
 	if c.Status != nil && !statuses[*c.Status] {
-		return Job{}, fmt.Errorf("status is one of requested, in progress, ready for review, changes requested, approved, merged; not %q", *c.Status)
+		return Job{}, fmt.Errorf("status is one of requested, in progress, ready for review, changes requested, approved, merged, closed; not %q", *c.Status)
 	}
 	text("branch", c.Branch)
 	text("pr_url", c.PRURL)
@@ -355,7 +401,9 @@ func (s *store) update(ctx context.Context, id string, c Change) (Job, error) {
 }
 
 // settled are the statuses nothing automatic may change: the owner's decision, or done.
-func settled(status string) bool { return status == StatusApproved || status == StatusMerged }
+func settled(status string) bool {
+	return status == StatusApproved || status == StatusMerged || status == StatusClosed
+}
 
 // errMoved means the job changed under a write that was computed from an older read; the write
 // was not made, and the next pass reads afresh.
@@ -418,12 +466,53 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 	if n == 0 { // stored and applied before; only the read mark was missing
 		return false, tx.Commit()
 	}
-	var status, preview string
-	if err = tx.QueryRowContext(ctx, `SELECT status, preview_url FROM jobs WHERE id = ?`, jobID).Scan(&status, &preview); err != nil {
+	var status, preview, approved string
+	if err = tx.QueryRowContext(ctx, `SELECT status, preview_url, approved_head FROM jobs WHERE id = ?`, jobID).Scan(&status, &preview, &approved); err != nil {
 		return false, err
 	}
+	var notes []string
+	note := func() error {
+		if len(notes) == 0 {
+			return nil
+		}
+		_, noteErr := tx.ExecContext(ctx, `UPDATE replies SET note = ? WHERE message_id = ?`, strings.Join(notes, "; "), r.MessageID)
+		return noteErr
+	}
 	if settled(status) {
+		// Stored and shown. On an approved job only merged: (of the approved commit) and closed:
+		// move it; the approved head, the preview and the fields are never changed, and the job
+		// is not reopened.
+		if r.HeadSHA != "" && approved != "" && r.HeadSHA != approved {
+			notes = append(notes, noteAfterApproval)
+		}
+		if status == StatusApproved {
+			to := ""
+			switch {
+			case r.Merged != "" && r.Merged == approved:
+				to = StatusMerged
+				notes = append(notes, "merged at the approved commit")
+			case r.Merged != "":
+				notes = append(notes, "merged: "+r.Merged+" is not the approved commit "+approved+"; not taken")
+			case r.Closed != "":
+				to = StatusClosed
+				notes = append(notes, "closed: "+r.Closed)
+			}
+			if to != "" {
+				if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status = ?, updated_at = ? WHERE id = ? AND status = ?`, to, stamp(), jobID, StatusApproved); err != nil {
+					return false, err
+				}
+			}
+		}
+		if err = note(); err != nil {
+			return false, err
+		}
 		return true, tx.Commit()
+	}
+	if r.Merged != "" || r.Closed != "" {
+		notes = append(notes, "merged:/closed: are taken only after approval")
+	}
+	if err = note(); err != nil {
+		return false, err
 	}
 	var cols []string
 	var args []any
@@ -444,6 +533,13 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 			preview = f.v
 		}
 	}
+	// Work came back without a preview: say so until a preview comes.
+	switch {
+	case r.PreviewURL != "":
+		cols = append(cols, "update_received = 0")
+	case r.HeadSHA != "" || r.PRURL != "":
+		cols = append(cols, "update_received = 1")
+	}
 	if next := derive(status, "", preview, true, r.PreviewURL != ""); next != status {
 		cols = append(cols, "status = ?")
 		args = append(args, next)
@@ -462,4 +558,42 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+// noteAfterApproval marks a reply naming a commit other than the approved one.
+const noteAfterApproval = "new commit after approval"
+
+// pendApproval records the approval card just raised and the head it shows.
+func (s *store) pendApproval(ctx context.Context, id, card, head string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET approval_card = ?, approval_head = ? WHERE id = ?`, card, head, id)
+	return err
+}
+
+// approve records the owner's approval of the head on card, in one compare-and-set: only while
+// that card is still the job's open approval, the job's head is still the card's, and the job
+// is not approved or merged already. It says whether it was recorded.
+func (s *store) approve(ctx context.Context, id, card, head string) (bool, error) {
+	if card == "" || head == "" {
+		return false, nil
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status = ?, approved_head = ?, approved_at = ?, approval_card = '', approval_head = '', update_received = 0, updated_at = ?
+		WHERE id = ? AND approval_card = ? AND approval_head = ? AND head_sha = ? AND status NOT IN ('approved', 'merged')`,
+		StatusApproved, head, stamp(), stamp(), id, card, head, head)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// roundSent clears the work-came-back flag: a new round asks for new work.
+func (s *store) roundSent(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET update_received = 0 WHERE id = ?`, id)
+	return err
+}
+
+// dropApproval clears the open approval card if it is still card.
+func (s *store) dropApproval(ctx context.Context, id, card string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET approval_card = '', approval_head = '' WHERE id = ? AND approval_card = ?`, id, card)
+	return err
 }

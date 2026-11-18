@@ -76,14 +76,21 @@ test("a tab that joins while the answer is being written gets what was written s
   await until(() => shown(viewer.get()).includes("agent: First half, …"))
   host.publish([
     { verb: "part.delta", run_id: run, part_id: "p1", text: "second half." },
-    { verb: "part.end", run_id: run, part_id: "p1", final: "First half, second half." },
+    { verb: "part.end", run_id: run, part_id: "p1", final: { text: "First half, second half." } },
     { verb: "run.finish", run_id: run, reason: "stop" },
   ])
   await until(() => viewer.get().run === null)
   assert.deepEqual(shown(viewer.get()), ["user: go", "agent: First half, second half."])
   assert.deepEqual(shown(sender.get()), shown(viewer.get()))
-  // A viewer cannot type.
+  // A viewer cannot type until it takes over, which makes it a controller.
   assert.equal(await viewer.send("me too"), false)
+  assert.equal(viewer.role(), "viewer")
+  assert.equal(await viewer.takeover(), true)
+  assert.equal(viewer.role(), "controller")
+  host.script((r) => says(r, ["ok"]))
+  assert.equal(await viewer.send("now me"), true)
+  await until(() => sender.get().run === null && sender.get().ids.length === 4)
+  assert.equal(sender.get().holder, viewer.attachment())
 })
 
 test("a committed-only attachment draws the same final messages as a streaming one", async () => {
@@ -216,7 +223,8 @@ test("the reducer ignores an event it has already taken, and a gap drops what wa
   let s = evs.reduce(reduceConversation, initialState)
   const same = reduceConversation(s, evs[3] as StreamEvent)
   assert.equal(same, s, "a repeated event changes nothing")
-  s = reduceConversation(s, { seq: 9, verb: "gap", reason: "retention" })
+  // A gap carries no cursor: the place is kept.
+  s = reduceConversation(s, { verb: "gap", reason: "retention" } as StreamEvent)
   assert.deepEqual(shown(s), ["note: Part of this conversation could not be replayed."])
-  assert.equal(s.cursor, 9)
+  assert.equal(s.cursor, 4)
 })

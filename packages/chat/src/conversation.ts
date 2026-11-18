@@ -16,9 +16,10 @@ export interface Conversation {
   /** The cursor of the latest event. */
   head: number
   active_run?: string | null
-  lease?: { attachment?: string; holder?: string; expires_at?: string } | null
+  lease?: { attachment: string; expires_at?: string } | null
   generation?: number
-  capabilities?: { deltas?: boolean }
+  /** What to expect: deltas (false: whole messages only), approvals, always (standing grants are kept). */
+  capabilities?: { deltas?: boolean; approvals?: boolean; always?: boolean }
 }
 
 export interface Attachment {
@@ -74,9 +75,11 @@ export function conversationApi(opts: ConversationOptions = {}) {
   const doFetch: typeof fetch = opts.fetch ?? ((input, init) => fetch(input, { credentials: "same-origin", ...init }))
   const enc = encodeURIComponent
 
-  async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  async function request<T>(path: string, method = "GET", body?: unknown, keepalive = false): Promise<T> {
     const res = await doFetch(`${base}${path}`, {
       method,
+      // keepalive lets a request made as the page goes away still reach the host.
+      ...(keepalive ? { keepalive: true } : {}),
       headers: { ...opts.headers, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     })
@@ -89,13 +92,15 @@ export function conversationApi(opts: ConversationOptions = {}) {
   return {
     /** The agent's current conversation, made on first use. */
     open: (agent: string) => request<Conversation>(`/agents/${enc(agent)}/conversation`, "POST", {}),
-    /** End the agent's conversation and start a new one. */
-    reset: (agent: string) => request<Conversation>(`/agents/${enc(agent)}/conversation/reset`, "POST", {}),
+    /** End the agent's conversation and start a new one. The holder of the input names its attachment. */
+    reset: (agent: string, attachment?: string) =>
+      request<Conversation>(`/agents/${enc(agent)}/conversation/reset`, "POST", attachment ? { attachment } : {}),
     get: (id: string) => request<Conversation>(`/conversations/${enc(id)}`),
     attach: (id: string, role: Role, stream: StreamMode) =>
       request<Attachment>(`/conversations/${enc(id)}/attachments`, "POST", { role, stream }),
-    detach: (id: string, attachment: string) =>
-      request<void>(`/conversations/${enc(id)}/attachments/${enc(attachment)}`, "DELETE"),
+    /** Let go of an attachment, and of the input if it held it. `leaving` is for a page that is closing. */
+    detach: (id: string, attachment: string, leaving = false) =>
+      request<void>(`/conversations/${enc(id)}/attachments/${enc(attachment)}`, "DELETE", undefined, leaving),
     /** Take or renew the right to type. 409 when another attachment holds it. */
     lease: (id: string, attachment: string) => request<void>(`/conversations/${enc(id)}/lease`, "POST", { attachment }),
     takeover: (id: string, attachment: string) =>
@@ -156,8 +161,12 @@ export function conversationApi(opts: ConversationOptions = {}) {
               buffer = buffer.slice(cut + 2)
               cut = buffer.indexOf("\n\n")
               const ev = parseFrame(frame)
-              if (!ev || ev.seq <= last) continue
-              last = ev.seq
+              if (!ev) continue
+              // A gap has no cursor of its own: it is passed on and the place is kept.
+              if (typeof ev.seq === "number" && ev.seq > 0) {
+                if (ev.seq <= last) continue
+                last = ev.seq
+              }
               failures = 0
               onEvent(ev)
             }

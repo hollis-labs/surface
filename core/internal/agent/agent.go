@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
 	"github.com/hollis-labs/libs/agent/host"
 
 	"github.com/hollis-labs/surface/core/internal/kernel"
@@ -88,6 +87,8 @@ type Service struct {
 	router   *router.Router
 
 	tools map[string]kernel.BoundTool
+	// wire is the conversation wire, when a runner for it is chosen; nil otherwise.
+	wire *wire
 
 	wake    chan struct{}
 	stop    func()
@@ -138,9 +139,17 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	for _, t := range k.Tools() {
 		s.tools[t.Name] = t
 	}
-	if err := s.engine.AddTools(s.engineTools()...); err != nil {
+	if err = s.engine.AddTools(s.engineTools()...); err != nil {
 		s.engine.Close()
 		return nil, fmt.Errorf("agent: tools: %w", err)
+	}
+
+	if runner := runnerChoice(); runner != "" {
+		if s.wire, err = s.openWire(ctx, runner); err != nil {
+			s.engine.Close()
+			return nil, err
+		}
+		log.Info("the agent is on the conversation wire", "runner", runner)
 	}
 
 	// The desk and the modules' events drive the focus and event reflexes and the panel's
@@ -169,6 +178,9 @@ func (s *Service) Close(context.Context) error {
 	s.closeMu.Do(func() {
 		s.stop()
 		<-s.done
+		if s.wire != nil {
+			s.wire.close(context.Background())
+		}
 		s.engine.Close()
 	})
 	return nil
@@ -290,6 +302,9 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	if text == "" {
 		return TurnResult{}, errors.New("the message is empty")
 	}
+	if s.wire != nil {
+		return s.sendOnWire(ctx, text, auto)
+	}
 	sit := s.k.Situation(ctx)
 	sit.Input = text
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
@@ -317,17 +332,7 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	}
 
 	// The reflexes.
-	var prior []libreflex.MessageSignal
-	if hist, err := s.engine.History(ctx, Owner); err == nil {
-		for i := len(hist) - 1; i >= 0 && len(prior) < 40; i-- {
-			h := hist[i]
-			if h.Role == "user" && h.Text == "" {
-				continue // tool results only
-			}
-			prior = append(prior, libreflex.MessageSignal{Role: h.Role, Content: h.Text, CreatedAt: h.CreatedAt,
-				ToolCalls: len(h.ToolNames), ToolNames: h.ToolNames})
-		}
-	}
+	prior := s.priorMessages(ctx)
 	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
 	res.Fired = out.Fired
 	if out.Halt != "" {

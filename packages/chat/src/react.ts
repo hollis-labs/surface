@@ -11,19 +11,22 @@ import type { ChatStore } from "./store.ts"
  * Select what the component draws and nothing more: `s => s.ids` for the list,
  * `s => s.items[id]` for one row, `s => s.run !== null` for the composer.
  */
-export function useChat<T>(store: ChatStore, select: (s: ChatState) => T): T {
+/** Anything that holds a conversation's state and tells when it changes: either store, or a wrapper. */
+export type ChatSource = Pick<ChatStore, "get" | "subscribe">
+
+export function useChat<T>(store: ChatSource, select: (s: ChatState) => T): T {
   const get = () => select(store.get())
   return useSyncExternalStore(store.subscribe, get, get)
 }
 
 /** The order of the items: changes only when one is added or removed. */
-export const useChatIds = (store: ChatStore) => useChat(store, (s) => s.ids)
+export const useChatIds = (store: ChatSource) => useChat(store, (s) => s.ids)
 
 /** One item: changes only when that item does. */
-export const useChatItem = (store: ChatStore, id: string): ChatItem | undefined => useChat(store, (s) => s.items[id])
+export const useChatItem = (store: ChatSource, id: string): ChatItem | undefined => useChat(store, (s) => s.items[id])
 
 /** True while a run is followed. */
-export const useChatBusy = (store: ChatStore) => useChat(store, (s) => s.run !== null)
+export const useChatBusy = (store: ChatSource) => useChat(store, (s) => s.run !== null)
 
 /** How close to the end counts as "at the end", in pixels. */
 const SLACK = 48

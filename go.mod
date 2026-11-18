@@ -3,12 +3,13 @@ module github.com/hollis-labs/surface
 go 1.26.11
 
 require (
+	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/host v0.1.0
 	github.com/hollis-labs/libs/core/util v0.6.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261116220807-ab6c69519f45
+	github.com/hollis-labs/substrate v0.1.1-0.20261118181415-ea679652a9db
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.63.0
+	golang.org/x/net v0.62.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )
@@ -40,7 +41,7 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

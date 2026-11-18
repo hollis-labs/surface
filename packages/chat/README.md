@@ -1,10 +1,10 @@
-# @surface/chat
+# @hollis-labs/surface-chat
 
 A conversation with an agent host, without any styling. It is the behaviour half of Surface's chat; the visuals
 are the registry's chat components (`conversation`, `message`, `markdown`, `prompt-input`, `tool`), and
 `web/src/agent/AgentPanel.tsx` puts the two together.
 
-Unpublished for now. Another app can take it as source (the page aliases `@surface/chat` to `src/index.ts`); it
+Unpublished for now. Another app can take it as source (the page aliases `@hollis-labs/surface-chat` to `src/index.ts`); it
 has no dependency but React, and React only for `src/react.ts`.
 
 | File | What it is |

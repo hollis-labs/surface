@@ -1,0 +1,60 @@
+{
+  "name": "@hollis-labs/surface-page",
+  "version": "0.1.0",
+  "description": "The core of a Surface app's page: the desktop (bar, windows, palette), the agent panel, cards, generated surfaces, ADE's overlays, and the sdk a module's views import. It draws with the app's installed Surface registry components.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-labs/surface.git",
+    "directory": "packages/page"
+  },
+  "homepage": "https://github.com/hollis-labs/surface/tree/main/packages/page#readme",
+  "bugs": {
+    "url": "https://github.com/hollis-labs/surface/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/types/sdk/index.d.ts",
+      "default": "./dist/sdk.js"
+    },
+    "./gallery": {
+      "types": "./dist/types/gallery/index.d.ts",
+      "default": "./dist/gallery.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@hollis-labs/ade-core": "0.1.0",
+    "@hollis-labs/surface-cards": "0.1.0",
+    "@hollis-labs/surface-chat": "0.1.0",
+    "@hollis-labs/surface-genui": "0.1.0"
+  },
+  "peerDependencies": {
+    "lucide-react": ">=1",
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "surface": {
+    "registryItems": "dist/registry-items.json"
+  }
+}

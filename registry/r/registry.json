@@ -406,7 +406,7 @@
       "name": "conversation",
       "type": "registry:ui",
       "title": "Conversation",
-      "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@surface/chat's useStickToBottom).",
+      "description": "A chat's frame: a scrolling viewport, its content, an empty state, and a button back to the latest. Keeping to the end is the caller's (@hollis-labs/surface-chat's useStickToBottom).",
       "dependencies": [
         "cn",
         "lucide-react"

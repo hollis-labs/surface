@@ -1,5 +1,5 @@
 /** Scratch's window: a box to jot into and the list of what was jotted. */
-import { Icon, type ModuleWeb, useEvent, useSetting, type ViewProps } from "@surface/sdk"
+import { Icon, type ModuleWeb, useEvent, useSetting, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"

@@ -31,10 +31,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(root, "src"),
-      "@surface/sdk": resolve(root, "src/sdk/index.ts"),
-      "@surface/chat": resolve(root, "../packages/chat/src/index.ts"),
-      "@surface/cards": resolve(root, "../packages/cards/src/index.ts"),
-      "@surface/genui": resolve(root, "../packages/genui/src/index.ts"),
+      "@hollis-labs/surface-page/sdk": resolve(root, "src/sdk/index.ts"),
+      "@hollis-labs/surface-chat": resolve(root, "../packages/chat/src/index.ts"),
+      "@hollis-labs/surface-cards": resolve(root, "../packages/cards/src/index.ts"),
+      "@hollis-labs/surface-genui": resolve(root, "../packages/genui/src/index.ts"),
       "@surface/app": generated,
     },
     dedupe: ["react", "react-dom"],

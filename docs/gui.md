@@ -138,7 +138,7 @@ engine or a server.
 | A card kind of a module's own | Draw it with a new or existing registry component; register the renderer with `registerCard(kind, version, component)` (`web/src/cards/renderers.tsx`); show it from Go with `Host.Cards().Show`. An unregistered kind is drawn as a plain "no renderer" card, never as nothing |
 | A custom drawing for one of the agent's tools in the conversation | Add it to `toolCards` in `web/src/agent/items.tsx` |
 | A generated-UI pattern | Not in an app. The three patterns are a reviewed contract owned by Substrate (`genui/`); a new one is a contract change there, then a catalog entry in `core/internal/genui` and a branch in `genui-surface` |
-| Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@surface/sdk` |
+| Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@hollis-labs/surface-page/sdk` |
 | A region of the page | A prop of `app-frame`; the frame does layout only |
 
 ## What is checked

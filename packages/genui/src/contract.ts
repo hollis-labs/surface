@@ -8,11 +8,13 @@ export const SURFACE_VERSION = schema.$defs.Envelope.properties.typeVersion.cons
 export const CATALOG_ID = schema.$defs.CreateSurface.properties.catalogId.const
 export const MAX_SURFACE_BYTES = 256 * 1024
 export const MAX_ACTION_BYTES = 64 * 1024
-export function validates(name: keyof typeof schema.$defs, value: unknown): boolean {
+/** A definition in the contract schema; validators.js has one validator per definition. */
+export type SchemaName = keyof typeof validators
+export function validates(name: SchemaName, value: unknown): boolean {
   // biome-ignore lint/performance/noDynamicNamespaceImportAccess: the validator is chosen by schema name
   return validators[name](value)
 }
-function assertSchema(name: keyof typeof schema.$defs, value: unknown): void {
+function assertSchema(name: SchemaName, value: unknown): void {
   if (!validates(name, value)) throw new ContractError()
 }
 export function isRecord(value: unknown): value is Record<string, JSONValue> {

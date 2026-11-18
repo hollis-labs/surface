@@ -5,7 +5,7 @@
  * The view composes nothing and takes no description itself: the owner talks to the agent in
  * its panel, whose builder slot knows how, and this window lists the flows the agent saved.
  */
-import { type ModuleWeb, useAnchor, useEvent, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useAnchor, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { Bot, ChevronDown, ChevronUp, Play, Trash2, Workflow } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"

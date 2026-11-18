@@ -4,7 +4,7 @@
  * window's args, so back and forward survive a reload and a saved layout.
  */
 
-import { type ModuleWeb, useAnchor, useSetting, type ViewProps } from "@surface/sdk"
+import { type ModuleWeb, useAnchor, useSetting, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { ArrowLeft, ArrowRight, BookOpenText, ExternalLink, Globe, House, RotateCw } from "lucide-react"
 import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"

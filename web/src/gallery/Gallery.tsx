@@ -3,7 +3,7 @@
  * variants and states, drawn from fixtures. Design work happens against it, and
  * `make ui-shots` photographs each section in dark and light. Nothing here calls the server.
  */
-import type { ViewProps } from "@surface/sdk"
+import type { ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Ade } from "./ade"

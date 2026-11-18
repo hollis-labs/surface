@@ -1,4 +1,4 @@
-.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots test vet lint scan pins clean
+.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots packages pack-check test vet lint scan pins clean
 
 SURFACE := go run ./cmd/surface
 APPS    := desk studio
@@ -34,6 +34,14 @@ ui-verify:
 # OUT=<dir> to choose where; the default is $$TMPDIR/surface-ui-shots.
 ui-shots: studio
 	node scripts/ui-shots.mjs --app studio $(if $(OUT),--out $(OUT))
+
+# Build the npm packages (packages/*: chat, cards, genui, page) into each dist/.
+packages:
+	npm run build:packages
+
+# Pack every published package, install the tarballs in an empty directory and check they work there.
+pack-check:
+	npm run pack-check
 
 test:
 	go test -race ./...

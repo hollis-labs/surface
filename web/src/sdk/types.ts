@@ -3,7 +3,7 @@
  *
  * A module's web entry (modules/<id>/web/index.tsx) default-exports a ModuleWeb: the
  * components for the views its manifest declares with module.Component("<entry>").
- * A module imports only "@surface/sdk"; the desk, the palette and the agent panel are the
+ * A module imports only "@hollis-labs/surface-page/sdk"; the desk, the palette and the agent panel are the
  * core's and are reached through what a view is handed.
  */
 import type { ComponentType } from "react"

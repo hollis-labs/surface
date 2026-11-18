@@ -9,7 +9,7 @@ Not: a place for app-specific code (that is a module), an agent runtime (the age
 - `core/` — the public assembly (`core.New`). Everything else is under `core/internal/`: `kernel` (assembles modules, hosts, the desk's own tools and commands), `desk` (the window manager and saved layouts; the state lives in the server), `config` (live settings in the database), `events`, `marks`, `storage`, `api` (HTTP, SSE, MCP), `agent`, `slots`, `router`, `reflex`.
 - `modules/<id>/` — one module: Go at the top, its views in `web/index.tsx`. `modules/scratch` is the template.
 - `registry/` — the `@surface` component registry and the theme (`registry/README.md`). Installed copies are in `web/src/components/ui`; `ui.lock.json` records them.
-- `web/` — the page's core (`src/desk`, `src/agent`, `src/sdk`). A module's web code imports only `@surface/sdk`. Packages are installed at the repository root so `modules/*/web` resolves them.
+- `web/` — the page's core (`src/desk`, `src/agent`, `src/sdk`). A module's web code imports only `@hollis-labs/surface-page/sdk`. Packages are installed at the repository root so `modules/*/web` resolves them.
 - `apps/<name>/surface.yaml` — an app: its modules. Everything else in the directory is GENERATED (`make generate`); do not edit it.
 - `cmd/surface` — the generator. `app/` — the generated main's body (Substrate boot, serve, the client CLI).
 - `docs/architecture.md` first, then `docs/writing-a-module.md`.

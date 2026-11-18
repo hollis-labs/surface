@@ -33,11 +33,22 @@ func (s *Service) Mount(mux *http.ServeMux) {
 	mux.Handle(Prefix, eng)
 	mux.Handle(Prefix+"/", eng)
 
+	if s.wire != nil {
+		s.mountWire(mux)
+	}
+
 	mux.HandleFunc("POST "+Prefix+"/turns", s.turn)
 	mux.HandleFunc("GET "+Prefix+"/context", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.Preview(r.Context())) })
 	mux.HandleFunc("GET "+Prefix+"/setup", func(w http.ResponseWriter, r *http.Request) {
 		// ready is the engine's (a model, a gateway and a key file are named) and the key file
 		// can be read; reason says why not, in a sentence.
+		if s.wire != nil {
+			// On the conversation wire the runner answers, not the engine: the page binds to
+			// the wire and the agent by these two fields.
+			reply(w, 200, map[string]any{"ready": true, "model": s.wire.runner, "config_path": ConfigPath(s.k.AppName()),
+				"wire": "conversation", "agent": s.wire.agent})
+			return
+		}
 		reason := s.SetupProblem()
 		if s.engine.Ready() && reason == "" {
 			reply(w, 200, map[string]any{"ready": true, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName())})

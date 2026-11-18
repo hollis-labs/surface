@@ -56,7 +56,7 @@ const ENDS: Record<string, RunEnd> = { "run.finish": "finish", "run.error": "err
 export function createConversationStore(opts: ConversationStoreOptions) {
   const api = opts.api ?? conversationApi(opts)
   const schedule = opts.schedule ?? defaultSchedule
-  const role: Role = opts.role ?? "controller"
+  let role: Role = opts.role ?? "controller"
   const mode: StreamMode = opts.stream ?? "deltas"
 
   let state: ChatState = initialState
@@ -160,8 +160,7 @@ export function createConversationStore(opts: ConversationStoreOptions) {
         conversation = conv.conversation_id
         const a = await attach()
         historyHead = a.head
-        const holder = conv.lease?.attachment ?? conv.lease?.holder
-        set({ ...state, loaded: a.head === 0, holder: holder ?? null, generation: conv.generation })
+        set({ ...state, loaded: a.head === 0, holder: conv.lease?.attachment ?? null, generation: conv.generation })
         void follow()
       } catch (err) {
         set({ ...state, loaded: true, error: err instanceof Error ? err.message : "The agent could not be reached." })
@@ -253,16 +252,24 @@ export function createConversationStore(opts: ConversationStoreOptions) {
   async function newThread() {
     if (state.run) return
     try {
-      await api.reset(opts.agent)
+      await api.reset(opts.agent, attachment)
       // This page's own stream ends with "conversation closed" and follow() moves on.
     } catch (err) {
       set({ ...state, error: err instanceof Error ? err.message : "A new conversation could not be started." })
     }
   }
 
-  /** Take the right to type from whoever holds it. */
+  /** Take the right to type from whoever holds it. A window that was only watching becomes a controller first. */
   async function takeover(): Promise<boolean> {
     try {
+      if (role === "viewer") {
+        const was = attachment
+        role = "controller"
+        await attach()
+        void api.detach(conversation, was).catch(() => undefined)
+        // The stream goes on under the new attachment, from where this window already is.
+        void follow()
+      }
       await api.takeover(conversation, attachment)
       set({ ...state, holder: attachment, error: "" })
       return true
@@ -276,7 +283,8 @@ export function createConversationStore(opts: ConversationStoreOptions) {
   function dispose() {
     disposed = true
     following?.abort()
-    if (conversation && attachment) void api.detach(conversation, attachment).catch(() => undefined)
+    // Detaching releases the input, so the next page (a reload, another tab) can type at once.
+    if (conversation && attachment) void api.detach(conversation, attachment, true).catch(() => undefined)
   }
 
   return {
@@ -296,7 +304,8 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     dispose,
     /** This page's attachment, to compare with `holder`. Empty until attached. */
     attachment: () => attachment,
-    role,
+    /** "viewer" while this window only watches; a takeover makes it a controller. */
+    role: (): Role => role,
     /** The stream is the history: there is nothing to read again. Kept so a caller of the run store need not change. */
     reload: async () => {},
     turnElsewhere: (_run: string) => {},

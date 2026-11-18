@@ -22,9 +22,8 @@ export const userItemId = (requestId: string) => `user:${requestId}`
 const record = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
 
-/** A finished part's text: `final` is the text itself or an object holding it. */
+/** A finished part's text: `final` is `{text}` for text parts and `{text, is_error}` for a tool's result. */
 function finalText(final: unknown): string | undefined {
-  if (typeof final === "string") return final
   const text = record(final).text
   return typeof text === "string" ? text : undefined
 }
@@ -49,7 +48,8 @@ export function reduceConversation(state: ChatState, ev: StreamEvent): ChatState
   if (ev.verb === "activity" && ev.kind?.startsWith("chat.")) {
     const value = record(ev.value)
     if (ev.kind === "chat.lease") {
-      const holder = value.holder ?? value.attachment ?? value.attachment_id
+      // {state: "acquired" | "released", attachment, previous?}; a renewal is not published.
+      const holder = value.state === "released" ? null : value.attachment
       return { ...s, holder: typeof holder === "string" && holder ? holder : null }
     }
     if (ev.kind === "chat.generation" && typeof value.generation === "number") {
@@ -69,7 +69,8 @@ export function reduceConversation(state: ChatState, ev: StreamEvent): ChatState
       { ...next, parts: {} },
       {
         kind: "notice",
-        id: `gap:${ev.seq}`,
+        // A gap carries no cursor of its own: it is named by the last event taken.
+        id: `gap:${s.cursor ?? 0}`,
         text: "Part of this conversation could not be replayed.",
         tone: "quiet",
       },

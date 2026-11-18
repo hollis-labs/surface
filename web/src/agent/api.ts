@@ -44,6 +44,10 @@ export interface Setup {
   config_path: string
   /** Why the agent cannot answer, in a sentence, when it cannot. */
   reason?: string
+  /** "conversation" when the agent is on the conversation wire; absent on the run-at-a-time one. */
+  wire?: string
+  /** The agent's name on the conversation wire. */
+  agent?: string
 }
 
 const base = "/api/agent"

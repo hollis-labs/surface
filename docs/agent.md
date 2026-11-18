@@ -301,3 +301,35 @@ A refinement ("make the browser bigger") is a new version with a note. Every ver
 The owner describes and refines a flow in the agent's panel; the Builder window has no input of its own. It lists
 the flows, opens one on the desk, and shows its versions. Generating a new app binary from a flow
 comes later.
+
+## The conversation wire (in progress)
+
+The agent can be served on the conversation wire (`github.com/hollis-labs/libs/agent/chat`) instead of one run
+at a time: a durable conversation that outlives a turn and a page. A page attaches as a viewer or a controller,
+reads one event stream from wherever it says, and submits turns when it holds the input; a reload, a second tab
+and a turn started inside the app are all the same stream. `core/internal/agent/conversation.go` mounts the
+library's handler under `/api/agent` and supplies what varies:
+
+| The library asks for | Surface gives |
+|---|---|
+| Who may do what | The app is loopback-only and single-user: the owner, everything |
+| The agent | One, named after the app, kind `embedded` |
+| The log and the control records | `chat.db` in the app's data directory |
+| The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
+| Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
+
+It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`. Today the only runner is `scripted`, the
+library's test runner: it plays fixed scripts (`hello`, `tool`, `approval`, `confirm`, `reasoning`, `error`,
+`abort`, `length`, `hold`; anything else is echoed) and runs no tools. It is how the wire and the page are
+exercised until the real runner is wired in. With it, a turn starting `/no` is refused and one starting `/ping`
+is answered by the host, and `POST /api/agent/test/replace` replaces the agent's side (a generation bump).
+`SURFACE_AGENT_SCRIPT_DELAY` paces its events. With no runner chosen, nothing changes: the engine and the
+run-at-a-time wire serve the panel as before.
+
+The page asks `GET /api/agent/setup`, which says `"wire": "conversation"` and the agent's name when the wire is
+on, and binds `@hollis-labs/surface-chat`'s conversation store instead of the run store
+(`web/src/agent/session.ts`). `?chat=viewer` attaches a page as a viewer and `?chat=committed` takes each part
+whole instead of as it is written.
+
+Not there yet: a runner that runs the app's tools (so tool levels, the ask-first rule and checking the grants
+before asking are not exercised), and the reflexes' view of the earlier conversation on this wire.

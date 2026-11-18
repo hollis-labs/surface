@@ -99,6 +99,15 @@ export function fakeHost(): FakeHost {
         const old = convs.get(current)
         const next = make()
         if (old) {
+          // The old stream's last event names the successor; later requests get 410.
+          publishTo(old, [
+            {
+              verb: "activity",
+              run_id: "",
+              kind: "chat.closed",
+              value: { code: "conversation_closed", conversation_id: next.id },
+            },
+          ])
           old.closedFor = next.id
           for (const s of [...old.subs]) s.close()
         }
@@ -118,7 +127,7 @@ export function fakeHost(): FakeHost {
     if (seg[2] === "attachments" && method === "POST") {
       const a = id("att-")
       c.attachments.set(a, { role: body.role, stream: body.stream, generation: c.generation })
-      return json(200, { attachment_id: a, head: c.log.length })
+      return json(201, { attachment_id: a, head: c.log.length, generation: c.generation })
     }
     if (seg[2] === "attachments" && method === "DELETE") {
       c.attachments.delete(seg[3] ?? "")
@@ -169,13 +178,21 @@ export function fakeHost(): FakeHost {
     }
     if (!known(body?.attachment)) return stale(c)
     if (seg[2] === "lease" && seg[3] === "takeover") {
+      const previous = c.holder
       c.holder = body.attachment
-      publishTo(c, [{ verb: "activity", kind: "chat.lease", value: { holder: c.holder } }])
-      return new Response(null, { status: 204 })
+      publishTo(c, [
+        {
+          verb: "activity",
+          run_id: "",
+          kind: "chat.lease",
+          value: { state: "acquired", attachment: c.holder, previous },
+        },
+      ])
+      return json(200, { attachment: c.holder })
     }
     if (seg[2] === "turns") {
       if (c.holder && c.holder !== body.attachment)
-        return json(403, { code: "no_lease", message: "another attachment holds the input" })
+        return json(403, { code: "lease_required", message: "another attachment holds the input" })
       if (c.activeRun) return json(409, { code: "run_active", message: "a run is going" })
       if (refusal) {
         const r = refusal
@@ -184,7 +201,9 @@ export function fakeHost(): FakeHost {
       }
       if (!c.holder) {
         c.holder = body.attachment
-        publishTo(c, [{ verb: "activity", kind: "chat.lease", value: { holder: c.holder } }])
+        publishTo(c, [
+          { verb: "activity", run_id: "", kind: "chat.lease", value: { state: "acquired", attachment: c.holder } },
+        ])
       }
       const run = id("run-")
       publishTo(c, [
@@ -197,7 +216,7 @@ export function fakeHost(): FakeHost {
           meta: { request_id: body.request_id, ...(body.meta ?? {}) },
         },
         { verb: "part.start", run_id: run, part_id: "u1", kind: "text" },
-        { verb: "part.end", run_id: run, part_id: "u1", final: body.text },
+        { verb: "part.end", run_id: run, part_id: "u1", final: { text: body.text } },
         { verb: "message.end", run_id: run, message_id: "u" },
       ])
       const cursor = c.log.length
@@ -232,7 +251,7 @@ export function fakeHost(): FakeHost {
       const c = convs.get(current) as Conv
       c.generation++
       c.holder = null
-      publishTo(c, [{ verb: "activity", kind: "chat.generation", value: { generation: c.generation } }])
+      publishTo(c, [{ verb: "activity", run_id: "", kind: "chat.generation", value: { generation: c.generation } }])
       for (const s of [...c.subs]) s.close()
     },
     refuseNext: (code, message) => {
@@ -251,7 +270,7 @@ export const says = (run: string, pieces: string[]): Ev[] => [
   { verb: "message.start", run_id: run, role: "assistant", message_id: "a" },
   { verb: "part.start", run_id: run, part_id: "p1", kind: "text" },
   ...pieces.map((text) => ({ verb: "part.delta", run_id: run, part_id: "p1", text })),
-  { verb: "part.end", run_id: run, part_id: "p1", final: pieces.join("") },
+  { verb: "part.end", run_id: run, part_id: "p1", final: { text: pieces.join("") } },
   { verb: "message.end", run_id: run, message_id: "a" },
   { verb: "run.finish", run_id: run, reason: "stop" },
 ]

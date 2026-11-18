@@ -43,7 +43,7 @@ row 73 commits, the list 2 (its two new items) and each of the four earlier mess
 
 `npm test` runs the reducer and store tests (`node --test`).
 
-## The conversation wire (in progress)
+## The conversation wire
 
 `conversation.ts`, `conversation-reduce.ts` and `conversation-store.ts` bind the same reducer and
 components to a durable conversation instead of one run at a time: the page attaches as a viewer or a
@@ -61,6 +61,10 @@ type. `createConversationStore` offers what `createChatStore` offers, so a panel
 | Another window typing | A refused send says so; `takeover()` takes the input |
 | A turn the host refuses (422) | The message stays, with the reason under it |
 
-It assumes nothing about which agent runs the turns, only the wire, at any base URL. The tests run it
-against an in-memory host (`test/fake-host.ts`) that follows the wire's rules. Surface's panel still
-uses the run store until the server side is mounted.
+It assumes nothing about which agent runs the turns, only the wire (`github.com/hollis-labs/libs/agent/chat`),
+at any base URL. The tests run it against an in-memory host (`test/fake-host.ts`) that follows the wire's
+rules and event shapes. Surface's panel uses it when the server says the conversation wire is on, and the
+run store otherwise.
+
+A window that only watches (`role: "viewer"`) becomes a controller when it takes over. A page that is going
+away should call `dispose()`: it detaches, which releases the input for the next page.

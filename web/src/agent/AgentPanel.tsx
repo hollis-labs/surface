@@ -13,15 +13,7 @@
  * context and no tools of its own.
  */
 
-import {
-  type ChatStore,
-  createChatStore,
-  useChat,
-  useChatBusy,
-  useChatIds,
-  useChatItem,
-  useStickToBottom,
-} from "@hollis-labs/surface-chat"
+import { useChat, useChatBusy, useChatIds, useChatItem, useStickToBottom } from "@hollis-labs/surface-chat"
 import { Bot, Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
 import { type FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -43,13 +35,16 @@ import { CardDock } from "../cards/views"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
 import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
 import { ItemView } from "./items"
+import { type AgentSession, createAgentSession } from "./session"
 
-let shared: ChatStore | null = null
+type ChatStore = AgentSession
+
+let shared: AgentSession | null = null
 
 /** The one conversation of the page: a run goes on while the panel is closed. */
-export function agentSession(): ChatStore {
+export function agentSession(): AgentSession {
   if (!shared) {
-    shared = createChatStore({ base: "/api/agent" })
+    shared = createAgentSession()
     void shared.start()
   }
   return shared
@@ -89,6 +84,7 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
       <Thread store={store} />
       <CardDock />
       <ApprovalBar store={store} />
+      <InputHolder store={store} />
       <Composer store={store} />
     </div>
   )
@@ -234,6 +230,43 @@ const Row = memo(function Row({ store, id }: { store: ChatStore; id: string }) {
   return item ? <ItemView item={item} /> : null
 })
 
+/**
+ * On the conversation wire one window types at a time. When another holds the input, or this
+ * window only watches, say so and offer to take over. Nothing is shown while the input is
+ * free or this window's.
+ */
+function InputHolder({ store }: { store: ChatStore }) {
+  const holder = useChat(store, (s) => s.holder ?? null)
+  // A takeover changes this window's role and attachment, then the holder: redraw on it.
+  useChat(store, (s) => s.error)
+  // The attachment is known once the conversation is read; loaded changes then.
+  useChat(store, (s) => s.loaded)
+  if (!store.durable()) return null
+  const mine = store.attachment()
+  const watching = store.role() === "viewer"
+  const elsewhere = holder !== null && holder !== mine
+  if (!watching && !elsewhere) return null
+  return (
+    <div role="status" className="border-t border-border p-2.5">
+      <Item variant="muted" size="sm">
+        <ItemContent className="min-w-0">
+          <ItemTitle>{elsewhere ? "Another window has the input" : "This window is watching"}</ItemTitle>
+          <ItemDescription className="text-xs">
+            {watching
+              ? "It shows the conversation. Take over to type here."
+              : "What you send here is refused until you take over."}
+          </ItemDescription>
+        </ItemContent>
+        <ItemFooter className="justify-start">
+          <Button variant="outline" size="xs" onClick={() => void store.takeover()}>
+            Take over
+          </Button>
+        </ItemFooter>
+      </Item>
+    </div>
+  )
+}
+
 /** The agent asks before a tool that changes things. Cards replace this in the next step. */
 function ApprovalBar({ store }: { store: ChatStore }) {
   const q = useChat(store, (s) => s.approval)
@@ -253,7 +286,7 @@ function ApprovalBar({ store }: { store: ChatStore }) {
           {q.standing && (
             <>
               <Button variant="outline" size="xs" onClick={() => void store.answer("session")}>
-                This session
+                {store.durable() ? "This conversation" : "This session"}
               </Button>
               <Button variant="outline" size="xs" onClick={() => void store.answer("always")}>
                 Always

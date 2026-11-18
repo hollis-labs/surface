@@ -78,6 +78,18 @@ The app imports the theme once, after Tailwind, and needs the `@/` alias to its 
 The stock `shadcn` CLI and its MCP server work against the same registry (`components.json` lists it as
 `@surface`): `npx shadcn add @surface/button --diff` shows how an installed file differs.
 
+## Seeing it and checking it
+
+- **The gallery.** Surface's Components window (`surface.gallery`, in the apps menu) draws every installed
+  component in its variants and states from fixtures: controls, display, overlays, chat, cards, generated surfaces,
+  ADE's overlays and the window manager. Design work happens against it. Its source is `web/src/gallery/`; add a specimen there when you
+  add a component or a variant.
+- **Screenshots.** `make ui-shots` builds studio, opens the gallery and saves one PNG per section in dark and light
+  (`OUT=<dir>`; default `$TMPDIR/surface-ui-shots`), with an `index.json`. Nothing compares them yet.
+- **Drift across apps.** `node scripts/ui.mjs report <app dir...> [--from <file>] [--registry <dir or URL>] [--json]`
+  prints each app's registry, item count, and every item missing, edited in place, behind the registry or unknown
+  to it, and any file in the components directory the registry did not put there.
+
 ## Changing the registry
 
 Edit or add a file under `ui/`, then `node scripts/ui.mjs build` and commit the generated files with it.

@@ -13,7 +13,7 @@ import (
 
 const (
 	substrateApp        = "desk"
-	substrateConfigJSON = "{\"database\":{\"sqlite\":{\"path\":\"surface.db\"}},\"httphost\":{\"addr\":\"127.0.0.1:8090\"},\"logging\":{\"format\":\"text\",\"level\":\"info\"}}"
+	substrateConfigJSON = "{\"database\":{\"sqlite\":{\"path\":\"surface.db\"}},\"httphost\":{\"addr\":\"127.0.0.1:8190\"},\"logging\":{\"format\":\"text\",\"level\":\"info\"}}"
 )
 
 // substrateModules is the start order.

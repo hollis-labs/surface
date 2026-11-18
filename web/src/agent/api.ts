@@ -42,6 +42,8 @@ export interface Setup {
   ready: boolean
   model: string
   config_path: string
+  /** Why the agent cannot answer, in a sentence, when it cannot. */
+  reason?: string
 }
 
 const base = "/api/agent"

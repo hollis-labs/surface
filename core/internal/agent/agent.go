@@ -73,9 +73,12 @@ type Options struct {
 
 // Service is the embedded agent.
 type Service struct {
-	k        kernel.Kernel
-	log      *slog.Logger
-	cfg      FileConfig
+	k      kernel.Kernel
+	log    *slog.Logger
+	cfg    FileConfig
+	cfgErr error
+	// custom is set when the engine was handed in (Options.Engine): the config file is not its.
+	custom   bool
 	engine   Engine
 	approver Approver
 	selector slots.Selector
@@ -108,7 +111,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if err != nil {
 		log.Warn("agent config not read; the agent is off until it is fixed", "err", err)
 	}
-	s := &Service{k: k, log: log, cfg: cfg, approver: o.Approver, tools: map[string]kernel.BoundTool{},
+	s := &Service{k: k, log: log, cfg: cfg, cfgErr: err, approver: o.Approver, tools: map[string]kernel.BoundTool{},
 		wake: make(chan struct{}, 1), done: make(chan struct{})}
 
 	if s.notes, err = slots.OpenNotes(ctx, k.DB()); err != nil {
@@ -126,6 +129,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		s.selector = s.pin
 	}
 	s.engine = o.Engine
+	s.custom = o.Engine != nil
 	if s.engine == nil {
 		if s.engine, err = newHostEngine(ctx, cfg, systemPrompt(k.AppName(), cfg.System), k.DB()); err != nil {
 			return nil, fmt.Errorf("agent: engine: %w", err)

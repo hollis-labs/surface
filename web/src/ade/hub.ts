@@ -58,6 +58,21 @@ function rectOf(el: Element | null): Rect | null {
   return r.width && r.height ? { x: r.x, y: r.y, w: r.width, h: r.height } : null
 }
 
+/**
+ * A window on screen, title bar and all: the tabset its body sits in (the window manager
+ * draws a tab's body apart from its tabset, and names both by layout path), or the body
+ * alone when that cannot be found. A window in a background tab is not on screen.
+ */
+function windowRect(id: string): Rect | null {
+  const body = document.querySelector(`[data-window="${CSS.escape(id)}"]`)
+  if (!rectOf(body)) return null
+  const path = body?.closest(".flexlayout__tab")?.getAttribute("data-layout-path")
+  const set = path
+    ? document.querySelector(`.flexlayout__tabset[data-layout-path="${CSS.escape(path.replace(/\/t\d+$/, ""))}"]`)
+    : null
+  return rectOf(set) ?? rectOf(body)
+}
+
 const viewTitle = (view: string) => viewById(view)?.title ?? view
 
 /** The server's guide as the hub's. A step that waits says so in words, in its await's args.text. */
@@ -159,7 +174,7 @@ export function startAde() {
     resolve: (a) => {
       const t = a.target
       if (!t) return null
-      if (t.kind === "window") return rectOf(document.querySelector(`[data-window="${CSS.escape(t.id)}"]`))
+      if (t.kind === "window") return windowRect(t.id)
       if (t.kind === "anchor") {
         const cut = t.id.indexOf("/")
         return rectOf(anchorElement(t.id.slice(0, cut), t.id.slice(cut + 1)))

@@ -11,6 +11,11 @@
 //   node scripts/ui.mjs sync               reinstall every locked item from the registry
 //   node scripts/ui.mjs verify             exit 1 if any installed file differs from the lock or the registry
 //   node scripts/ui.mjs status             what is installed, from where
+//   node scripts/ui.mjs report <app dir...> [--from <file>] [--json]
+//                                           each app's registry, item count and drift: items missing,
+//                                           edited in place or behind the registry (--registry to compare
+//                                           every app with one registry). --from names a file listing app
+//                                           dirs, one per line (# starts a comment).
 //
 // Options: --app <dir> (default: the current directory), --registry <dir or URL template>.
 // The lock names the registry: a directory holding <name>.json files, or a URL with {name}
@@ -57,16 +62,22 @@ function writeLock(lock) {
 }
 
 /** One registry item, from a directory or a URL template. */
-async function fetchItem(lock, name) {
+async function fetchItem(lock, name, { base = appDir, soft = false } = {}) {
   const src = lock.registry
   if (/^https?:\/\//.test(src)) {
     const url = src.replace("{name}", name).replace("{ref}", lock.ref ?? "main")
     const res = await fetch(url)
-    if (!res.ok) fail(`${url}: ${res.status} ${res.statusText}`)
+    if (!res.ok) {
+      if (soft && res.status === 404) return null
+      fail(`${url}: ${res.status} ${res.statusText}`)
+    }
     return res.json()
   }
-  const file = join(resolve(appDir, src), `${name}.json`)
-  if (!existsSync(file)) fail(`the registry at ${src} has no item "${name}"`)
+  const file = join(resolve(base, src), `${name}.json`)
+  if (!existsSync(file)) {
+    if (soft) return null
+    fail(`the registry at ${src} has no item "${name}"`)
+  }
   return JSON.parse(readFileSync(file, "utf8"))
 }
 
@@ -145,6 +156,88 @@ async function verify(lock) {
   console.log(`surface ui: ${locked.size} file(s) in ${Object.keys(lock.items).length} item(s) match the registry`)
 }
 
+/**
+ * One app's drift against its registry (or the one given with --registry): for each locked
+ * item, whether a file is missing, edited in place, or behind the registry; files the
+ * registry has that the app lacks; and files in the components directory nothing put there.
+ */
+async function inspect(dir) {
+  const lockFile = join(dir, "ui.lock.json")
+  if (!existsSync(lockFile)) return { dir, error: "no ui.lock.json" }
+  const lock = JSON.parse(readFileSync(lockFile, "utf8"))
+  lock.items ??= {}
+  // A registry given on the command line is read from where the command runs.
+  const base = registryOverride ? process.cwd() : dir
+  if (registryOverride) lock.registry = registryOverride
+  let app = basename(resolve(dir))
+  try {
+    app = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).name ?? app
+  } catch {
+    // No package.json: the directory's name will do.
+  }
+  if (!/^https?:\/\//.test(lock.registry ?? "") && !existsSync(resolve(base, lock.registry ?? ""))) {
+    return { app, dir, error: `its registry ${lock.registry} is not there (give one with --registry)` }
+  }
+  const drift = []
+  const locked = new Set()
+  for (const [name, entry] of Object.entries(lock.items)) {
+    const item = await fetchItem(lock, name, { base, soft: true })
+    if (!item) {
+      for (const rel of Object.keys(entry.files ?? {})) locked.add(rel)
+      drift.push({ item: name, kind: "unknown", detail: "the registry has no such item" })
+      continue
+    }
+    const want = new Map((item.files ?? []).map((f) => [targetOf(lock, f), sha(f.content)]))
+    for (const [rel, hash] of Object.entries(entry.files ?? {})) {
+      locked.add(rel)
+      const abs = join(dir, rel)
+      if (!existsSync(abs)) drift.push({ item: name, file: rel, kind: "missing" })
+      else if (sha(readFileSync(abs, "utf8")) !== hash) drift.push({ item: name, file: rel, kind: "edited" })
+      else if (want.get(rel) !== hash) drift.push({ item: name, file: rel, kind: "behind" })
+    }
+    for (const rel of want.keys()) if (!entry.files?.[rel]) drift.push({ item: name, file: rel, kind: "behind", detail: "a file the app lacks" })
+  }
+  const ui = join(dir, lock.uiDir ?? "")
+  if (lock.uiDir && existsSync(ui)) {
+    for (const f of readdirSync(ui)) {
+      const rel = join(lock.uiDir, f)
+      if (!locked.has(rel)) drift.push({ item: "", file: rel, kind: "stray" })
+    }
+  }
+  return { app, dir, registry: lock.registry, ref: lock.ref ?? null, items: Object.keys(lock.items).length, drift }
+}
+
+const WORDS = {
+  missing: "missing",
+  edited: "edited in place",
+  behind: "behind the registry",
+  unknown: "not in the registry",
+  stray: "not from the registry",
+}
+
+async function report(dirs, asJson) {
+  const out = []
+  for (const d of dirs) out.push(await inspect(resolve(d)))
+  if (asJson) {
+    console.log(JSON.stringify(out, null, 2))
+    return
+  }
+  for (const r of out) {
+    if (r.error) {
+      console.log(`${r.app ?? r.dir} (${r.dir}): ${r.error}`)
+      continue
+    }
+    const rel = relative(process.cwd(), r.dir)
+    const where = rel.startsWith("..") ? r.dir : rel || "."
+    const state = r.drift.length ? `${r.drift.length} drifting` : "in step"
+    console.log(`${r.app} (${where}): ${r.registry}${r.ref ? ` @ ${r.ref}` : ""} · ${r.items} items · ${state}`)
+    for (const x of r.drift) {
+      const what = [x.item, x.file].filter(Boolean).join(": ")
+      console.log(`  ${what}: ${WORDS[x.kind] ?? x.kind}${x.detail ? ` (${x.detail})` : ""}`)
+    }
+  }
+}
+
 /** Registry maintainers: derive registry.json from the sources, then let shadcn build the item files. */
 function build() {
   const root = resolve(appDir, "registry")
@@ -201,6 +294,20 @@ switch (cmd) {
   case "verify":
     await verify(readLock())
     break
+  case "report": {
+    const asJson = args.includes("--json")
+    const from = opt("from")
+    const dirs = args.filter((a) => a !== "--json")
+    if (from) {
+      for (const line of readFileSync(from, "utf8").split("\n")) {
+        const d = line.replace(/#.*/, "").trim()
+        if (d) dirs.push(resolve(dirname(resolve(from)), d))
+      }
+    }
+    if (!dirs.length) dirs.push(appDir)
+    await report(dirs, asJson)
+    break
+  }
   case "status": {
     const lock = readLock()
     console.log(`registry: ${lock.registry}${lock.ref ? ` @ ${lock.ref}` : ""}\ninstalled into: ${lock.uiDir}`)
@@ -208,5 +315,5 @@ switch (cmd) {
     break
   }
   default:
-    fail("usage: ui.mjs build | add <item...> | sync | verify | status  [--app <dir>] [--registry <dir or URL>]")
+    fail("usage: ui.mjs build | add <item...> | sync | verify | status | report <app dir...> [--from <file>] [--json]  [--app <dir>] [--registry <dir or URL>]")
 }

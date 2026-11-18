@@ -20,7 +20,7 @@ import (
 //	POST   /api/agent/runs/{id}/approvals  {approval_id, decision} (engine)
 //	POST   /api/agent/runs/{id}/cancel     (engine)
 //	GET    /api/agent/context              the context the next message would carry (slots.Assembly)
-//	GET    /api/agent/setup                {ready, model, config_path}
+//	GET    /api/agent/setup                {ready, model, config_path, reason?}
 //	GET    /api/agent/slots                every slot, with notes, the active one marked
 //	POST   /api/agent/slots/pin            {slot} ("" unpins)
 //	GET    /api/agent/reflexes             PUT/DELETE /api/agent/reflexes/{name}
@@ -36,7 +36,17 @@ func (s *Service) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+Prefix+"/turns", s.turn)
 	mux.HandleFunc("GET "+Prefix+"/context", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.Preview(r.Context())) })
 	mux.HandleFunc("GET "+Prefix+"/setup", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, 200, map[string]any{"ready": s.engine.Ready(), "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName())})
+		// ready is the engine's (a model, a gateway and a key file are named) and the key file
+		// can be read; reason says why not, in a sentence.
+		reason := s.SetupProblem()
+		if s.engine.Ready() && reason == "" {
+			reply(w, 200, map[string]any{"ready": true, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName())})
+			return
+		}
+		if reason == "" {
+			reason = "The agent has no model configured."
+		}
+		reply(w, 200, map[string]any{"ready": false, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName()), "reason": reason})
 	})
 	mux.HandleFunc("GET "+Prefix+"/slots", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.slotList(r.Context())) })
 	mux.HandleFunc("POST "+Prefix+"/slots/pin", func(w http.ResponseWriter, r *http.Request) {

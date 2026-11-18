@@ -1,4 +1,4 @@
-.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify test vet lint scan pins clean
+.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots test vet lint scan pins clean
 
 SURFACE := go run ./cmd/surface
 APPS    := desk studio
@@ -29,6 +29,11 @@ ui-build:
 # The components copied into the page must be exactly the registry's.
 ui-verify:
 	node scripts/ui.mjs verify
+
+# Photograph the component gallery (Components window) in dark and light, outside the repo.
+# OUT=<dir> to choose where; the default is $$TMPDIR/surface-ui-shots.
+ui-shots: studio
+	node scripts/ui-shots.mjs --app studio $(if $(OUT),--out $(OUT))
 
 test:
 	go test -race ./...

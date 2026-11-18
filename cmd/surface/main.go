@@ -114,7 +114,7 @@ func load(file string) (*app, error) {
 		m.Title = m.App
 	}
 	if m.Addr == "" {
-		m.Addr = "127.0.0.1:8090"
+		m.Addr = "127.0.0.1:8190"
 	}
 	if len(m.Modules) == 0 {
 		return nil, fmt.Errorf("%s: an app needs at least one module", file)

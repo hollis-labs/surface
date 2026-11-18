@@ -38,7 +38,7 @@ Needs Go 1.26.11+ and Node 22+.
 ```sh
 npm ci
 make desk            # generate, build the page, build bin/desk
-./bin/desk           # serves http://127.0.0.1:8090
+./bin/desk           # serves http://127.0.0.1:8190
 ```
 
 Data lives under `$XDG_DATA_HOME/surface/<app>` (or `<APP>_DATA_DIR`); the address is `<APP>_ADDR`. The

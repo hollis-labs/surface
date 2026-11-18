@@ -175,7 +175,7 @@ function ContextStrip({ store }: { store: ChatStore }) {
           {asm.block}
         </pre>
       )}
-      {setup && !setup.ready && <SetupCard path={setup.config_path} />}
+      {setup && !setup.ready && <SetupCard path={setup.config_path} reason={setup.reason} />}
       {err && <div className="text-destructive">{err}</div>}
     </section>
   )
@@ -312,7 +312,7 @@ const example = (path: string) => `{
 }`
 
 /** Shown until a model is configured: what to write where, ready to copy. */
-function SetupCard({ path }: { path: string }) {
+function SetupCard({ path, reason }: { path: string; reason?: string }) {
   const [copied, setCopied] = useState(false)
   const text = example(path)
   const copy = () => {
@@ -325,6 +325,7 @@ function SetupCard({ path }: { path: string }) {
     <Card size="sm">
       <CardHeader>
         <CardTitle>The agent is not set up yet</CardTitle>
+        {reason && <p className="text-sm text-destructive">{reason}</p>}
         <CardDescription>
           Everything else works by hand. To talk to the agent, write <code className="break-all">{path}</code>:
         </CardDescription>

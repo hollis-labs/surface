@@ -33,6 +33,16 @@ type FileConfig struct {
 	// not speak MCP yet (libs agent/host has no MCP client).
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
 
+	// Agents says where the agent's authored directory is kept, for a runner that has one
+	// (Nanite): <dir>/<app>. Default: agents/ beside this file.
+	Agents struct {
+		Dir string `json:"dir,omitempty"`
+	} `json:"agents,omitempty"`
+	// Builtins turns on tool groups of the runner's own (Nanite: files-read, files-write,
+	// shell, background, subagents, skills, notes, or all). None by default: the agent has
+	// the app's tools.
+	Builtins []string `json:"builtins,omitempty"`
+
 	// Path is the file this was read from ("" when there was none).
 	Path string `json:"-"`
 }

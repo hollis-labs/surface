@@ -45,7 +45,11 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		if s.wire != nil {
 			// On the conversation wire the runner answers, not the engine: the page binds to
 			// the wire and the agent by these two fields.
-			reply(w, 200, map[string]any{"ready": true, "model": s.wire.runner, "config_path": ConfigPath(s.k.AppName()),
+			model := s.wire.runner
+			if s.wire.nanite != nil {
+				model = s.cfg.Model
+			}
+			reply(w, 200, map[string]any{"ready": true, "model": model, "runner": s.wire.runner, "config_path": ConfigPath(s.k.AppName()),
 				"wire": "conversation", "agent": s.wire.agent})
 			return
 		}

@@ -17,6 +17,8 @@ import (
 	"github.com/hollis-labs/libs/agent/chat/sqlitestore"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
 
+	"github.com/hollis-labs/nanite/chatrunner"
+
 	"github.com/hollis-labs/surface/core/internal/reflex"
 	"github.com/hollis-labs/surface/core/internal/router"
 	"github.com/hollis-labs/surface/core/internal/slots"
@@ -30,10 +32,10 @@ import (
 // a turn before it runs (the router, the reflexes and the context block: Intercept), and
 // where a standing approval is kept (Grants).
 //
-// It is on when a runner for it is chosen (SURFACE_AGENT_RUNNER). Today that is only
-// "scripted", the library's test runner, which plays fixed scripts and runs no tools: it is
-// how the wire and the page are exercised before the real runner (Nanite) is wired in.
-// With no runner chosen, the agent runs on the engine and the run-at-a-time wire as before.
+// It is on when a runner for it is chosen (SURFACE_AGENT_RUNNER): "nanite", the app's agent
+// as a Nanite agent with the app's tools (nanite.go), or "scripted", the library's test
+// runner, which plays fixed scripts and runs no tools. With no runner chosen, the agent runs
+// on the engine and the run-at-a-time wire as before.
 
 // RunnerScripted names the library's scripted test runner.
 const RunnerScripted = "scripted"
@@ -44,6 +46,9 @@ type wire struct {
 	store    *sqlitestore.Store
 	handler  http.Handler
 	scripted *chattest.Scripted
+	nanite   *chatrunner.Runner
+	// asks is the tool a routing rule marked ask-first, for the turn in progress.
+	asks asks
 	// agent is the one agent name this app serves on the wire.
 	agent  string
 	runner string
@@ -56,8 +61,8 @@ func runnerChoice() string {
 
 // openWire builds the conversation wire for a chosen runner.
 func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
-	if runner != RunnerScripted {
-		return nil, fmt.Errorf("agent: no runner %q for the conversation wire (known: %s)", runner, RunnerScripted)
+	if runner != RunnerScripted && runner != RunnerNanite {
+		return nil, fmt.Errorf("agent: no runner %q for the conversation wire (known: %s, %s)", runner, RunnerScripted, RunnerNanite)
 	}
 	st, err := sqlitestore.Open(ctx, filepath.Join(s.k.DataDir(), "chat.db"))
 	if err != nil {
@@ -68,9 +73,24 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		return nil, err
 	}
 	w := &wire{store: st, agent: s.k.AppName(), runner: runner}
-	w.scripted = chattest.NewScripted(chattest.WithDelay(scriptDelay()))
+	var run chat.Runner
+	if runner == RunnerNanite {
+		if w.nanite, err = s.openNanite(ctx, w); err != nil {
+			_ = st.Close()
+			return nil, err
+		}
+		run = w.nanite
+	} else {
+		w.scripted = chattest.NewScripted(chattest.WithDelay(scriptDelay()))
+		run = w.scripted
+	}
+	closeRunner := func() {
+		if w.nanite != nil {
+			_ = w.nanite.Close()
+		}
+	}
 	w.svc, err = chat.NewService(chat.Config{
-		Runner:  w.scripted,
+		Runner:  run,
 		Log:     st,
 		Control: st,
 		Grants:  grants{db: s.k.DB()},
@@ -85,6 +105,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		Logger:    s.log,
 	})
 	if err != nil {
+		closeRunner()
 		_ = st.Close()
 		return nil, fmt.Errorf("agent: conversation service: %w", err)
 	}
@@ -93,6 +114,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 	w.handler, err = chat.NewHandler(w.svc, func(context.Context, string, chat.Permission) error { return nil })
 	if err != nil {
 		_ = w.svc.Close(ctx)
+		closeRunner()
 		_ = st.Close()
 		return nil, err
 	}
@@ -112,6 +134,9 @@ func (w *wire) close(ctx context.Context) {
 	stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	_ = w.svc.Close(stop)
+	if w.nanite != nil {
+		_ = w.nanite.Close()
+	}
 	_ = w.store.Close()
 }
 
@@ -179,6 +204,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
 	extra := slots.Extra{Instructions: s.layoutInstructions(ctx, sit)}
 	var routed *router.Route
+	askFirst := ""
 	if !auto {
 		f := router.Fields{Text: text, Mode: sit.Mode, Layout: sit.Layout, Slot: sel.Primary().Name}
 		if sit.Focused != nil {
@@ -190,6 +216,9 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 		}
 		if route != nil {
 			routed = route
+			if route.Kind == "tool" && route.Ask {
+				askFirst = route.Name
+			}
 			extra.Routed = s.runRoute(ctx, route)
 			sit = s.k.Situation(ctx)
 			sit.Input = text
@@ -197,7 +226,16 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 		}
 	}
 
-	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: s.priorMessages(ctx), Sit: sit}, s.layoutReflexes(ctx, sit))
+	if s.wire != nil {
+		s.wire.asks.set(turn.ConversationID, askFirst)
+	}
+
+	prior := s.priorMessages(ctx, turn.ConversationID)
+	debug := os.Getenv("SURFACE_AGENT_DEBUG") != ""
+	if debug {
+		s.log.Info("turn intercepted", "run_id", turn.RunID, "prior_messages", len(prior), "ask_first", askFirst)
+	}
+	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
 	if out.Halt != "" {
 		// A reflex answered instead of the agent. On this wire that is a turn like any other,
 		// so every attached page sees the message and the answer.
@@ -207,25 +245,36 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	extra.Reminders = out.Reminders
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
-	raw, err := json.Marshal(map[string]any{"block": asm.Block, "assembly": asm})
-	if err != nil || len(raw) > chat.MaxContextBytes {
-		// The whole assembly is for the panel to show; the block is what the model needs.
-		raw, _ = json.Marshal(map[string]any{"block": asm.Block})
+	// The runner places the context as text in one slot for this turn: the block alone, with
+	// the config's extra standing instructions (if any) in front. The panel reads the
+	// assembly from the app's own events, not from the turn.
+	block := asm.Block
+	if extra := strings.TrimSpace(s.cfg.System); extra != "" && s.wire != nil && s.wire.nanite != nil {
+		block = extra + "\n\n" + block
 	}
-	if len(raw) <= chat.MaxContextBytes {
+	raw, err := json.Marshal(block)
+	if err == nil && len(raw) <= chat.MaxContextBytes {
 		turn.Context = raw
+	} else {
+		s.log.Warn("the context block is too large for a turn; sent without it", "bytes", len(raw))
+	}
+	if debug {
+		s.log.Info("turn context", "run_id", turn.RunID, "bytes", len(block), "block", block)
 	}
 	s.k.Events().Publish("agent.turn", map[string]any{"run_id": turn.RunID, "slot": asm.Slot, "slots": sel.Names(),
 		"top_of_mind": asm.TopOfMind, "fired": out.Fired, "routed": routed})
 	return chat.Continue()
 }
 
-// priorMessages is the recent conversation as the reflexes see it. On the conversation wire
-// the engine's thread is not what is being talked on; until the runner keeps a history the
-// reflexes can read, they see the message alone.
-func (s *Service) priorMessages(ctx context.Context) []libreflex.MessageSignal {
+// priorMessages is the recent conversation as the reflexes see it, most recent first. On the
+// conversation wire it is read from the runner's history (Nanite's), which includes the
+// turns the host answered itself: the library records those through the runner.
+func (s *Service) priorMessages(ctx context.Context, conversation string) []libreflex.MessageSignal {
 	if s.wire != nil {
-		return nil
+		if s.wire.nanite != nil && conversation != "" {
+			return s.wire.naniteHistory(ctx, conversation)
+		}
+		return nil // the scripted runner keeps no history
 	}
 	var prior []libreflex.MessageSignal
 	hist, err := s.engine.History(ctx, Owner)

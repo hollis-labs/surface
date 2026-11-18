@@ -5,6 +5,10 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The agent can run as a Nanite agent on the conversation wire** (`SURFACE_AGENT_RUNNER=nanite`): the
+  app's tools with their levels, ask-first routing rules, standing approvals that hold across restarts,
+  and an agent directory beside the agent config (`docs/agent.md`). Off by default.
+
 Found by the first outside user of the tool (the Folio presets).
 
 - **`surface-ui add` names exact versions.** Every package a registry item imports is recorded at the

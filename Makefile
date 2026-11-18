@@ -1,4 +1,4 @@
-.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots packages pack-check test vet lint scan pins clean
+.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots design-preview design-gallery packages pack-check test vet lint scan pins clean
 
 SURFACE := go run ./cmd/surface
 APPS    := desk studio
@@ -34,6 +34,19 @@ ui-verify:
 # OUT=<dir> to choose where; the default is $$TMPDIR/surface-ui-shots.
 ui-shots: studio
 	node scripts/ui-shots.mjs --app studio $(if $(OUT),--out $(OUT))
+
+# The component gallery on its own page, served from this checkout with hot reload, for a
+# reviewer to watch (a Design job's window frames it). HOST is the address to listen on: one the
+# reviewer can reach, or 0.0.0.0 for every interface. Needs no app and no server.
+HOST ?= 127.0.0.1
+PORT ?= 8430
+design-preview:
+	@echo "design preview: http://$(if $(filter 0.0.0.0,$(HOST)),<this machine's address>,$(HOST)):$(PORT)/gallery.html  (?theme=light, #<section>)"
+	GALLERY_HOST=$(HOST) GALLERY_PORT=$(PORT) npx vite --config web/vite.gallery.config.ts
+
+# The same page built to static files (OUT=<dir>; default $$TMPDIR/surface-gallery).
+design-gallery:
+	$(if $(OUT),GALLERY_OUT=$(OUT)) npx vite build --config web/vite.gallery.config.ts
 
 # Build the npm packages (packages/*: chat, cards, genui, page) into each dist/.
 packages:

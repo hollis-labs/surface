@@ -280,5 +280,6 @@ working from the pieces above. The owner describes a flow ("write an article", "
    and puts the flow in use.
 
 A refinement ("make the browser bigger") is a new version with a note. Every version is kept and can be restored.
-The Builder window lists the flows with Open, Refine and their versions. Generating a new app binary from a flow
+The owner describes and refines a flow in the agent's panel; the Builder window has no input of its own. It lists
+the flows, opens one on the desk, and shows its versions. Generating a new app binary from a flow
 comes later.

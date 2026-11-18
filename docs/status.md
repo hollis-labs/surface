@@ -25,8 +25,8 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 
 | | State |
 |---|---|
-| Theme, registry, sync and drift check, lint rule | done; the page runs on the theme, and the core's Settings, Layouts, Marks and confirm dialog are built from registry components |
-| The desk's chrome and the six modules' views | still on `sf-*` classes through a bridge; moved onto components file by file |
+| Theme, registry (36 components), sync and drift check | done |
+| The page built from registry components | done: the desk's bar, menu, window frames and palette, the core windows, and all six modules' views. No hand-written control or old stylesheet remains; lint fails on a raw control anywhere in the page |
 | A plain frame for apps that are not a desk | not started |
 | Chat on shared behaviour and registry components | not started; the panel is still `ade-react`'s |
 | Cards, generated UI, the ADE overlays | not started |

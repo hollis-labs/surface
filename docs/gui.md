@@ -77,6 +77,8 @@ All of this is in the Surface repository, whichever app prompted it.
 4. **Add or update its specimen in the gallery** (`web/src/gallery/`): every variant and every state, from
    fixtures. A component that is not in the gallery cannot be designed against or checked.
 5. **Look at it.** Open the Components window in dark and light, or run `make ui-shots` and read the images.
+   When someone reviews the change live, serve the gallery from your checkout with `make design-preview`
+   (below).
 6. **Run the checks:** `make lint-web typecheck ui-verify` and `npm test`.
 7. **Replace call-site workarounds.** If views were passing `className` to fake the look you just added, change
    them to the variant.
@@ -144,6 +146,30 @@ engine or a server.
 | A generated-UI pattern | Not in an app. The three patterns are a reviewed contract owned by Substrate (`genui/`); a new one is a contract change there, then a catalog entry in `core/internal/genui` and a branch in `genui-surface` |
 | Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@hollis-labs/surface-page/sdk` |
 | A region of the page | A prop of `app-frame`; the frame does layout only |
+
+## Reviewing design work live
+
+Design work is reviewed while it is being done, in the app of the person who asked for it.
+
+- **The designer** serves the gallery from their checkout with hot reload:
+
+  ```sh
+  make design-preview HOST=<an address the reviewer can reach> PORT=<port>
+  ```
+
+  It prints the URL (`http://<host>:<port>/gallery.html`; `?theme=light|dark`, `#<section>`). The page is the
+  Components gallery on its own, from fixtures, with no app and no server, and it may be framed by another
+  origin. `HOST=0.0.0.0` listens on every interface. `make design-gallery OUT=<dir>` builds the same page to
+  static files.
+- **The reviewer** sees it in a Design job's window (`modules/design`): the preview of the branch in a frame,
+  a switch to the base's preview, dark and light, a section picker, the branch head and the files it changes,
+  and notes pinned to a section and component (marks on the job). An edit in the designer's checkout shows
+  in the window without a refresh.
+- **The rounds** go through the agent: `design_request` hands the job to the Design team (a Tether message and a
+  manual Torque task), `design_feedback` sends the open notes as the next round, `design_approve` asks the
+  owner with an approval card and, on approve, tells the team to merge. The team merges; Surface does not.
+  Progress is read from the branch and its pull request. Where messages go is the app's settings
+  (`design.*`), never the repository; without them the text is shown to send by hand.
 
 ## What is checked
 

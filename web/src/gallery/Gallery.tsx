@@ -28,12 +28,22 @@ export const SECTIONS = [
 ] as const
 
 export function Gallery({ win }: ViewProps) {
-  const first = typeof win.args.section === "string" ? win.args.section : "controls"
-  const [section, setSection] = useState<string>(first)
+  return <GalleryTabs first={typeof win.args.section === "string" ? win.args.section : undefined} />
+}
+
+/**
+ * The gallery's tabs, outside any window: the standalone page (standalone.tsx) draws this,
+ * opening on `first` and telling `onSection` which section is shown.
+ */
+export function GalleryTabs({ first, onSection }: { first?: string; onSection?: (id: string) => void }) {
+  const [section, setSection] = useState<string>(first && SECTIONS.some((s) => s.id === first) ? first : "controls")
   return (
     <Tabs
       value={section}
-      onValueChange={(v) => setSection(String(v))}
+      onValueChange={(v) => {
+        setSection(String(v))
+        onSection?.(String(v))
+      }}
       className="@container flex h-full min-h-0 flex-col"
     >
       <div className="shrink-0 border-b border-border px-3 py-2">

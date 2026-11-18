@@ -5,6 +5,7 @@ import m1 from "../../../modules/scratch/web/index"
 import m2 from "../../../modules/drafts/web/index"
 import m3 from "../../../modules/browser/web/index"
 import m4 from "../../../modules/builder/web/index"
+import m5 from "../../../modules/design/web/index"
 
 export const app = { name: "studio", title: "Surface Studio" }
 
@@ -14,4 +15,5 @@ export const modules: Record<string, ModuleWeb> = {
   "drafts": m2,
   "browser": m3,
   "builder": m4,
+  "design": m5,
 }

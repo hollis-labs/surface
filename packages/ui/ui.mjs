@@ -300,7 +300,8 @@ function build() {
     const text = readFileSync(join(themeDir, f), "utf8")
     const npm = new Set()
     for (const m of text.matchAll(/^@import\s+"([^".][^"]*)"/gm)) {
-      if (m[1] !== "tailwindcss") npm.add(m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0])
+      if (m[1] !== "tailwindcss")
+        npm.add(m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0])
     }
     const name = f === "surface.css" ? "theme" : `theme-${f.replace(/\.css$/, "")}`
     items.push({

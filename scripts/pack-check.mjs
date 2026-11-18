@@ -13,6 +13,9 @@ const root = resolve(import.meta.dirname, "..")
 const packages = ["chat", "cards", "genui", "page", "ui"]
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: ["ignore", "pipe", "inherit"] }).toString()
 
+// One version line: every package carries the same version (scripts/version.mjs).
+execFileSync("node", [join(root, "scripts/version.mjs")], { stdio: "inherit" })
+
 const dir = mkdtempSync(join(tmpdir(), "surface-pack-"))
 for (const p of packages) {
   const out = run("npm", ["pack", "--silent", "--pack-destination", dir], join(root, "packages", p)).trim().split("\n").at(-1)
@@ -48,7 +51,7 @@ await build({
 console.log("@hollis-labs/surface-page: bundles (index, sdk, gallery) against installed components")
 
 try {
-  run(join(dir, "node_modules/.bin/surface-ui"), ["status"], dir)
+  execFileSync(join(dir, "node_modules/.bin/surface-ui"), ["status"], { cwd: dir, stdio: "pipe" })
 } catch (e) {
   // No lock in an empty directory: the bin ran and said so.
   if (!String(e.stderr ?? e.message).includes("ui.lock.json") && e.status !== 1) throw e

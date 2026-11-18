@@ -33,10 +33,16 @@
       "types": "./dist/types/gallery/index.d.ts",
       "default": "./dist/gallery.js"
     },
+    "./vite": {
+      "types": "./vite.d.ts",
+      "default": "./vite.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
+    "vite.js",
+    "vite.d.ts",
     "README.md"
   ],
   "scripts": {
@@ -52,9 +58,15 @@
   "peerDependencies": {
     "lucide-react": ">=1",
     "react": ">=19",
-    "react-dom": ">=19"
+    "react-dom": ">=19",
+    "vite": ">=6"
   },
   "surface": {
     "registryItems": "dist/registry-items.json"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
   }
 }

@@ -21,7 +21,8 @@
     "surface-ui": "ui.mjs"
   },
   "files": [
-    "ui.mjs"
+    "ui.mjs",
+    "README.md"
   ],
   "engines": {
     "node": ">=20"

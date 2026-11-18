@@ -972,6 +972,23 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "theme",
+      "type": "registry:file",
+      "title": "Theme",
+      "description": "Every colour, radius and font a component may name, in light and dark. Import it once, after Tailwind; an app restyles by overriding its variables, never a component.",
+      "dependencies": [
+        "shadcn",
+        "tw-animate-css"
+      ],
+      "files": [
+        {
+          "path": "registry/theme/surface.css",
+          "type": "registry:file",
+          "target": "src/surface.css"
+        }
+      ]
     }
   ]
 }

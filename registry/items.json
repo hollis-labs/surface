@@ -41,5 +41,9 @@
   "app-frame": {
     "title": "App Frame",
     "description": "An app's frame: optional bar, rail and resizable side panel around the content. Layout only."
+  },
+  "theme": {
+    "title": "Theme",
+    "description": "Every colour, radius and font a component may name, in light and dark. Import it once, after Tailwind; an app restyles by overriding its variables, never a component."
   }
 }

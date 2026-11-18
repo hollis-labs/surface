@@ -109,7 +109,9 @@ async function closure(lock, names) {
   return seen
 }
 
-const targetOf = (lock, file) => join(lock.uiDir, basename(file.path))
+// Components go in uiDir; the theme (a registry:file) beside it, or in themeDir when the lock names one.
+const targetOf = (lock, file) =>
+  join(file.type === "registry:file" ? (lock.themeDir ?? dirname(lock.uiDir)) : lock.uiDir, basename(file.path))
 
 async function install(lock, names) {
   const items = await closure(lock, names)
@@ -290,6 +292,24 @@ function build() {
       ...(npm.size ? { dependencies: [...npm].sort() } : {}),
       ...(deps.size ? { registryDependencies: [...deps].sort() } : {}),
       files: [f, ...beside].map((x) => ({ path: `registry/ui/${x}`, type: "registry:ui" })),
+    })
+  }
+  // The theme is one item too, so an app outside this repository installs it at the same ref.
+  const themeDir = join(root, "theme")
+  for (const f of existsSync(themeDir) ? readdirSync(themeDir).filter((x) => x.endsWith(".css")) : []) {
+    const text = readFileSync(join(themeDir, f), "utf8")
+    const npm = new Set()
+    for (const m of text.matchAll(/^@import\s+"([^".][^"]*)"/gm)) {
+      if (m[1] !== "tailwindcss") npm.add(m[1].startsWith("@") ? m[1].split("/").slice(0, 2).join("/") : m[1].split("/")[0])
+    }
+    const name = f === "surface.css" ? "theme" : `theme-${f.replace(/\.css$/, "")}`
+    items.push({
+      name,
+      type: "registry:file",
+      title: meta[name]?.title ?? "Theme",
+      ...(meta[name]?.description ? { description: meta[name].description } : {}),
+      ...(npm.size ? { dependencies: [...npm].sort() } : {}),
+      files: [{ path: `registry/theme/${f}`, type: "registry:file", target: `src/${f}` }],
     })
   }
   const registry = {

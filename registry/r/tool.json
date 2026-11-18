@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tool",
+  "title": "Tool",
+  "description": "A plain, folded row for a tool the agent called: its name and status; open, its input and result.",
+  "dependencies": [
+    "cn",
+    "lucide-react"
+  ],
+  "registryDependencies": [
+    "@surface/collapsible",
+    "@surface/spinner"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/tool.tsx",
+      "content": "import * as React from \"react\"\nimport { CheckIcon, ChevronDownIcon, WrenchIcon, XIcon } from \"lucide-react\"\nimport { cn } from \"cn\"\nimport { Collapsible, CollapsibleContent, CollapsibleTrigger } from \"@/components/ui/collapsible\"\nimport { Spinner } from \"@/components/ui/spinner\"\n\n/**\n * A plain row for a tool the agent called, after AI Elements' Tool: what it called and how\n * it went, folded; open, the input and what came back. Richer cards for particular tools\n * (an approval, a plan, progress) are their own components.\n */\ntype ToolStatus = \"running\" | \"done\" | \"error\"\n\nfunction Tool({ className, ...props }: React.ComponentProps<typeof Collapsible>) {\n  return <Collapsible data-slot=\"tool\" className={cn(\"w-full rounded-md border border-border\", className)} {...props} />\n}\n\nfunction ToolHeader({\n  className,\n  title,\n  status,\n  ...props\n}: Omit<React.ComponentProps<typeof CollapsibleTrigger>, \"title\"> & { title: React.ReactNode; status: ToolStatus }) {\n  return (\n    <CollapsibleTrigger\n      data-slot=\"tool-header\"\n      className={cn(\n        \"group/tool flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50\",\n        className\n      )}\n      {...props}\n    >\n      <WrenchIcon className=\"size-3.5 shrink-0 text-muted-foreground\" />\n      <span className=\"min-w-0 flex-1 truncate font-mono\">{title}</span>\n      {status === \"running\" && <Spinner className=\"size-3.5 text-muted-foreground\" />}\n      {status === \"done\" && <CheckIcon aria-label=\"Done\" className=\"size-3.5 text-success\" />}\n      {status === \"error\" && <XIcon aria-label=\"Failed\" className=\"size-3.5 text-destructive\" />}\n      <ChevronDownIcon className=\"size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/tool:rotate-180\" />\n    </CollapsibleTrigger>\n  )\n}\n\nfunction ToolContent({ className, ...props }: React.ComponentProps<typeof CollapsibleContent>) {\n  return (\n    <CollapsibleContent\n      data-slot=\"tool-content\"\n      className={cn(\"flex flex-col gap-2 border-t border-border px-2.5 py-2 text-xs\", className)}\n      {...props}\n    />\n  )\n}\n\nfunction ToolSection({ label, children, error = false }: { label: string; children: React.ReactNode; error?: boolean }) {\n  return (\n    <div className=\"flex min-w-0 flex-col gap-1\">\n      <span className=\"font-medium text-muted-foreground\">{label}</span>\n      <pre\n        className={cn(\n          \"max-h-64 overflow-auto rounded-sm bg-muted p-2 font-mono text-xs break-words whitespace-pre-wrap\",\n          error && \"text-destructive\"\n        )}\n      >\n        {children}\n      </pre>\n    </div>\n  )\n}\n\nfunction ToolInput({ input }: { input: unknown }) {\n  if (input === undefined || input === null) return null\n  return <ToolSection label=\"Input\">{typeof input === \"string\" ? input : JSON.stringify(input, null, 2)}</ToolSection>\n}\n\nfunction ToolOutput({ output, error = false }: { output?: string; error?: boolean }) {\n  if (!output) return null\n  return (\n    <ToolSection label={error ? \"Error\" : \"Result\"} error={error}>\n      {output}\n    </ToolSection>\n  )\n}\n\nexport { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput, type ToolStatus }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

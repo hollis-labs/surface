@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "message",
+  "title": "Message",
+  "description": "One chat message: the person's in a bubble, the agent's across the width, and a notice line.",
+  "dependencies": [
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "registry/ui/message.tsx",
+      "content": "import * as React from \"react\"\nimport { cn } from \"cn\"\n\n/**\n * One message, after AI Elements' Message: the person's on the right in a bubble, the\n * agent's across the width. MessageNotice is a line from the application (stopped, an error).\n */\nfunction Message({ className, from, ...props }: React.ComponentProps<\"div\"> & { from: \"user\" | \"assistant\" }) {\n  return (\n    <div\n      data-slot=\"message\"\n      data-from={from}\n      className={cn(\"group/message flex w-full\", from === \"user\" ? \"justify-end\" : \"justify-start\", className)}\n      {...props}\n    />\n  )\n}\n\nfunction MessageContent({ className, ...props }: React.ComponentProps<\"div\">) {\n  return (\n    <div\n      data-slot=\"message-content\"\n      className={cn(\n        \"flex min-w-0 flex-col gap-2 text-sm text-foreground\",\n        \"group-data-[from=assistant]/message:w-full\",\n        \"group-data-[from=user]/message:max-w-[85%] group-data-[from=user]/message:rounded-lg group-data-[from=user]/message:bg-secondary group-data-[from=user]/message:px-3 group-data-[from=user]/message:py-2 group-data-[from=user]/message:whitespace-pre-wrap group-data-[from=user]/message:text-secondary-foreground\",\n        className\n      )}\n      {...props}\n    />\n  )\n}\n\nfunction MessageNotice({ className, tone = \"quiet\", ...props }: React.ComponentProps<\"p\"> & { tone?: \"quiet\" | \"error\" }) {\n  return (\n    <p\n      data-slot=\"message-notice\"\n      data-tone={tone}\n      className={cn(\"text-xs\", tone === \"error\" ? \"text-destructive\" : \"text-muted-foreground\", className)}\n      {...props}\n    />\n  )\n}\n\nexport { Message, MessageContent, MessageNotice }\n",
+      "type": "registry:ui"
+    }
+  ],
+  "type": "registry:ui"
+}

@@ -9,9 +9,9 @@ layer. This page says what is used, and where Surface does something of its own 
   override, logging, health (`/healthz`), the HTTP listener's lifecycle (`httphost.Serve`), the database handle
   (`modules/database`, SQLite), and the CLI skeleton (`modules/cli`).
 - **Pins:** `go.mod` follows Substrate's BOM.
-- **From the shared frontend packages** (npm, `@hollis-labs/*`): `ade-agent` and `ade-react`, for the agent
-  panel's conversation. Components and the theme are Surface's own registry (`registry/README.md`), not the
-  design kit.
+- **Nothing from the shared frontend packages.** The agent panel's conversation is `packages/chat` (behaviour) and
+  the registry's chat components (visuals); components and the theme are Surface's own registry
+  (`registry/README.md`), not the design kit.
 
 ## Where Surface goes its own way
 

@@ -1,35 +1,70 @@
 /**
- * The agent panel: the conversation with the embedded agent (ade-react's AgentPanel over an
- * ade-agent session on the agent-host/1 wire), with the context strip above it: the slot in
- * play, the tools top of mind there, and the <context> block the next message will carry.
+ * The agent panel: the context strip (the slot in play, the tools top of mind there, and the
+ * <context> block the next message will carry) above the conversation with the embedded
+ * agent.
  *
- * The context is the server's: it is assembled from the desk on every message, and pushed
+ * The conversation is @surface/chat's store, drawn with the registry's chat components. Each
+ * part subscribes to its own slice, so typing redraws only the composer and a streamed token
+ * redraws only the message it belongs to. In development the list, each row and the composer
+ * count their own commits in window.__chatRenders, which is how that is checked.
+ *
+ * The context is the server's: it is assembled from the desk on every message and pushed
  * here as an "agent.context" event whenever the window in front changes. The page sends no
  * context and no tools of its own.
  */
-import { type AgentSession, createAgentSession } from "@hollis-labs/ade-agent"
-import { AgentPanel as Chat } from "@hollis-labs/ade-react"
-import "@hollis-labs/ade-react/styles.css"
-import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  type ChatStore,
+  createChatStore,
+  useChat,
+  useChatBusy,
+  useChatIds,
+  useChatItem,
+  useStickToBottom,
+} from "@surface/chat"
+import { Bot, Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
+import { type FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+  ConversationViewport,
+} from "@/components/ui/conversation"
+import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item"
 import { Label } from "@/components/ui/label"
+import { MessageNotice } from "@/components/ui/message"
+import { PromptInput, PromptInputFooter, PromptInputSubmit, PromptInputTextarea } from "@/components/ui/prompt-input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
 import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
-import "./agent.css"
+import { ItemView } from "./items"
 
-let shared: AgentSession | null = null
+let shared: ChatStore | null = null
 
-/** The one session of the page: a run goes on while the panel is closed. */
-export function agentSession(): AgentSession {
+/** The one conversation of the page: a run goes on while the panel is closed. */
+export function agentSession(): ChatStore {
   if (!shared) {
-    shared = createAgentSession({ base: "/api/agent", tools: () => [] })
+    shared = createChatStore({ base: "/api/agent" })
     void shared.start()
   }
   return shared
+}
+
+/**
+ * Development only: count the commits in which this component itself rendered (not its
+ * children), in window.__chatRenders. A layout effect with no dependencies runs once per
+ * such commit; StrictMode adds one at mount.
+ */
+function useCommits(id: string) {
+  useLayoutEffect(() => {
+    if (!import.meta.env.DEV) return
+    const w = window as unknown as { __chatRenders?: Record<string, number> }
+    w.__chatRenders ??= {}
+    w.__chatRenders[id] = (w.__chatRenders[id] ?? 0) + 1
+  })
 }
 
 export interface AgentPanelProps {
@@ -39,7 +74,24 @@ export interface AgentPanelProps {
 }
 
 export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
-  const session = useMemo(agentSession, [])
+  const store = useMemo(agentSession, [])
+  // A turn started anywhere else (an outside agent, another tab) shows here too.
+  useEvent("agent.turn", (ev: SurfaceEvent) =>
+    store.turnElsewhere(String((ev.data as { run_id?: string })?.run_id ?? "")),
+  )
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <ContextStrip store={store} />
+      <ChatHeader store={store} title={title} />
+      <Thread store={store} />
+      <ApprovalBar store={store} />
+      <Composer store={store} />
+    </div>
+  )
+}
+
+/** What the agent has in mind: the slot, the tools, the block; the setup card until a model is set. */
+function ContextStrip({ store }: { store: ChatStore }) {
   const [asm, setAsm] = useState<Assembly | null>(null)
   const [setup, setSetup] = useState<Setup | null>(null)
   const [slots, setSlots] = useState<SlotInfo[]>([])
@@ -50,91 +102,204 @@ export function AgentPanel({ title = "Agent" }: AgentPanelProps) {
     agentApi.context().then(setAsm, (e: Error) => setErr(e.message))
     agentApi.slots().then(setSlots, () => {})
   }, [])
-
   useEffect(() => {
     refresh()
     agentApi.setup().then(setSetup, () => {})
   }, [refresh])
-
   useEvent("agent.context", (ev: SurfaceEvent) => setAsm(ev.data as Assembly))
   useEvent("agent.note", refresh)
   useEvent("agent.turn", refresh)
-
-  // The thread may have been answered elsewhere (a reflex, an outside agent): reload it when a run ends.
-  useEffect(() => {
-    session.onRunEnd(() => refresh())
-    return () => session.onRunEnd(null)
-  }, [session, refresh])
+  // A run's tools may have changed what is in front (a window opened, a note kept).
+  useEffect(() => store.onRunEnd(() => refresh()), [store, refresh])
 
   const pin = (name: string) => agentApi.pin(name).then(setAsm, (e: Error) => setErr(e.message))
   const top = asm?.top_of_mind ?? []
-
   const why = asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""
   return (
-    <div className="agent-panel flex h-full min-h-0 flex-col bg-background text-foreground">
-      <section
-        className="flex flex-col gap-1.5 border-b border-border px-2.5 py-2 text-xs"
-        aria-label="What the agent has in mind"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor="agent-slot">Slot</Label>
-          <Select
-            value={asm?.slot ?? null}
-            onValueChange={(v) => void pin(String(v ?? ""))}
-            items={slots.map((s) => ({ value: s.name, label: s.name }))}
-          >
-            <SelectTrigger id="agent-slot" size="sm" title={asm ? `${asm.slots[0]?.about ?? ""} (${asm.why})` : ""}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {slots.map((s) => (
-                <SelectItem key={s.name} value={s.name}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">{why}</span>
-          {asm?.why === "pinned" && (
-            <Button variant="link" size="xs" onClick={() => void pin("")}>
-              unpin
-            </Button>
-          )}
-          <Button variant="ghost" size="xs" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? <ChevronUp /> : <ChevronDown />}
-            context
-          </Button>
-        </div>
-        {asm && asm.slots.length > 1 && (
-          <div className="text-muted-foreground">
-            also:{" "}
-            {asm.slots
-              .slice(1)
-              .map((s) => s.name)
-              .join(", ")}
-          </div>
-        )}
-        {top.length > 0 && (
-          <div className="flex flex-wrap gap-1" title="Top of mind">
-            {top.map((t) => (
-              <Badge key={t} variant="secondary" className="font-mono">
-                {t}
-              </Badge>
+    <section
+      className="flex flex-col gap-1.5 border-b border-border px-2.5 py-2 text-xs"
+      aria-label="What the agent has in mind"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor="agent-slot">Slot</Label>
+        <Select
+          value={asm?.slot ?? null}
+          onValueChange={(v) => void pin(String(v ?? ""))}
+          items={slots.map((s) => ({ value: s.name, label: s.name }))}
+        >
+          <SelectTrigger id="agent-slot" size="sm" title={asm ? `${asm.slots[0]?.about ?? ""} (${asm.why})` : ""}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {slots.map((s) => (
+              <SelectItem key={s.name} value={s.name}>
+                {s.name}
+              </SelectItem>
             ))}
-          </div>
+          </SelectContent>
+        </Select>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{why}</span>
+        {asm?.why === "pinned" && (
+          <Button variant="link" size="xs" onClick={() => void pin("")}>
+            unpin
+          </Button>
         )}
-        {open && asm && (
-          <pre className="m-0 max-h-[40vh] overflow-auto rounded-md bg-muted p-2 font-mono break-words whitespace-pre-wrap">
-            {asm.block}
-          </pre>
-        )}
-        {setup && !setup.ready && <SetupCard path={setup.config_path} />}
-        {err && <div className="text-destructive">{err}</div>}
-      </section>
-      <Chat session={session} title={title} placeholder="Ask, or /open, /layout, /run" />
+        <Button variant="ghost" size="xs" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? <ChevronUp /> : <ChevronDown />}
+          context
+        </Button>
+      </div>
+      {asm && asm.slots.length > 1 && (
+        <div className="text-muted-foreground">
+          also:{" "}
+          {asm.slots
+            .slice(1)
+            .map((s) => s.name)
+            .join(", ")}
+        </div>
+      )}
+      {top.length > 0 && (
+        <div className="flex flex-wrap gap-1" title="Top of mind">
+          {top.map((t) => (
+            <Badge key={t} variant="secondary" className="font-mono">
+              {t}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {open && asm && (
+        <pre className="m-0 max-h-[40vh] overflow-auto rounded-md bg-muted p-2 font-mono break-words whitespace-pre-wrap">
+          {asm.block}
+        </pre>
+      )}
+      {setup && !setup.ready && <SetupCard path={setup.config_path} />}
+      {err && <div className="text-destructive">{err}</div>}
+    </section>
+  )
+}
+
+function ChatHeader({ store, title }: { store: ChatStore; title: string }) {
+  const busy = useChatBusy(store)
+  const model = useChat(store, (s) => s.host?.model ?? "")
+  const empty = useChat(store, (s) => s.ids.length === 0)
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
+      <span className="text-sm font-semibold">{title}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{busy ? "working…" : model}</span>
+      <Button variant="ghost" size="xs" disabled={busy || empty} onClick={() => void store.newThread()}>
+        New
+      </Button>
     </div>
   )
 }
+
+/** The conversation: redraws when an item is added or removed, never for a token or a keystroke. */
+const Thread = memo(function Thread({ store }: { store: ChatStore }) {
+  const ids = useChatIds(store)
+  const off = useChat(store, (s) => s.loaded && s.host !== null && (!s.host.available || !s.host.ready))
+  const error = useChat(store, (s) => s.error)
+  const { viewportRef, contentRef, atBottom, scrollToBottom } = useStickToBottom()
+  useCommits("thread")
+  return (
+    <Conversation>
+      <ConversationViewport ref={viewportRef}>
+        <ConversationContent ref={contentRef}>
+          {off && <MessageNotice>No model is connected. The desk still works by hand.</MessageNotice>}
+          {!off && ids.length === 0 && (
+            <ConversationEmptyState
+              icon={<Bot />}
+              title="Ask the agent"
+              description="It sees the window in front and can work the desk for you."
+            />
+          )}
+          {ids.map((id) => (
+            <Row key={id} store={store} id={id} />
+          ))}
+          {error && <MessageNotice tone="error">{error}</MessageNotice>}
+        </ConversationContent>
+      </ConversationViewport>
+      {!atBottom && <ConversationScrollButton onClick={scrollToBottom} />}
+    </Conversation>
+  )
+})
+
+/** One item: redraws only when that item changes. */
+const Row = memo(function Row({ store, id }: { store: ChatStore; id: string }) {
+  const item = useChatItem(store, id)
+  useCommits(`row:${id}`)
+  return item ? <ItemView item={item} /> : null
+})
+
+/** The agent asks before a tool that changes things. Cards replace this in the next step. */
+function ApprovalBar({ store }: { store: ChatStore }) {
+  const q = useChat(store, (s) => s.approval)
+  if (!q) return null
+  const input = q.input === undefined ? "" : JSON.stringify(q.input)
+  return (
+    <div role="alertdialog" aria-label="Permission" className="border-t border-border p-2.5">
+      <Item variant="outline" size="sm">
+        <ItemContent className="min-w-0">
+          <ItemTitle>{q.description || `Allow ${q.tool}?`}</ItemTitle>
+          {!q.description && input && <ItemDescription className="font-mono text-xs">{input}</ItemDescription>}
+        </ItemContent>
+        <ItemFooter className="flex-wrap justify-start">
+          <Button size="xs" onClick={() => void store.answer("once")}>
+            Allow
+          </Button>
+          {q.standing && (
+            <>
+              <Button variant="outline" size="xs" onClick={() => void store.answer("session")}>
+                This session
+              </Button>
+              <Button variant="outline" size="xs" onClick={() => void store.answer("always")}>
+                Always
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="xs" onClick={() => void store.answer("deny")}>
+            Don't
+          </Button>
+        </ItemFooter>
+      </Item>
+    </div>
+  )
+}
+
+/** Where a message is written. It owns the draft: typing redraws nothing else. */
+const Composer = memo(function Composer({ store }: { store: ChatStore }) {
+  const [draft, setDraft] = useState("")
+  const busy = useChatBusy(store)
+  useCommits("composer")
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const text = draft.trim()
+    if (!text || busy) return
+    setDraft("")
+    void store.send(text).then((ok) => {
+      if (!ok) setDraft(text)
+    })
+  }
+  return (
+    <div className="border-t border-border p-2.5">
+      <PromptInput onSubmit={submit}>
+        <PromptInputTextarea
+          value={draft}
+          aria-label="Message"
+          placeholder="Ask, or /open, /layout, /run"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <PromptInputFooter>
+          <span className="text-xs text-muted-foreground">Enter sends, Shift+Enter breaks the line</span>
+          <PromptInputSubmit
+            status={busy ? "streaming" : "ready"}
+            onStop={store.stop}
+            disabled={!busy && !draft.trim()}
+          />
+        </PromptInputFooter>
+      </PromptInput>
+    </div>
+  )
+})
 
 /** The minimal agent.json, with the key file beside it. */
 const example = (path: string) => `{

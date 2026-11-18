@@ -1,0 +1,13 @@
+{
+  "name": "@surface/chat",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A conversation with an agent host, without any styling: the agent-host/1 wire, the chatstream/v1 event reducer, a store whose messages update one at a time, and scroll-follow. Visuals are the @surface registry's chat components.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

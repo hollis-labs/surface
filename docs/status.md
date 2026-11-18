@@ -28,7 +28,7 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 | Theme, registry (36 components), sync and drift check | done |
 | The page built from registry components | done: the desk's bar, menu, window frames and palette, the core windows, and all six modules' views. No hand-written control or old stylesheet remains; lint fails on a raw control anywhere in the page |
 | A plain frame for apps that are not a desk | not started |
-| Chat on shared behaviour and registry components | not started; the panel is still `ade-react`'s |
+| Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Typing redraws only the composer, a token only its message, and the thread is read on one stated policy (`packages/chat/README.md`) |
 | Cards, generated UI, the ADE overlays | not started |
 | A baseline palette | undecided; the theme holds shadcn's neutral defaults |
 

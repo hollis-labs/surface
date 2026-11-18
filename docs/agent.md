@@ -37,7 +37,7 @@ type Engine interface {
 
 Today the engine is `github.com/hollis-labs/libs/agent/host`. It runs the model loop, keeps the thread in the core
 database (its `agenthost_*` tables), asks for approvals, compacts long threads and serves the run streams. Its wire
-is `agent-host/1`, which the page's `@hollis-labs/ade-agent` client speaks. The direction is Nanite's embeddable
+is `agent-host/1`, which the page's `packages/chat` client speaks. The direction is Nanite's embeddable
 package. When it ships, it becomes a second `Engine`, and nothing above the seam changes.
 
 Every tool is a server tool. The page declares none and runs none: the desk is the server's, so a tool that arranges

@@ -32,6 +32,7 @@ export default defineConfig({
     alias: {
       "@": resolve(root, "src"),
       "@surface/sdk": resolve(root, "src/sdk/index.ts"),
+      "@surface/chat": resolve(root, "../packages/chat/src/index.ts"),
       "@surface/app": generated,
     },
     dedupe: ["react", "react-dom"],

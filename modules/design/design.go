@@ -199,11 +199,34 @@ func (m *mod) view(ctx context.Context, id string, fresh bool) (View, error) {
 		}
 		moved = moved || filled
 	}
+	// A merged pull request counts only as the merge of the approved commit; anything else is
+	// said loudly, once, and changes nothing.
+	switch merged, warning := mergedOnGitHub(j, p.PR); {
+	case merged:
+		ok, mergeErr := m.st.mergeApproved(ctx, id, p.PR.HeadSHA)
+		if mergeErr != nil {
+			return View{}, mergeErr
+		}
+		moved = moved || ok
+	case warning != "":
+		isNew, warnErr := m.st.warnMerge(ctx, id, warning)
+		if warnErr != nil {
+			return View{}, warnErr
+		}
+		if isNew {
+			moved = true
+			payload, _ := json.Marshal(map[string]any{"body": warning, "tone": "warning"})
+			if _, showErr := m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Merged without approval of this commit: " + j.Title, Source: "design", Subject: ref(id) + ":merge", Payload: payload}); showErr != nil {
+				m.h.Log().Warn("design: the merge warning did not show", "job", id, "err", showErr)
+			}
+		}
+	}
 	if moved {
 		if j, err = m.st.get(ctx, id); err != nil {
 			return View{}, err
 		}
 		m.changed(id)
+		m.supersede(ctx, j)
 	}
 	notes, err := m.openNotes(ctx, id)
 	if err != nil {
@@ -268,6 +291,9 @@ func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, er
 	notes, err := m.openNotes(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if settled(j.Status) {
+		return nil, fmt.Errorf("the job is %s: no new round can be sent on it (for more changes, request a new job)", j.Status)
 	}
 	if len(notes) == 0 && strings.TrimSpace(text) == "" {
 		return nil, errors.New("nothing to send: there are no open notes on this job and no text")
@@ -408,14 +434,18 @@ func (m *mod) awaitSettle(id string, card module.Card) {
 	}()
 }
 
-// supersede ends an open approval card whose head is no longer the job's, and asks the owner
-// again on the new head.
+// supersede ends an open approval card that no longer stands: its job is settled (approved,
+// merged, closed), so no stale card is left to answer; or its head is no longer the job's, and
+// then the owner is asked again on the new head.
 func (m *mod) supersede(ctx context.Context, j Job) {
-	if j.approvalCard == "" || j.approvalHead == j.HeadSHA || settled(j.Status) {
+	if j.approvalCard == "" || (j.approvalHead == j.HeadSHA && !settled(j.Status)) {
 		return
 	}
 	_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")
 	_ = m.st.dropApproval(ctx, j.ID, j.approvalCard)
+	if settled(j.Status) {
+		return
+	}
 	card, err := m.askApproval(ctx, j.ID, 30*time.Minute)
 	if err != nil || card == nil {
 		if err != nil {

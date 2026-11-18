@@ -71,8 +71,8 @@ func (m *mod) tools() []module.Tool {
 				return map[string]any{"checked": checked, "jobs": jobs}, err
 			}},
 		{Name: "design_set", Level: module.LevelWrite,
-			Description: "Correct what is recorded about a job by hand (the Designer's replies set these on their own): preview_url (the gallery served from their branch), base_url (the same from main), pr_url, branch, or status (requested, in progress, ready for review, changes requested, approved, merged). Use approve and feedback through their own tools, not status here.",
-			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"head_sha":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","approved","merged","closed"]}}}`),
+			Description: "Correct what is recorded about a job by hand (the Designer's replies set these on their own): preview_url (the gallery served from their branch), base_url (the same from main), pr_url, branch, or status (requested, in progress, ready for review, changes requested, closed). Use approve and feedback through their own tools, not status here.",
+			Input:       raw(`{"type":"object","properties":{"id":{"type":"string"},"preview_url":{"type":"string"},"base_url":{"type":"string"},"pr_url":{"type":"string"},"head_sha":{"type":"string"},"branch":{"type":"string"},"status":{"type":"string","enum":["requested","in progress","ready for review","changes requested","closed"]}}}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				var a struct {
 					ID string `json:"id"`
@@ -202,6 +202,11 @@ func (m *mod) routes(h module.Host) {
 // announcement if this is the job's first preview.
 func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
 	c = Change{Branch: c.Branch, PRURL: c.PRURL, PreviewURL: c.PreviewURL, BaseURL: c.BaseURL, Status: c.Status, TaskID: c.TaskID, HeadSHA: c.HeadSHA}
+	// Approved and merged are reached only through their own rules (the approval card; the merge
+	// of the approved commit), never set by hand.
+	if c.Status != nil && (*c.Status == StatusApproved || *c.Status == StatusMerged) {
+		return Job{}, fmt.Errorf("%s is not set by hand: approval goes through design_approve, and a job is merged when the approved commit is", *c.Status)
+	}
 	if c.HeadSHA != nil && *c.HeadSHA != "" && !shaPattern.MatchString(strings.ToLower(*c.HeadSHA)) {
 		return Job{}, fmt.Errorf("head_sha %q is not a full commit SHA", *c.HeadSHA)
 	}

@@ -385,9 +385,12 @@ func TestProgressFromTheBranch(t *testing.T) {
 	if advance(StatusChangesRequested, v.Progress) != StatusChangesRequested {
 		t.Fatal("changes requested was overridden")
 	}
-	merged := Progress{PR: &PullRequest{State: "merged"}}
-	if advance(StatusApproved, merged) != StatusMerged {
-		t.Fatal("not merged")
+	merged := Progress{PR: &PullRequest{State: "merged", HeadSHA: "abc"}}
+	if advance(StatusApproved, merged) != StatusApproved || advance(StatusRequested, merged) != StatusRequested {
+		t.Fatal("advance read a merged pull request")
+	}
+	if ok, _ := mergedOnGitHub(Job{Status: StatusApproved, ApprovedHead: "abc"}, merged.PR); !ok {
+		t.Fatal("the approved commit merged is not merged")
 	}
 	if advance(StatusRequested, Progress{}) != StatusRequested {
 		t.Fatal("moved with nothing pushed")

@@ -30,7 +30,22 @@ interface Round {
   n: number
   asked: string
   sent: boolean
+  message_id?: string
   created: string
+}
+
+interface Reply {
+  message_id: string
+  from: string
+  subject?: string
+  body: string
+  sent?: string
+  received: string
+  preview_url?: string
+  base_url?: string
+  pr_url?: string
+  head_sha?: string
+  ignored?: string
 }
 
 interface Job {
@@ -44,7 +59,13 @@ interface Job {
   base_url?: string
   status: Status
   task_id?: string
+  head_sha?: string
+  task_status?: string
+  task_comment?: string
+  task_checked?: string
+  inbox_checked?: string
   rounds: Round[]
+  replies: Reply[]
   created: string
   updated: string
 }
@@ -404,6 +425,8 @@ function JobPane({ win, desk, api }: ViewProps) {
           <Changes job={job} />
           <Separator />
           <Rounds job={job} />
+          <Separator />
+          <Replies job={job} />
         </aside>
       </div>
     </div>
@@ -592,6 +615,37 @@ function Rounds({ job }: { job: Job }) {
             {r.sent ? "" : " · not sent"}
           </span>
           <p className="line-clamp-4 whitespace-pre-wrap">{r.asked}</p>
+        </div>
+      ))}
+    </Section>
+  )
+}
+
+/** What came back: the task's state and the Designer's replies, shown as text. */
+function Replies({ job }: { job: Job }) {
+  const set = (r: Reply) =>
+    [
+      r.preview_url && "preview",
+      r.base_url && "base",
+      r.pr_url && "pull request",
+      r.head_sha && `head ${r.head_sha.slice(0, 7)}`,
+    ].filter(Boolean)
+  return (
+    <Section title={`From the Designer (${job.replies?.length ?? 0})`}>
+      <p className="text-xs text-muted-foreground">
+        {job.task_id ? `Task ${job.task_id}: ${job.task_status || "not read yet"}` : "No task"}
+        {job.task_checked ? ` · checked ${when(job.task_checked)}` : ""}
+        {job.inbox_checked ? ` · mail checked ${when(job.inbox_checked)}` : ""}
+      </p>
+      {job.task_comment && <p className="line-clamp-4 whitespace-pre-wrap text-xs">{job.task_comment}</p>}
+      {(job.replies ?? []).map((r) => (
+        <div key={r.message_id} className="flex flex-col gap-0.5 text-xs">
+          <span className="text-muted-foreground">
+            {when(r.sent || r.received)}
+            {set(r).length > 0 ? ` · set ${set(r).join(", ")}` : ""}
+          </span>
+          <p className="line-clamp-6 whitespace-pre-wrap">{r.body}</p>
+          {r.ignored && <p className="whitespace-pre-wrap text-muted-foreground">Not taken: {r.ignored}</p>}
         </div>
       ))}
     </Section>

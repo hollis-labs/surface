@@ -69,6 +69,12 @@ func (f *fakeTether) handle(req map[string]any) (any, bool) {
 				return text("task needs title, project_id and manual=true", true), true
 			}
 			return text(`{"data":{"ID":"T-42","Title":"x"}}`, false), true
+		case "tether_message_list": // Tether's own answer, as it came for design-d_03adcb6b
+			return text(`{"count":1,"limit":100,"messages":[{"body":"Round one\npreview: http://laptop.test:8431/gallery.html","channel":"","consumed_at":null,"created_at":"2026-11-18T21:24:59.138753519Z","delivered_at":null,"from":"msg://test/designer","id":"01a1f08c","in_reply_to":"","kind":"response","metadata":{"from_unverified":"true","tether.message_id":"p35:x"},"payload":{"body":"Round one\npreview: http://laptop.test:8431/gallery.html","subject":"Round one"},"read_at":null,"subject":"Round one","thread_id":"design-d_03adcb6b","to":"msg://test/surface"}],"offset":0,"ok":true,"total":1}`, false), true
+		case "tether_message_mark_read":
+			return text(`{"ok":true}`, false), true
+		case "torque_task_get": // Torque's legacy record: comments oldest to newest
+			return text(`{"data":{"ID":"CW-1","Status":"review","CreatedAt":"2026-11-18T21:15:37Z","Comments":[{"author":"designer","content":"older","created_at":"2026-11-18T21:20:44Z","id":1},{"author":"designer","content":"newest","created_at":"2026-11-18T21:24:59Z","id":2}],"CommentsMeta":{"returned":2,"total":2}},"ok":true}`, false), true
 		}
 		return text("unknown tool "+name, true), true
 	}

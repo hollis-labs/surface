@@ -29,12 +29,34 @@ type Task struct {
 	Description string
 }
 
-// Dispatcher reaches the Design team. Slice 1 is one-way: out by Tether mail and a Torque
-// task, back by reading the branch and the pull request. It is an interface so the
-// transport can be replaced without touching the module.
+// Dispatcher reaches the Design team: out by Tether mail and a Torque task. The way back is
+// Reader, which the same transport implements. Both are interfaces so the transport can be
+// replaced without touching the module.
 type Dispatcher interface {
 	Send(ctx context.Context, m Message) (id string, err error)
 	CreateTask(ctx context.Context, t Task) (id string, err error)
+}
+
+// Inbound is one message read from the sender's mailbox.
+type Inbound struct {
+	ID, From, To, Thread, Subject, Body, Sent string
+}
+
+// TaskState is what the Torque task says: its status and its latest comment.
+type TaskState struct {
+	Status        string
+	Comment       string
+	CommentAuthor string
+	CommentAt     string
+}
+
+// Reader is the way back: the replies waiting on a job's thread, and the job's task. A
+// Dispatcher that is also a Reader lets the module follow a job without anyone setting it by
+// hand. Unread lists only one thread, so mail on any other thread is never fetched or touched.
+type Reader interface {
+	Unread(ctx context.Context, to, thread string) ([]Inbound, error)
+	MarkRead(ctx context.Context, as, id string) error
+	Task(ctx context.Context, id string) (TaskState, error)
 }
 
 // errNotConfigured means nothing to send with: the text is handed back to send by hand.
@@ -73,6 +95,85 @@ func (d mcpDispatcher) CreateTask(ctx context.Context, t Task) (string, error) {
 		return "", err
 	}
 	return firstID(out), nil
+}
+
+func (d mcpDispatcher) Unread(ctx context.Context, to, thread string) ([]Inbound, error) {
+	out, err := d.mcp.Call(ctx, "tether_message_list", map[string]any{"to": to, "thread_id": thread, "unread_only": true, "limit": 100})
+	if err != nil {
+		return nil, err
+	}
+	var page struct {
+		Messages []struct {
+			ID        string `json:"id"`
+			From      string `json:"from"`
+			To        string `json:"to"`
+			ThreadID  string `json:"thread_id"`
+			Subject   string `json:"subject"`
+			Body      string `json:"body"`
+			CreatedAt string `json:"created_at"`
+			ReadAt    any    `json:"read_at"`
+			Payload   struct {
+				Subject string `json:"subject"`
+				Body    string `json:"body"`
+			} `json:"payload"`
+		} `json:"messages"`
+	}
+	if err := decodeResult(out, &page); err != nil {
+		return nil, errors.New("tether: the message list could not be read")
+	}
+	msgs := make([]Inbound, 0, len(page.Messages))
+	for _, m := range page.Messages {
+		if m.ReadAt != nil && m.ReadAt != "" {
+			continue // read already, whatever the filter did
+		}
+		msgs = append(msgs, Inbound{ID: m.ID, From: m.From, To: m.To, Thread: m.ThreadID,
+			Subject: or(m.Payload.Subject, m.Subject), Body: or(m.Payload.Body, m.Body), Sent: m.CreatedAt})
+	}
+	return msgs, nil
+}
+
+func (d mcpDispatcher) MarkRead(ctx context.Context, as, id string) error {
+	_, err := d.mcp.Call(ctx, "tether_message_mark_read", map[string]any{"message_id": id, "as": as})
+	return err
+}
+
+func (d mcpDispatcher) Task(ctx context.Context, id string) (TaskState, error) {
+	out, err := d.mcp.Call(ctx, "torque_task_get", map[string]any{"id": id, "comments_limit": "1"})
+	if err != nil {
+		return TaskState{}, err
+	}
+	var rec struct {
+		Data struct {
+			Status   string `json:"Status"`
+			Comments []struct {
+				Author    string `json:"author"`
+				Content   string `json:"content"`
+				CreatedAt string `json:"created_at"`
+			} `json:"Comments"`
+		} `json:"data"`
+	}
+	if err := decodeResult(out, &rec); err != nil || rec.Data.Status == "" {
+		return TaskState{}, errors.New("torque: the task could not be read")
+	}
+	ts := TaskState{Status: rec.Data.Status}
+	if n := len(rec.Data.Comments); n > 0 {
+		c := rec.Data.Comments[n-1] // oldest to newest: the last is the latest
+		ts.Comment, ts.CommentAuthor, ts.CommentAt = c.Content, c.Author, c.CreatedAt
+	}
+	return ts, nil
+}
+
+// decodeResult reads a tool's JSON answer, also when a proxy hands it on as a JSON string.
+func decodeResult(text string, v any) error {
+	err := json.Unmarshal([]byte(text), v)
+	if err == nil {
+		return nil
+	}
+	var inner string
+	if json.Unmarshal([]byte(text), &inner) == nil {
+		return json.Unmarshal([]byte(inner), v)
+	}
+	return err
 }
 
 // dispatcher builds the Dispatcher the settings describe, or reports what is missing.
@@ -164,9 +265,8 @@ How to work it:
 - Repository %s. Branch from %s as %s and open a pull request from it.
 - Follow docs/gui.md in that repository: a look is changed in registry/ui or registry/theme, never in an app; every component and variant gets its specimen in web/src/gallery.
 - Serve the gallery from your checkout with hot reload so it can be reviewed live: make design-preview HOST=<address the reviewer can reach> PORT=<port>. It prints the URL.
-- Reply with the preview URL (and one of %s if you serve it, for comparison) so it can be set on the job.
 - Review notes come back as a new round on this thread. Merge the pull request yourselves once it is approved here; Surface does not merge.
-`, or(repo, "the Surface repository"), or(base, "main"), j.Branch, or(base, "main"))
+%s`, or(repo, "the Surface repository"), or(base, "main"), j.Branch, replyHow(j, base))
 	msg := Message{Kind: "request", Subject: "Design job " + j.ID + ": " + j.Title, Body: b.String(), Thread: "design-" + j.ID}
 	task := Task{
 		Project:     m.h.Config().String("torque_project"),
@@ -189,7 +289,20 @@ func feedbackMessage(j Job, round int, text string, notes []noteLine) Message {
 		}
 	}
 	b.WriteString("\nPush to the same branch; the preview updates as you do.\n")
+	b.WriteString(replyHow(j, ""))
 	return Message{Kind: "request", Subject: fmt.Sprintf("Design job %s: round %d", j.ID, round), Body: b.String(), Thread: "design-" + j.ID}
+}
+
+// replyHow is how a reply is read: free text, plus labeled lines that set the job's fields.
+// It travels with every ask, so the contract is in front of whoever answers.
+func replyHow(j Job, base string) string {
+	return fmt.Sprintf(`
+Reply on this thread (design-%s), to this address. Say what you like in the text; put what should be set on the job on lines of their own, each optional, a later reply replacing an earlier value:
+preview: <URL of the gallery served from %s>
+base: <URL of the same from %s, for comparison>
+pr: <URL of the pull request>
+head: <the full commit SHA the preview shows>
+`, j.ID, j.Branch, or(base, "the base branch"))
 }
 
 func approvedMessage(j Job) Message {

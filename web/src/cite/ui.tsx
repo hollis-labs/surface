@@ -81,7 +81,7 @@ function hostOf(url: string): string {
 }
 
 /** The hover card's body for a reference: what it is, as far as is known now. */
-function RefCard({ refId }: { refId: RefIdentity }) {
+export function RefCard({ refId }: { refId: RefIdentity }) {
   const state = useRefState(refId.kind, refId.canonical, canResolve(refId.kind))
   const card = buildPreviewCard(registry, refId, state)
   const Icon =

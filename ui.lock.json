@@ -265,7 +265,7 @@
     },
     "terminal": {
       "files": {
-        "web/src/components/ui/terminal.tsx": "7cd2d9584511fba61fc610da153dae04219c711652a0854f6a4aecef21ea1586"
+        "web/src/components/ui/terminal.tsx": "a00a688b682a078c92230ed2e0522b2e9b1a0ce54d6174da1a26ea67f283e06c"
       }
     },
     "text-editor": {

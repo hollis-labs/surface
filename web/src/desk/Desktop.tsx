@@ -23,6 +23,7 @@ import { AdeAttention, AdeGuide } from "../ade/Overlay"
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
+import { AttentionBadge } from "./AttentionBadge"
 import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
 import { matches, parseKeys, showKeys } from "./keys"
@@ -34,6 +35,7 @@ import {
   type CommandDef,
   closeWindow,
   desk,
+  notYetKept,
   runCommand,
   setClientRunner,
   toWin,
@@ -131,11 +133,38 @@ export function Desktop({ modules }: DesktopProps) {
         title: w.title,
         dirty: w.dirty,
         icon: <Icon name={viewById(w.view)?.icon} size={13} />,
+        // A delegate's window the owner has not made theirs: who opened it, and Keep (rule 4).
+        badge: notYetKept(w) ? (
+          <span
+            className="text-muted-foreground"
+            title={`Opened by the ${w.opened_by}${w.reason ? `: ${w.reason}` : ""}`}
+          >
+            <Icon name="bot" size={11} />
+          </span>
+        ) : undefined,
+        actions: notYetKept(w) ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            title="Keep this window: it is yours, and the agent will not close it"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              void act({ type: "keep", id: w.id })
+            }}
+          >
+            Keep
+          </Button>
+        ) : undefined,
       })),
     [state.wins],
   )
   // The owner dragged, split, tabbed, floated or resized: the server keeps the result.
-  const arrange = useCallback((tree: WindowTree, focus: string | undefined) => act({ type: "tree", tree, focus }), [])
+  // The window the owner grabbed in a drag goes with the tree, so it becomes theirs (desk rule 4).
+  const arrange = useCallback(
+    (tree: WindowTree, focus: string | undefined, grabbed?: string) => act({ type: "tree", tree, focus, id: grabbed }),
+    [],
+  )
   const menuViews = manifest.views.filter((v) => v.menu)
 
   const bar = (
@@ -206,6 +235,7 @@ export function Desktop({ modules }: DesktopProps) {
           <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
           <span>{state.layout}</span>
         </Button>
+        <AttentionBadge ui={ui} />
         <ThemePicker />
         <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
           <Icon name="search" />

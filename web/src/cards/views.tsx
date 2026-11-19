@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { useDeskState } from "../desk/store"
 import { Icon, useEvent, type ViewProps } from "../sdk"
 import { call } from "../sdk/runtime"
 import { CardView } from "./renderers"
@@ -33,7 +34,14 @@ export function CardDock() {
  * waiting on in the middle. Mounted once, over the whole page. */
 export function CardHost() {
   useEffect(startCards, [])
-  const toasts = useCards("toast").filter((s) => isOpen(s.card) && !s.view.toastDismissed)
+  // No pop-up for what is already in front (desk rule 9): a notice about the window the owner is
+  // looking at says nothing they cannot see. Questions still pop up.
+  const desk = useDeskState()
+  const shown = desk.wins.find((w) => w.id === desk.focus)
+  const inFront = shown?.key ? `${shown.module}:${shown.key}` : ""
+  const toasts = useCards("toast").filter(
+    (s) => isOpen(s.card) && !s.view.toastDismissed && (s.view.answerable || !inFront || s.card.subject !== inFront),
+  )
   const blocking = useCards("modal").filter((s) => isOpen(s.card))
   const [hidden, setHidden] = useState<string | null>(null)
   const front = blocking.find((s) => s.card.id !== hidden)

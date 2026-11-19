@@ -18,7 +18,15 @@ export interface DeskWin {
   args: Record<string, unknown>
   state?: Record<string, unknown>
   dirty?: boolean
+  /** Who opened it (owner, agent, reflex, outside), why, and whether the owner has made it theirs. */
+  opened_by?: string
+  reason?: string
+  retention?: string
+  kept?: boolean
 }
+
+/** A window a delegate opened that the owner has not made theirs (docs/desk-rules.md, rule 4). */
+export const notYetKept = (w: DeskWin) => !!w.opened_by && w.opened_by !== "owner" && !w.kept
 
 export interface DeskState {
   wins: DeskWin[]

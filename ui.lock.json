@@ -284,7 +284,7 @@
     },
     "window-manager": {
       "files": {
-        "web/src/components/ui/window-manager.tsx": "c65da3273b72b0bcf0ccd49a4e3ae4015032789b9725b1370f58c249fe04907a",
+        "web/src/components/ui/window-manager.tsx": "757b534d49430babf3cf76059f1d7d8bdabd57879010f38982a49803ea6c3d69",
         "web/src/components/ui/window-manager.css": "102aa8d1c6949d14c49e07b70a8cf889b3f5412f4e9d91679e4d8aaa1d13c3e1"
       }
     }

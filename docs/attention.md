@@ -27,6 +27,10 @@ The list is ordered with `needs_you` first, then `failed`, then `unseen`, and th
 
 ## Reading it
 
+- The page: the bar's badge counts the items (highlighted while one needs an answer); a click or cmd+. brings the first
+  one in front (its window; the Cards window, or the agent panel for the agent's own card). A notice about the window
+  already in front does not pop up.
+
 - `GET /api/attend` returns `{items, counts}`. `attend.changed` on the bus carries the same whenever it changes.
 - The agent's tool is `attend_list`. Use it before asking the owner something new, so as not to pile on.
 
@@ -34,5 +38,4 @@ The list is ordered with `needs_you` first, then `failed`, then `unseen`, and th
 
 - **The agent's own runs** (working, done but not yet read, failed). These need the engine and the conversation
   wire to say when a run ends.
-- **The page.** A badge, the jump key, and notifications suppressed for what is already in front.
 - **The panel.** Seen should mean visible *and* focused, which the page will report for the agent panel too.

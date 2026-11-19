@@ -299,8 +299,15 @@ type Card struct {
 	// Payload is the kind's own content.
 	Payload json.RawMessage `json:"payload,omitempty"`
 	// Status is empty while the card is open, then "submitted", "canceled", "expired",
-	// "superseded" or "failed".
+	// "superseded", "failed" or "abandoned" (the agent's run that asked it ended while it
+	// waited).
 	Status string `json:"status,omitempty"`
+	// Late is set when the user answered an agent's question after the agent stopped
+	// waiting for it (the card was abandoned or expired). A late answer is taken once; a
+	// submitted one is handed to the agent as a message.
+	Late bool `json:"late,omitempty"`
+	// Delivered is when a late answer reached the agent (RFC 3339). Empty: not yet.
+	Delivered string `json:"delivered,omitempty"`
 	// Outcome is what the user answered, once they have.
 	Outcome *CardOutcome `json:"outcome,omitempty"`
 	// Revision counts changes, so a page can tell a newer card from an older one.
@@ -346,9 +353,10 @@ type Cards interface {
 	// is given.
 	Update(ctx context.Context, id string, title string, payload json.RawMessage) (Card, error)
 	// End closes a card from the sender's side: status is "superseded", "expired",
-	// "canceled" or "failed". A card already closed is returned as it is.
+	// "canceled", "failed" or "abandoned". A card already closed is returned as it is.
 	End(ctx context.Context, id, status string) (Card, error)
-	// Respond records the user's answer. A card that is no longer open refuses it.
+	// Respond records the user's answer. A card that is no longer open refuses it, except
+	// an agent's question that was abandoned or expired: that takes one late answer.
 	Respond(ctx context.Context, id string, o CardOutcome) (Card, error)
 	// Await returns the card once it is closed, or when ctx ends.
 	Await(ctx context.Context, id string) (Card, error)

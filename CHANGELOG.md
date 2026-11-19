@@ -5,6 +5,14 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Fixed: an answer to the agent's question is no longer lost when the run that asked has ended.** A `card_ask`
+  whose run ends while the card is up (stopped, the app shutting down or restarting) now ends the card
+  `abandoned`, not `canceled`, which stays the owner declining; a question left open by a killed app is abandoned at
+  the next start. An agent's question that is `abandoned`, or `expired` because `card_ask` stopped waiting, takes one
+  late answer (`late: true` on the card); a submitted one is sent to the agent as a turn (errand `late-answer`, out
+  of the context trace), queued in the database while the agent is busy and delivered once. The page keeps such a
+  card answerable with a note, and keeps what the owner types into an open card as a draft in the browser across a
+  reload. See docs/agent.md.
 - **Work: Planner, Content and Writer windows.** The Work module's views, ported from Basalisk: a workspace's
   board, outline, calendar, canvas and flow, and an item's detail with its review, sign-off, Torque link and
   revisions. Three windows on one component, one for each preset, with commands to open each on a workspace.

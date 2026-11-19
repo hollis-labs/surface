@@ -1,6 +1,6 @@
 import { describe, it } from "node:test"
 import { expect } from "../test/expect.ts"
-import { acceptsInput, classifyPriorResponse } from "./response.ts"
+import { acceptsInput, acceptsLateAnswer, classifyPriorResponse } from "./response.ts"
 
 /**
  * These assert BEHAVIOUR — status string in, classification out. Nothing here counts
@@ -82,5 +82,26 @@ describe("acceptsInput", () => {
     // Re-enabling controls against an unknown terminal state invites a second
     // submission, and the second one 409s. Staying locked is the safe default.
     expect(acceptsInput({ kind: "unrecognized", status: "quiesced" })).toBe(false)
+  })
+})
+
+describe("late answers", () => {
+  it("reads abandoned as closed: the sender stopped waiting", () => {
+    expect(classifyPriorResponse("abandoned")).toEqual({ kind: "abandoned" })
+    expect(acceptsInput(classifyPriorResponse("abandoned"))).toBe(false)
+  })
+
+  it("takes a late answer to an agent's question it stopped waiting for, once", () => {
+    expect(acceptsLateAnswer({ source: "agent", kind: "form", status: "abandoned" })).toBe(true)
+    expect(acceptsLateAnswer({ source: "agent", kind: "choice", status: "expired" })).toBe(true)
+    expect(acceptsLateAnswer({ source: "agent", kind: "form", status: "submitted", late: true })).toBe(false)
+    expect(acceptsLateAnswer({ source: "agent", kind: "form", status: "abandoned", late: true })).toBe(false)
+  })
+
+  it("refuses anything else that is closed", () => {
+    expect(acceptsLateAnswer({ source: "notes", kind: "confirm", status: "abandoned" })).toBe(false)
+    expect(acceptsLateAnswer({ source: "agent", kind: "info", status: "expired" })).toBe(false)
+    expect(acceptsLateAnswer({ source: "agent", kind: "confirm", status: "canceled" })).toBe(false)
+    expect(acceptsLateAnswer({ source: "agent", kind: "confirm", status: "" })).toBe(false)
   })
 })

@@ -104,6 +104,8 @@ type Service struct {
 	tools map[string]kernel.BoundTool
 	// wire is the conversation wire, when a runner for it is chosen; nil otherwise.
 	wire *wire
+	// late delivers the owner's late answers to the agent's cards (late.go).
+	late *lateDelivery
 
 	wake    chan struct{}
 	stop    func()
@@ -204,6 +206,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	wctx, cancel := context.WithCancel(context.Background())
 	s.stop = func() { unsub(); cancel() }
 	go s.worker(wctx)
+	s.startLate()
 	if !s.engine.Ready() {
 		log.Info("the agent has no model configured", "config", ConfigPath(k.AppName()))
 	}
@@ -215,6 +218,7 @@ func (s *Service) Close(context.Context) error {
 	s.closeMu.Do(func() {
 		s.stop()
 		<-s.done
+		s.stopLate()
 		if s.asyncCancel != nil {
 			s.asyncCancel()
 			s.asyncWG.Wait()

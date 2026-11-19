@@ -126,6 +126,12 @@ func New(ctx context.Context, o Options) (*App, error) {
 	}
 	a.marks = marks.New(a.db, a.bus)
 	a.cards = cards.New(a.db, a.bus)
+	// A question the agent asked before the app last stopped has no run waiting for it now.
+	if n, aerr := a.cards.AbandonOrphans(ctx); aerr != nil {
+		a.log.Warn("the agent's open questions were not closed", "err", aerr)
+	} else if n > 0 {
+		a.log.Info("the agent's open questions from before the start are abandoned; they can still be answered", "cards", n)
+	}
 
 	ids := o.Modules
 	if ids == nil {

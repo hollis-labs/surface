@@ -10,7 +10,7 @@ import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
 import { Spinner } from "@/components/ui/spinner"
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ui/tool"
 import { CardView } from "../cards/renderers"
-import { type ServerCard, useCard } from "../cards/store"
+import { lateOpen, type ServerCard, useCard } from "../cards/store"
 
 type Of<K extends ChatItem["kind"]> = Extract<ChatItem, { kind: K }>
 export type ToolItem = Of<"tool">
@@ -40,6 +40,15 @@ function AskedCard({ item }: { item: ToolItem }) {
     return (
       <MessageNotice className="flex items-center gap-1.5">
         <Spinner className="size-3" /> Waiting on your answer{input.title ? `: ${input.title}` : ""}
+      </MessageNotice>
+    )
+  }
+  // Its run stopped waiting: the card is in the dock, still answerable, and drawn once.
+  if (live && lateOpen(live)) {
+    return (
+      <MessageNotice>
+        Stopped waiting for your answer{input.title ? ` to ${input.title}` : ""}. It is still in the cards above the
+        composer: answer it there and it is sent to the agent.
       </MessageNotice>
     )
   }

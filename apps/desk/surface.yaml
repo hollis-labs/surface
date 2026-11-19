@@ -15,4 +15,5 @@ modules:
   - diagram
   - inbox
   - reader
+  - assist
   - projects

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Markdown } from "@/components/ui/markdown"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 interface Entry {
@@ -111,7 +112,8 @@ function DoneForYou({ win, desk, api }: ViewProps) {
                   {head && <div className="px-1 pt-3 pb-1 text-xs font-medium text-muted-foreground">{d}</div>}
                   <Item size="sm">
                     <ItemContent>
-                      <ItemTitle>{e.summary}</ItemTitle>
+                      {/* The agent writes its summaries in Markdown. */}
+                      <Markdown className="w-full font-medium">{e.summary}</Markdown>
                       <ItemDescription>
                         {time(e.at)} · {e.kind}
                         {e.asked ? " · you were asked" : ""}

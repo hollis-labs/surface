@@ -82,7 +82,7 @@ func (m *mod) Manifest() module.Manifest {
 		Settings: []module.Setting{
 			{Key: "folder", Title: "Notes folder", About: "Absolute path of the folder the notes live in. Empty keeps them in the app's own data.", Type: module.SettingString, Default: ""},
 			{Key: "daily_folder", Title: "Daily notes go in", About: "Folder, inside the notes folder, for the note of the day.", Type: module.SettingString, Default: "daily"},
-			{Key: "layout", Title: "Editor shows", Type: module.SettingEnum, Default: "split", Options: []string{"split", "edit", "preview"}},
+			{Key: "layout", Title: "A note opens in", About: "preview: the note as read, with Edit and Split to write it (as Basalisk's Notes); edit: the Markdown alone; split: both. A new note opens for writing.", Type: module.SettingEnum, Default: "preview", Options: []string{"preview", "edit", "split"}},
 		},
 		Slots: []module.Slot{{
 			Name: "notes", About: "the owner's notes: what they wrote down and want kept, found or built on",
@@ -314,6 +314,24 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 			m.changed(p, "deleted")
 		}
 		reply(w, map[string]string{"trash": kept}, err)
+	}))
+	// A file of the folder, for a note that shows an image (or links a file) by a relative path.
+	// Served as data: the browser is told not to guess its type, and the page it would make is
+	// sandboxed (an SVG or HTML file opened on its own runs no script).
+	h.Handle("GET /asset", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, full, err := m.st.file(r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		info, err := os.Stat(full) //nolint:gosec // full passed the containment check in file
+		if err != nil || info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
+		http.ServeFile(w, r, full)
 	}))
 	h.Handle("GET /search", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits, err := m.st.search(r.URL.Query().Get("q"), 0)

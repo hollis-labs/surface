@@ -2,7 +2,7 @@
  * Terminal's window: the shells on this machine as tabs. A shell keeps running when its tab's
  * window closes or the page reloads; closing the tab (x) ends it.
  */
-import { Icon, type ModuleWeb, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
+import { citeTerminalLinks, Icon, type ModuleWeb, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
@@ -15,6 +15,9 @@ interface Session {
   exited: boolean
   exit_code: number
 }
+
+/** References in the output become links with a card (stable: read once per terminal). */
+const linkProviders = [citeTerminalLinks]
 
 const socketUrl = (id: string) =>
   `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/m/terminal/sessions/${id}/ws`
@@ -120,6 +123,7 @@ function Deck({ win, desk, api }: ViewProps) {
           (sessions ?? []).map((s) => (
             <div key={s.id} className={s.id === active ? "absolute inset-0" : "hidden"}>
               <Terminal
+                linkProviders={linkProviders}
                 socketUrl={socketUrl(s.id)}
                 active={s.id === active}
                 onExit={(code) => markExited(s.id, code)}

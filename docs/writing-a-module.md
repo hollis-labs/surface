@@ -184,6 +184,15 @@ icon by name.
 - Style with the design tokens (`var(--color-…)`), the shared `sf-*` classes in `web/src/desk/desk.css`, or
   Tailwind classes.
 
+### A card kind of the module's own
+
+A module that shows a card of a kind the core does not draw brings its renderer in its web entry:
+`export default { views: {...}, cards: { "<kind>": Renderer } }` ("<kind>@<version>" for a version other than 1).
+The renderer receives `CardProps`: the card, `respond(outcome)`, and the module's `api`. The page registers it
+at start. Prefer the core's kinds (info, confirm, prompt, choice, form, approval, progress, plan) when one fits:
+they are drawn the same everywhere and count in the attention list without more. A module kind counts there
+when the card is `Blocking`. `modules/approvals` has one: the secret request.
+
 ## Add it to an app
 
 List the id under `modules:` in the app's `surface.yaml`, then `make generate` (or `make <app>`). The

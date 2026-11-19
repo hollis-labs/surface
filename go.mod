@@ -7,7 +7,7 @@ require (
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/host v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
-	github.com/hollis-labs/nanite v0.0.0-20261118194837-7a61c736d81e
+	github.com/hollis-labs/nanite v0.5.0
 	github.com/hollis-labs/substrate v0.1.1-0.20261119160643-9fd1a312ed78
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0

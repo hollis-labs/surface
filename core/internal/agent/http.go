@@ -42,6 +42,9 @@ func (s *Service) Mount(mux *http.ServeMux) {
 	mux.Handle(Prefix, eng)
 	mux.Handle(Prefix+"/", eng)
 
+	if s.cfg.Tether.URL != "" && s.cfgErr == nil {
+		s.mountTether(mux)
+	}
 	if s.wire != nil {
 		s.mountWire(mux)
 	}
@@ -49,6 +52,15 @@ func (s *Service) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+Prefix+"/turns", s.turn)
 	mux.HandleFunc("GET "+Prefix+"/context", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.Preview(r.Context())) })
 	mux.HandleFunc("GET "+Prefix+"/setup", func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Tether.URL != "" {
+			ready := s.cfgErr == nil
+			result := map[string]any{"ready": ready, "model": "tether", "config_path": ConfigPath(s.k.AppName()), "wire": "conversation", "wire_base": tetherPrefix, "agent": s.cfg.Tether.Seat}
+			if !ready {
+				result["reason"] = "The Tether attachment configuration is invalid."
+			}
+			reply(w, 200, result)
+			return
+		}
 		// ready is the engine's (a model, a gateway and a key file are named) and the key file
 		// can be read; reason says why not, in a sentence.
 		if s.wire != nil {
@@ -166,6 +178,26 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			return
 		}
 		reply(w, 200, rep)
+	})
+	mux.HandleFunc("GET "+Prefix+"/runs", func(w http.ResponseWriter, r *http.Request) {
+		if s.runs == nil {
+			reply(w, 200, []RunRecord{})
+			return
+		}
+		list, err := s.runs.recent(r.Context(), atoi(r.URL.Query().Get("limit"), 50))
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		if r.URL.Query().Get("format") == "jsonl" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			enc := json.NewEncoder(w)
+			for _, x := range list {
+				_ = enc.Encode(x)
+			}
+			return
+		}
+		reply(w, 200, list)
 	})
 	mux.HandleFunc("GET "+Prefix+"/slots", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.slotList(r.Context())) })
 	mux.HandleFunc("POST "+Prefix+"/slots/pin", func(w http.ResponseWriter, r *http.Request) {

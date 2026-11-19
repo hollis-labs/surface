@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/router"
 	"github.com/hollis-labs/surface/core/internal/slots"
+	"github.com/hollis-labs/surface/core/internal/wardentoken"
 	"github.com/hollis-labs/surface/module"
 )
 
@@ -88,8 +89,22 @@ func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int
 func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedder) {
 	s.asyncCtx, s.asyncCancel = context.WithCancel(context.Background()) //nolint:gosec // G118: Close calls it
 	cc := cfg.Classifier
+	var minted *wardentoken.Source
+	givenD, givenE := d, e
 	if (d == nil || e == nil) && cc.GatewayURL != "" {
 		token := ""
+		switch {
+		case cc.KeyFile != "" && cc.Warden != nil:
+			s.log.Warn("classifier: the agent config sets both classifier.key_file and classifier.warden; set one. No async tier")
+			return
+		case cc.Warden != nil:
+			w := cc.Warden
+			if w.URL == "" || w.CredentialFile == "" || w.Audience == "" {
+				s.log.Warn("classifier: classifier.warden needs url, credential_file and audience; no async tier")
+				return
+			}
+			minted = &wardentoken.Source{URL: w.URL, CredentialFile: w.CredentialFile, Audience: w.Audience, Scopes: w.Scopes, Log: s.log}
+		}
 		if cc.KeyFile != "" {
 			raw, err := os.ReadFile(cc.KeyFile) //nolint:gosec // the operator's own key file, named in their config
 			if err != nil {
@@ -126,6 +141,14 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedd
 			return
 		}
 	}
+	if minted != nil {
+		if c, ok := d.(*decide.Client); ok && c != nil && givenD == nil {
+			c.HTTP = withToken(c.HTTP, minted)
+		}
+		if c, ok := e.(*embed.Client); ok && c != nil && givenE == nil {
+			c.HTTP = withToken(c.HTTP, minted)
+		}
+	}
 	if e != nil {
 		s.cls.SetEmbedder(e)
 		s.refitCentroids() // on the slots' descriptions now; again once the trace is learned
@@ -142,6 +165,17 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedd
 	}
 	s.cls.SetDecider(d, classify.DecisionOptions{Purpose: purpose, Model: cc.DecideModel, CallerID: "surface"})
 	s.log.Info("classifier: async tier on", "decider", d.Name(), "model", cc.DecideModel)
+}
+
+// withToken gives a gateway client's requests a bearer token minted from Warden.
+func withToken(hc *http.Client, src *wardentoken.Source) *http.Client {
+	out := &http.Client{Timeout: 30 * time.Second}
+	if hc != nil {
+		cp := *hc
+		out = &cp
+	}
+	out.Transport = &wardentoken.Transport{Source: src, Base: out.Transport}
+	return out
 }
 
 // classifyAsync asks the async tier about a recorded turn, off the turn's path, and keeps

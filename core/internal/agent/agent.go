@@ -82,6 +82,8 @@ type Options struct {
 
 // Service is the embedded agent.
 type Service struct {
+	// runs is the run log (the conversation wire only).
+	runs   *runLog
 	k      kernel.Kernel
 	log    *slog.Logger
 	cfg    FileConfig
@@ -178,7 +180,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		return nil, fmt.Errorf("agent: tools: %w", err)
 	}
 
-	if runner := runnerChoice(); runner != "" {
+	if runner := runnerChoice(); runner != "" && cfg.Tether.URL == "" {
 		if s.wire, err = s.openWire(ctx, runner); err != nil {
 			s.engine.Close()
 			return nil, err
@@ -275,7 +277,7 @@ func (s *Service) onEvent(ev module.Event) {
 func (s *Service) Preview(ctx context.Context) slots.Assembly {
 	sit := s.k.Situation(ctx)
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	return slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, slots.Extra{Instructions: s.layoutInstructions(ctx, sit)})
+	return slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, s.extra(ctx, sit))
 }
 
 // allTools is every tool the agent has: the app's and its own.
@@ -348,7 +350,7 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	sit.Input = text
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
 	var res TurnResult
-	extra := slots.Extra{Instructions: s.layoutInstructions(ctx, sit)}
+	extra := s.extra(ctx, sit)
 
 	// The router: a rule may run a call before the agent is asked.
 	f := router.Fields{Text: text, Mode: sit.Mode, Layout: sit.Layout, Slot: sel.Primary().Name}

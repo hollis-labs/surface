@@ -1,16 +1,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+
+	"github.com/hollis-labs/surface/module"
 )
 
 // mcp is a small Model Context Protocol endpoint (JSON-RPC over HTTP POST, no session):
 // initialize, tools/list and tools/call. It is how an outside agent drives the app with
 // the same tools the embedded one has.
 //
-// Tool levels are not enforced here: asking the owner is the embedded agent's panel's job
-// (and later Gatecrasher's). The app listens on loopback only.
+// Only read and act tools are exposed. Write and confirm tools need the embedded
+// approval flow, which MCP does not bridge.
 func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		JSONRPC string          `json:"jsonrpc"`
@@ -46,6 +50,9 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 		}
 		tools := []tool{}
 		for _, t := range s.a.Tools() {
+			if t.Level != module.LevelRead && t.Level != module.LevelAct {
+				continue
+			}
 			tools = append(tools, tool{Name: t.Name, Description: t.Description, InputSchema: t.Input,
 				Annotations: map[string]any{"readOnlyHint": t.Level == "read", "destructiveHint": t.Level == "confirm"}})
 		}
@@ -59,7 +66,7 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 			ok(w, rpcErr(req.ID, -32602, err.Error()))
 			return
 		}
-		out, err := s.call(r.Context(), p.Name, p.Arguments)
+		out, err := s.callMCP(r.Context(), p.Name, p.Arguments)
 		if err != nil {
 			ok(w, rpcOK(req.ID, map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}}))
 			return
@@ -76,4 +83,18 @@ func rpcOK(id json.RawMessage, result any) map[string]any {
 
 func rpcErr(id json.RawMessage, code int, msg string) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": msg}}
+}
+
+// Enforce the same boundary for direct calls, including names omitted from tools/list.
+func (s *server) callMCP(ctx context.Context, name string, input json.RawMessage) (string, error) {
+	for _, t := range s.a.Tools() {
+		if t.Name == name && (t.Level == module.LevelRead || t.Level == module.LevelAct) {
+			out, err := t.Call(ctx, input)
+			if err != nil {
+				return "", err
+			}
+			return Render(out), nil
+		}
+	}
+	return "", fmt.Errorf("tool %q is not available over MCP (read and act only)", name)
 }

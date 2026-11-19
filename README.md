@@ -85,3 +85,45 @@ func (m *mod) Manifest() module.Manifest {
 - [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md).
 
 Licensed under the [MIT License](LICENSE).
+
+## Choosing embedded chat or a Tether seat
+
+`SURFACE_AGENT_RUNNER=nanite` keeps the embedded runner and its approval panel.
+To attach the same chat page to a statically app-bound Tether CLI seat instead,
+add this to the app's `agent.json` (or the file `SURFACE_AGENT_CONFIG` names):
+
+```json
+{
+  "tether": {
+    "url": "http://127.0.0.1:9030/chat/v1",
+    "seat": "surface-seat",
+    "key_file": "~/.config/my-app/tether-token"
+  }
+}
+```
+
+`SURFACE_TETHER_URL`, `SURFACE_TETHER_SEAT`, and `SURFACE_TETHER_KEY_FILE` override
+these fields. Omit `key_file` only for an endpoint that needs no bearer token.
+The credential must have chat access to the named seat. It stays on the Surface
+server and is reread per request. Tether configuration takes precedence over
+`SURFACE_AGENT_RUNNER`; remove it to return to embedded chat.
+
+Enable the chat wire on the target Tether daemon and configure that seat's static
+MCP servers to include this Surface app's `http://127.0.0.1:PORT/mcp` endpoint.
+The endpoint must be reachable from the CLI agent's host. See Tether's
+[app-bound seats](https://github.com/hollis-labs/tether/blob/main/docs/app-bound-seats.md)
+for launch configuration. Attaching a page does not inject MCP servers into an
+already running agent.
+
+The page uses `packages/chat` through Surface's same-origin `/api/agent/tether`
+route, which forwards to `/chat/v1`. Streams, attachment leases, detach/reattach,
+and replay cursors use the same conversation protocol. Surface adds its current
+slot/window context and configured system instructions to each submitted turn;
+Tether keeps that context out of the conversation event log. The Tether path
+assembles context but does not run the embedded runner's routing/reflex or approval
+hooks. The local context panel remains available.
+
+MCP lists and executes **read and act** tools only, for every outside client.
+Write and confirm tools are neither listed nor callable through `/mcp`; use the
+embedded runner's approval flow for those tools. Approval bridging is not part
+of the Tether attachment.

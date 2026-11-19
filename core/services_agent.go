@@ -19,6 +19,8 @@ func init() {
 			_ = s.Close(ctx)
 			return nil, err
 		}
+		// Modules hand the agent errands of their own (Host.Agent).
+		a.k.SetAsker(s)
 		return s, nil
 	})
 }

@@ -95,7 +95,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		_ = st.Close()
 		return nil, err
 	}
-	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs}
+	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model}
 	w.svc, err = chat.NewService(chat.Config{
 		Runner:  run,
 		Log:     st,

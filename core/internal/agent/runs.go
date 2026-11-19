@@ -77,8 +77,9 @@ type watchedRunner struct {
 	chat.Runner
 	started func(id string)
 	ended   func(id, status, reason string)
-	// log keeps the run log (nil: none).
-	log *runLog
+	// log keeps the run log (nil: none); model is the app's configured model, for the log.
+	log   *runLog
+	model string
 }
 
 func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, error) {
@@ -87,7 +88,7 @@ func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, err
 		return nil, err
 	}
 	w.started(turn.RunID)
-	c := w.log.begin(turn.RunID)
+	c := w.log.begin(turn.RunID, w.model)
 	log := w.log
 	ended := func(id, status, reason string) {
 		log.end(c, status, reason)

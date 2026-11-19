@@ -82,6 +82,8 @@ type Options struct {
 
 // Service is the embedded agent.
 type Service struct {
+	// runs is the run log (the conversation wire only).
+	runs   *runLog
 	k      kernel.Kernel
 	log    *slog.Logger
 	cfg    FileConfig

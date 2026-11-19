@@ -412,6 +412,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `POST /api/agent/classify`, `GET /api/agent/classify/replay` | the classifier's result for a draft (records nothing); a fresh classifier replayed over the trace against the selector |
 | `POST /api/agent/classify/feedback` | `{text, facet, label, accepted}`: the owner's answer to a hint; an accepted slot pins it |
 | `GET /api/agent/classify/emerging` | `?facet=&limit=`: clusters among turns the facet abstained on (409 without an embedder) |
+| `GET /api/agent/runs` | the run log (conversation wire): each run's origin (`owner`, `errand:<module>`, `auto`), slot, model, token usage, tools called, end and duration, newest first; `?limit=`, `?format=jsonl` |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

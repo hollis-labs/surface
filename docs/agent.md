@@ -174,6 +174,7 @@ file (`~/.config/<app>/agent.json`) names a gateway:
 | `gateway_url` | The gateway's base URL, or `unix:///path.sock`. With none there is no async tier. |
 | `dialect` | `llm-gateway` (the default): JEV's System-1 API at `/v1/systemone`, and OpenAI-compatible `/v1/embeddings`, with the gateway's model aliases. `tether`: a decision gateway's `/ai/decide` and `/ai/embeddings`. |
 | `key_file` | The gateway's bearer key. It needs the decide scope for `decide_model` and the embed scope for `embed_model`. |
+| `warden` | Instead of `key_file`: mint short-lived gateway tokens from a Warden parent credential (below). Set one of the two; with both, there is no async tier. |
 | `decide_model` | Turns on the JEV judge on every facet: the gateway's decision route (`jev`). |
 | `embed_model` | Turns on the slot centroid judge and the emerging-label report: the gateway's embedding route (`embed-local`, `embed-openai`). Vectors from different models do not compare, so a change refits from scratch. |
 | `purpose` | What a `tether` gateway accounts the spend to (default `surface_classify`). |
@@ -188,6 +189,41 @@ candidate labels, for a person to name, not answers.
 
 The text is scrubbed of recognisable credentials before it leaves. A failed or slow call (30s) leaves the column
 empty and changes nothing else.
+
+**Tokens from Warden.** Instead of a static `key_file`, the classifier can mint its gateway tokens from a Warden
+parent credential:
+
+```json
+"classifier": {
+  "gateway_url": "https://<llm-gateway host>/api/llm-gateway",
+  "warden": {
+    "url": "https://<warden host>",
+    "credential_file": "~/.config/surface/warden.token",
+    "audience": "llm-gateway"
+  },
+  "decide_model": "jev",
+  "embed_model": "embed-local"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `warden.url` | Warden's base URL; tokens come from `<url>/v1/token`. |
+| `warden.credential_file` | The parent credential. It is rewritten on every mint, so it must be writable; it is kept at mode 0600. |
+| `warden.audience` | The tokens' audience (`llm-gateway`). |
+| `warden.scopes` | Optional: narrows the tokens. Empty asks for what the grant allows. |
+
+Parent credentials are rotate-on-use, and presenting one twice revokes the whole family. So
+(`core/internal/wardentoken`):
+- every mint holds an exclusive lock on `<credential_file>.lock`, so apps sharing one file never present the same
+  parent;
+- the next parent is saved (temp file, fsync, rename) before the token is used;
+- `<credential_file>.inflight` is written before a parent is sent and removed once the outcome is known. When the
+  answer is lost (a timeout, a 5xx, a cut connection), the parent may be spent, so the marker stays and every later
+  mint refuses, with an error in the log. To recover, re-enroll, store the new parent, then delete the marker;
+- a token is renewed at two thirds of its life; when a renewal fails, the current token is used until it expires.
+
+Neither the parent nor a token is ever logged.
 
 ### Assembly
 
@@ -275,6 +311,14 @@ A matching rule names a target, `tool:<name>` or `command:<id>`, and its `params
 Built-in rules (`router/rules.json`): `/open <view>`, `/layout <name>`, `/run <command>`. The owner's own rules
 (`agent_rule_put`, `PUT /api/agent/rules/{id}`) live in the core database and are tried first. A rule for one
 layout only carries `{"field":"layout","op":"eq","value":"<name>"}`.
+
+## What modules add: Around and errands
+
+Besides its slots, a module can add lines to every message's context (`Manifest.Around`, shown as
+`Around (<module>):`, 1.5 s and 1500 characters each) and hand the agent an errand (`Host.Agent().Ask`). An errand
+is a turn on the agent's conversation with meta `{auto, errand: <module>, title}`. It skips the router and is not
+recorded in the context trace, and the agent is told it is not the owner speaking. It needs the conversation
+wire; `agent.errand` is published when one starts.
 
 ## Reflexes and triggers
 
@@ -368,6 +412,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `POST /api/agent/classify`, `GET /api/agent/classify/replay` | the classifier's result for a draft (records nothing); a fresh classifier replayed over the trace against the selector |
 | `POST /api/agent/classify/feedback` | `{text, facet, label, accepted}`: the owner's answer to a hint; an accepted slot pins it |
 | `GET /api/agent/classify/emerging` | `?facet=&limit=`: clusters among turns the facet abstained on (409 without an embedder) |
+| `GET /api/agent/runs` | the run log (conversation wire): each run's origin (`owner`, `errand:<module>`, `auto`), slot, model, token usage, tools called, end and duration, newest first; `?limit=`, `?format=jsonl` |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

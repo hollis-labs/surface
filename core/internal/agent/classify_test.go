@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/libs/core/util/classify"
 	"github.com/hollis-labs/libs/core/util/decide"
@@ -442,5 +444,73 @@ func TestTheConfigFileTurnsOnTheLLMGatewayTier(t *testing.T) {
 	}
 	if !judges["decide"] || !judges["centroid:slot"] {
 		t.Fatalf("async judges %v (failed %v)", judges, async.Failed)
+	}
+}
+
+func TestTheClassifierMintsGatewayTokensFromWarden(t *testing.T) {
+	key := strings.Repeat("w", 12) + "-minted"
+	srv, decides, embeds := fakeLLMGateway(t, key)
+	var mints atomic.Int32
+	warden := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+		_ = r.ParseForm()
+		if r.URL.Path != "/v1/token" || r.Form.Get("audience") != "llm-gateway" || r.Form.Get("refresh_token") == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		n := mints.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": key, "expires_at": time.Now().Add(time.Hour), "refresh_token": fmt.Sprintf("parent-%d", n)})
+	}))
+	t.Cleanup(warden.Close)
+	dir := t.TempDir()
+	cred := filepath.Join(dir, "warden.token")
+	if err := os.WriteFile(cred, []byte("parent-0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := json.Marshal(map[string]any{"classifier": map[string]any{
+		"gateway_url": srv.URL, "decide_model": "jev", "embed_model": "embed-local",
+		"warden": map[string]string{"url": warden.URL, "credential_file": cred, "audience": "llm-gateway"}}})
+	path := filepath.Join(dir, "agent.json")
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SURFACE_AGENT_CONFIG", path)
+	s, _, _, _ := setup(t, Options{})
+	s.asyncWG.Wait()
+	if _, err := s.Send(context.Background(), "what changed today?", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	s.asyncWG.Wait()
+	if embeds.Load() == 0 || decides.Load() != 1 {
+		t.Fatalf("embeds %d decides %d", embeds.Load(), decides.Load())
+	}
+	if mints.Load() != 1 {
+		t.Fatalf("%d mints; the decider and embedder should share one token", mints.Load())
+	}
+	raw, _ := os.ReadFile(cred) //nolint:gosec // G304: the test's own temp file
+	if strings.TrimSpace(string(raw)) != "parent-1" {
+		t.Fatalf("parent not rotated: %q", raw)
+	}
+}
+
+func TestKeyFileAndWardenTogetherTurnOffTheAsyncTier(t *testing.T) {
+	srv, decides, embeds := fakeLLMGateway(t, "unused-key")
+	dir := t.TempDir()
+	cfg, _ := json.Marshal(map[string]any{"classifier": map[string]any{
+		"gateway_url": srv.URL, "decide_model": "jev", "embed_model": "embed-local", "key_file": filepath.Join(dir, "k"),
+		"warden": map[string]string{"url": "http://127.0.0.1:1", "credential_file": filepath.Join(dir, "c"), "audience": "llm-gateway"}}})
+	path := filepath.Join(dir, "agent.json")
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SURFACE_AGENT_CONFIG", path)
+	s, _, _, _ := setup(t, Options{})
+	s.asyncWG.Wait()
+	if _, err := s.Send(context.Background(), "hello", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	s.asyncWG.Wait()
+	if embeds.Load() != 0 || decides.Load() != 0 {
+		t.Fatalf("async tier on with both set: embeds %d decides %d", embeds.Load(), decides.Load())
 	}
 }

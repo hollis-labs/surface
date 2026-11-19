@@ -1,0 +1,107 @@
+/*
+ * The Work views' own styles: what utilities cannot say. A kind's colour is one of the theme's
+ * tokens (never a literal), drawn as a card's edge and its icon; the canvas plane and the diff.
+ */
+.work-root [data-work-color="amber"],
+.work-root [data-work-color="orange"] {
+  --work-color: var(--warning);
+}
+.work-root [data-work-color="blue"] {
+  --work-color: var(--info);
+}
+.work-root [data-work-color="red"],
+.work-root [data-work-color="rose"] {
+  --work-color: var(--destructive);
+}
+.work-root [data-work-color="teal"] {
+  --work-color: var(--chart-2);
+}
+.work-root [data-work-color="violet"],
+.work-root [data-work-color="pink"] {
+  --work-color: var(--chart-3);
+}
+.work-root [data-work-color="green"] {
+  --work-color: var(--success);
+}
+.work-root [data-work-color="slate"],
+.work-root [data-work-color="gray"] {
+  --work-color: var(--muted-foreground);
+}
+.work-kind {
+  color: var(--work-color, var(--muted-foreground));
+}
+.work-card {
+  border-left: 3px solid var(--work-color, var(--border));
+}
+.work-card[data-picked="true"] {
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
+}
+.work-drop[data-over="true"] {
+  background: var(--accent);
+}
+.work-orow[data-over="before"] {
+  box-shadow: inset 0 2px 0 var(--ring);
+}
+.work-orow[data-over="after"] {
+  box-shadow: inset 0 -2px 0 var(--ring);
+}
+.work-orow[data-over="inside"] {
+  background: var(--accent);
+}
+.work-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.work-diff del {
+  color: var(--destructive);
+  text-decoration: line-through;
+}
+.work-diff ins {
+  color: var(--success);
+  text-decoration: none;
+}
+.work-plane-host {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.work-plane-host[data-panning="true"] {
+  cursor: grabbing;
+}
+.work-plane {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: 0 0;
+}
+.work-onplane {
+  position: absolute;
+}
+.work-onplane[data-dragging="true"] {
+  opacity: 0.6;
+}
+.work-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.9;
+}
+.work-flow {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.work-flow text {
+  pointer-events: none;
+}
+.work-flow [data-node] {
+  cursor: move;
+}
+.work-flow [data-edge] {
+  cursor: pointer;
+}
+.work-flow [data-handle] {
+  cursor: crosshair;
+}

@@ -20,9 +20,9 @@ import (
 
 // Run statuses as the bus carries them.
 const (
-	RunFinished  = "finished"
+	RunFinished = "finished"
 	RunCanceled = "canceled"
-	RunFailed    = "failed"
+	RunFailed   = "failed"
 )
 
 // runWatch is what an engine calls as its runs start and end.
@@ -77,6 +77,9 @@ type watchedRunner struct {
 	chat.Runner
 	started func(id string)
 	ended   func(id, status, reason string)
+	// log keeps the run log (nil: none); model is the app's configured model, for the log.
+	log   *runLog
+	model string
 }
 
 func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, error) {
@@ -85,13 +88,20 @@ func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, err
 		return nil, err
 	}
 	w.started(turn.RunID)
-	return watchedRun{Run: r, id: turn.RunID, ended: w.ended}, nil
+	c := w.log.begin(turn.RunID, w.model)
+	log := w.log
+	ended := func(id, status, reason string) {
+		log.end(c, status, reason)
+		w.ended(id, status, reason)
+	}
+	return watchedRun{Run: r, id: turn.RunID, ended: ended, seen: c}, nil
 }
 
 type watchedRun struct {
 	chat.Run
 	id    string
 	ended func(id, status, reason string)
+	seen  *collector
 }
 
 func (w watchedRun) Events() iter.Seq2[chatstream.Event, error] {
@@ -104,6 +114,9 @@ func (w watchedRun) Events() iter.Seq2[chatstream.Event, error] {
 			}
 		}()
 		for ev, err := range w.Run.Events() {
+			if err == nil {
+				w.seen.see(ev)
+			}
 			if err == nil && ev.IsTerminal() && !done {
 				done = true
 				switch ev.Verb {

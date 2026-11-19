@@ -73,6 +73,8 @@ type Assembly struct {
 	Layout  string                `json:"layout,omitempty"`
 	// Reminders are what reflexes asked to tell the agent with this message.
 	Reminders []string `json:"reminders,omitempty"`
+	// Around is what the modules carry with every message (Manifest.Around).
+	Around []AroundLine `json:"around,omitempty"`
 	// Block is the <context> block that leads the owner's message.
 	Block string `json:"block"`
 	// Trimmed names the slots whose knowledge a budget cut: "<slot>:clipped" (over the
@@ -98,7 +100,18 @@ type Extra struct {
 	Reminders    []string
 	Instructions string
 	Routed       string
+	// Around is what the modules' Around said, already read and capped.
+	Around []AroundLine
 }
+
+// AroundLine is one module's Around for this message.
+type AroundLine struct {
+	Module string `json:"module"`
+	Text   string `json:"text"`
+}
+
+// BudgetAround caps one module's Around, in characters.
+const BudgetAround = 1500
 
 // knowledgeTimeout bounds one slot's Knowledge call: it runs on every message.
 const knowledgeTimeout = 1500 * time.Millisecond
@@ -119,7 +132,7 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 	for _, t := range tools {
 		have[t.Name] = true
 	}
-	a := Assembly{Slot: sel.Primary().Name, Why: sel.Why, Focused: sit.Focused, Mode: sit.Mode, Layout: sit.Layout, Reminders: extra.Reminders}
+	a := Assembly{Slot: sel.Primary().Name, Why: sel.Why, Focused: sit.Focused, Mode: sit.Mode, Layout: sit.Layout, Reminders: extra.Reminders, Around: extra.Around}
 	slots := sel.Slots
 	if len(slots) == 0 {
 		slots = []kernel.BoundSlot{General}
@@ -229,6 +242,9 @@ func block(sit module.Situation, a Assembly, extra Extra) string {
 	}
 	if extra.Instructions != "" {
 		b.WriteString("\nFor this layout: " + extra.Instructions + "\n")
+	}
+	for _, x := range extra.Around {
+		fmt.Fprintf(&b, "\nAround (%s):\n%s\n", x.Module, x.Text)
 	}
 	if extra.Routed != "" {
 		b.WriteString("\n" + extra.Routed + "\n")

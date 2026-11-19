@@ -48,7 +48,9 @@ type Host struct {
 	MarkStore *Marks
 	// CardStore records the cards the module showed.
 	CardStore *Cards
-	Settings  *Config
+	// AgentState records the errands the module handed the agent.
+	AgentState *Agent
+	Settings   *Config
 
 	mu       sync.Mutex
 	commands map[string]func(ctx context.Context, args map[string]any) (any, error)
@@ -59,7 +61,7 @@ func New(t testing.TB, m module.Module) *Host {
 	t.Helper()
 	man := m.Manifest()
 	h := &Host{t: t, m: m, man: man, dir: t.TempDir(), mux: http.NewServeMux(),
-		DeskState: newDesk(), Bus: &Bus{}, MarkStore: &Marks{}, CardStore: &Cards{},
+		DeskState: newDesk(), Bus: &Bus{}, MarkStore: &Marks{}, CardStore: &Cards{}, AgentState: &Agent{},
 		commands: map[string]func(context.Context, map[string]any) (any, error){}}
 	h.Settings = &Config{defs: map[string]module.Setting{}, values: map[string]any{}, bus: h.Bus, scope: man.ID}
 	for _, s := range man.Settings {
@@ -185,6 +187,15 @@ func (h *Host) Config() module.Config { return h.Settings }
 func (h *Host) Events() module.Events { return h.Bus }
 func (h *Host) Marks() module.Marks   { return h.MarkStore }
 func (h *Host) Cards() module.Cards   { return h.CardStore }
+func (h *Host) Agent() module.Agent   { return h.AgentState }
+
+// Around reads the module's Around, as the core would for a message.
+func (h *Host) Around() (string, error) {
+	if h.man.Around == nil {
+		return "", nil
+	}
+	return h.man.Around(context.Background(), h)
+}
 
 func (h *Host) Handle(pattern string, handler http.Handler) {
 	method, p, ok := strings.Cut(pattern, " ")

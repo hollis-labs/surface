@@ -6,6 +6,8 @@ import (
 	"hash/fnv"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -304,4 +306,94 @@ func TestEmergingNeedsAnEmbedder(t *testing.T) {
 		t.Fatalf("without an embedder: %v %v", err, resp.Status)
 	}
 	_ = resp.Body.Close()
+}
+
+// fakeLLMGateway answers JEV's System-1 API and OpenAI-compatible embeddings, as llm-gateway
+// relays them, and records what it was asked.
+func fakeLLMGateway(t *testing.T, key string) (*httptest.Server, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	var decides, embeds atomic.Int32
+	emb := &wordsEmbedder{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+key {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var body map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/v1/systemone":
+			decides.Add(1)
+			var qs map[string]struct {
+				Criteria map[string]any `json:"criteria"`
+			}
+			_ = json.Unmarshal(body["questions"], &qs)
+			answers := map[string]any{}
+			for k, q := range qs {
+				probs := map[string]float64{}
+				first := ""
+				for opt := range q.Criteria {
+					probs[opt] = 0.01
+					if first == "" || opt < first {
+						first = opt
+					}
+				}
+				probs[first] = 0.9
+				answers[k] = map[string]any{"type": "choice", "choice": first, "probabilities": probs}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": "jev-1.13.0", "answers": answers})
+		case "/v1/embeddings":
+			embeds.Add(1)
+			var in []string
+			_ = json.Unmarshal(body["input"], &in)
+			vecs, _ := emb.Embed(r.Context(), in)
+			var data []map[string]any
+			for i, v := range vecs {
+				data = append(data, map[string]any{"index": i, "embedding": v})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &decides, &embeds
+}
+
+func TestTheConfigFileTurnsOnTheLLMGatewayTier(t *testing.T) {
+	key := strings.Repeat("g", 12) + "-fixture"
+	srv, decides, embeds := fakeLLMGateway(t, key)
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "gateway.key")
+	if err := os.WriteFile(keyFile, []byte(key+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := json.Marshal(map[string]any{"classifier": map[string]string{
+		"gateway_url": srv.URL, "key_file": keyFile, "decide_model": "jev", "embed_model": "embed-local"}})
+	path := filepath.Join(dir, "agent.json")
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SURFACE_AGENT_CONFIG", path)
+	s, _, _, _ := setup(t, Options{})
+	s.asyncWG.Wait() // centroids fitted through /v1/embeddings
+	if embeds.Load() == 0 {
+		t.Fatal("the examples were not embedded")
+	}
+	if _, err := s.Send(context.Background(), "what changed today?", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	s.asyncWG.Wait()
+	if decides.Load() != 1 {
+		t.Fatalf("decide calls %d", decides.Load())
+	}
+	turns, _ := s.trace.Recent(context.Background(), 1)
+	async := mustResult(t, turns[0].ClassifiedAsync)
+	judges := map[string]bool{}
+	for _, v := range async.Facets["act"].Votes {
+		judges[v.Judge] = true
+	}
+	if !judges["decide"] || !judges["centroid:act"] {
+		t.Fatalf("async judges %v (failed %v)", judges, async.Failed)
+	}
 }

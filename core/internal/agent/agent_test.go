@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -160,7 +161,9 @@ func (e *fakeEngine) Handler(string, func(*http.Request) (string, error)) http.H
 
 func setup(t *testing.T, o Options) (*Service, *fakeKernel, *fakeEngine, *[]string) {
 	t.Helper()
-	t.Setenv("SURFACE_AGENT_CONFIG", filepath.Join(t.TempDir(), "none.json"))
+	if os.Getenv("SURFACE_AGENT_CONFIG") == "" { // a test may name its own config file first
+		t.Setenv("SURFACE_AGENT_CONFIG", filepath.Join(t.TempDir(), "none.json"))
+	}
 	db, err := storage.Open(context.Background(), filepath.Join(t.TempDir(), "core.db"))
 	if err != nil {
 		t.Fatal(err)

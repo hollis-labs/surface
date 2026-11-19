@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The classifier's async tier speaks an LLM gateway.** The `classifier` agent config is now `gateway_url`,
+  `dialect`, `key_file`, `decide_model`, `embed_model` and `purpose`. The default dialect, `llm-gateway`, uses JEV's
+  System-1 API (`/v1/systemone`) and OpenAI-compatible `/v1/embeddings` with the gateway's model aliases. `tether`
+  keeps `/ai/decide` and `/ai/embeddings`. The JEV judge is on only when `decide_model` is set. Changed:
+  `decide_url` and `model` (v0.2.0) are now `gateway_url` and `decide_model`. Nothing had configured them yet.
 ## [0.2.0] - 2026-11-19
 
 - **Modules ported from Basalisk**, in Desk and Studio:

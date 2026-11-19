@@ -312,6 +312,14 @@ Built-in rules (`router/rules.json`): `/open <view>`, `/layout <name>`, `/run <c
 (`agent_rule_put`, `PUT /api/agent/rules/{id}`) live in the core database and are tried first. A rule for one
 layout only carries `{"field":"layout","op":"eq","value":"<name>"}`.
 
+## What modules add: Around and errands
+
+Besides its slots, a module can add lines to every message's context (`Manifest.Around`, shown as
+`Around (<module>):`, 1.5 s and 1500 characters each) and hand the agent an errand (`Host.Agent().Ask`). An errand
+is a turn on the agent's conversation with meta `{auto, errand: <module>, title}`. It skips the router and is not
+recorded in the context trace, and the agent is told it is not the owner speaking. It needs the conversation
+wire; `agent.errand` is published when one starts.
+
 ## Reflexes and triggers
 
 A reflex is a trigger and an action, kept in the core database.
@@ -404,6 +412,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `POST /api/agent/classify`, `GET /api/agent/classify/replay` | the classifier's result for a draft (records nothing); a fresh classifier replayed over the trace against the selector |
 | `POST /api/agent/classify/feedback` | `{text, facet, label, accepted}`: the owner's answer to a hint; an accepted slot pins it |
 | `GET /api/agent/classify/emerging` | `?facet=&limit=`: clusters among turns the facet abstained on (409 without an embedder) |
+| `GET /api/agent/runs` | the run log (conversation wire): each run's origin (`owner`, `errand:<module>`, `auto`), slot, model, token usage, tools called, end and duration, newest first; `?limit=`, `?format=jsonl` |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

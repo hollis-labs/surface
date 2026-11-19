@@ -3,6 +3,7 @@ package design
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -210,25 +211,44 @@ func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
 	if c.HeadSHA != nil && *c.HeadSHA != "" && !shaPattern.MatchString(strings.ToLower(*c.HeadSHA)) {
 		return Job{}, fmt.Errorf("head_sha %q is not a full commit SHA", *c.HeadSHA)
 	}
-	if c.Status != nil {
-		cur, err := m.st.get(ctx, id)
-		if err != nil {
+	// The status is written last, and only if it is still the one read here: a merge, an
+	// approval or the Designer's closed: landing meanwhile is never overwritten.
+	status := c.Status
+	c.Status = nil
+	var cur Job
+	reason := ""
+	if status != nil {
+		var err error
+		if cur, err = m.st.get(ctx, id); err != nil {
 			return Job{}, err
 		}
-		reason := ""
+		if cur.Status == StatusMerged {
+			return Job{}, errors.New("the job is merged: its status is not changed by hand")
+		}
 		switch {
-		case *c.Status == StatusClosed && cur.Status == StatusClosed:
+		case *status == StatusClosed && cur.Status == StatusClosed:
 			reason = cur.ClosedReason // closing again keeps why it closed
-		case *c.Status == StatusClosed:
+		case *status == StatusClosed:
 			reason = "closed by hand in Surface"
 		}
-		c.ClosedReason = &reason // reopened: no reason
 	}
 	j, err := m.st.update(ctx, id, c)
 	if err != nil {
 		return Job{}, err
 	}
-	if c.Status == nil {
+	if status != nil {
+		ok, setErr := m.st.setStatus(ctx, id, cur.Status, *status, reason)
+		if setErr != nil {
+			return Job{}, setErr
+		}
+		if j, err = m.st.get(ctx, id); err != nil {
+			return Job{}, err
+		}
+		if !ok {
+			return Job{}, fmt.Errorf("the job changed while this was being set (it is now %s): look at it again", j.Status)
+		}
+	}
+	if status == nil {
 		if next := derive(j.Status, j.TaskStatus, j.PreviewURL, false, false); next != j.Status {
 			if _, err = m.st.moveStatus(ctx, id, j.Status, next); err != nil {
 				return Job{}, err
@@ -241,6 +261,13 @@ func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
 	m.changed(id)
 	m.announce(ctx, j)
 	m.supersede(ctx, j)
+	// Closed by hand while the Design team had it: tell them to stop and close the pull request.
+	if status != nil && *status == StatusClosed && cur.Status != StatusClosed && len(j.Rounds) > 0 {
+		out := m.deliver(ctx, closedMessage(j), nil)
+		if !out.Sent {
+			m.h.Log().Warn("design: the closing notice was not sent", "job", id, "problem", out.Problem)
+		}
+	}
 	return j, nil
 }
 

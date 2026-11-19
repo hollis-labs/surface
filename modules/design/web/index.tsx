@@ -131,6 +131,24 @@ const when = (iso?: string) => (iso ? new Date(iso).toLocaleString([], { dateSty
 
 // ---- The list of jobs -------------------------------------------------------------------------
 
+/** Close a job by hand, after the owner confirms: it leaves the Open list (still under All), and
+ * the Design team is told to stop and close the pull request without merging. */
+async function closeJob(desk: ViewProps["desk"], api: ViewProps["api"], j: Job): Promise<boolean> {
+  const ok = await desk.confirm({
+    title: `Close “${j.title}”?`,
+    message:
+      "It leaves the Open list (it stays under All). The Design team is told to stop and to close the pull request without merging" +
+      (j.status === "approved" ? "; the approval no longer stands." : "."),
+    confirmLabel: "Close job",
+    danger: true,
+  })
+  if (!ok) return false
+  await api.put(`jobs/${j.id}`, { status: "closed" })
+  return true
+}
+
+const closable = (status: Status) => status !== "merged" && status !== "closed"
+
 function Jobs({ desk, api, win }: ViewProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [all, setAll] = useState(false)
@@ -197,6 +215,24 @@ function Jobs({ desk, api, win }: ViewProps) {
                 <ItemActions>
                   <span className="text-xs text-muted-foreground">{when(j.updated)}</span>
                   <StatusBadge status={j.status} />
+                  {closable(j.status) && (
+                    <Tip label="Close this job">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Close ${j.title}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          closeJob(desk, api, j)
+                            .then((done) => done && load())
+                            .catch((err: Error) => setError(err.message))
+                        }}
+                      >
+                        <Icon name="x" />
+                      </Button>
+                    </Tip>
+                  )}
                 </ItemActions>
               </Item>
             ))}
@@ -483,6 +519,29 @@ function JobPane({ win, desk, api }: ViewProps) {
           <Replies job={job} />
           <Separator />
           <Previews job={job} api={api} onSaved={() => load()} />
+          {closable(job.status) && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Done with it, or no longer wanted?</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() =>
+                    closeJob(desk, api, job)
+                      .then((done) => {
+                        if (!done) return
+                        setDetails(false)
+                        load()
+                      })
+                      .catch((err: Error) => setOutcome(err.message))
+                  }
+                >
+                  Close job
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

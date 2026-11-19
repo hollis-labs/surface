@@ -320,6 +320,42 @@ is a turn on the agent's conversation with meta `{auto, errand: <module>, title}
 recorded in the context trace, and the agent is told it is not the owner speaking. It needs the conversation
 wire; `agent.errand` is published when one starts.
 
+## Questions: `card_ask`, and answers that come late
+
+The agent asks the owner with `card_ask`: it shows a card and waits for the answer (10 minutes by default,
+`timeout_seconds` up to an hour). Its result has the card's `status`:
+
+| Status | Means |
+|---|---|
+| `submitted` | answered: `data` for a form, `answers` for prompt and choice, `decisions` for approval |
+| `canceled` | the owner declined. Do not ask again unasked |
+| `expired` | no answer in time. The card stays answerable; a later answer comes as a message (below) |
+
+When the run that asked ends while the card is up (the run is stopped, the app shuts down or restarts),
+`card_ask` returns an error and the card ends `abandoned`, not `canceled`: `canceled` is only the owner
+declining. An app that was killed with a question open abandons it at its next start, since no run can be
+waiting for it.
+
+**Late answers.** An agent's question that is `abandoned`, or `expired` because `card_ask` stopped waiting,
+stays in the agent's panel and the Cards window with its inputs usable and a note saying the agent stopped
+waiting (for a week; `GET /api/cards?late=1` lists the open cards and these). The owner may answer it once,
+through the same `POST /api/cards/{id}/response`: the card becomes `submitted` with `late: true`, and a
+second answer is refused (409). Declining it (`canceled`) only dismisses it. An answer to any other closed
+card is refused as before.
+
+A submitted late answer goes to the agent as a turn on its conversation, like an errand: meta
+`{auto: true, errand: "late-answer", title}`, not recorded in the context trace, run-log origin
+`errand:late-answer`. It reads `[The owner's answer to your card "<title>" (<kind>, id <id>), given after
+the run that asked it ended. …]` followed by the answer: `data: {…}` as JSON, an answer or decision per line.
+If the agent is busy it waits and is tried again when a run ends (`agent.run.ended`) and every 2 s. The
+queue is the cards themselves (submitted late, `delivered` empty) in the core database, so a restart does
+not lose one; one worker delivers in order and stamps `delivered` once the turn is accepted, so none is sent
+twice (a crash between the two can send one again; none is lost). Off the conversation wire the answer stays on the card and the log says it cannot be delivered.
+
+What the owner types into an open question (form, prompt, choice) is kept in the browser as a draft per card
+(`localStorage`), so a reload or a server restart does not lose it; it is cleared once the card is answered
+or dismissed. The server never sees a draft.
+
 ## Reflexes and triggers
 
 A reflex is a trigger and an action, kept in the core database.

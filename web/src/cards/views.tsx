@@ -8,15 +8,16 @@ import { useDeskState } from "../desk/store"
 import { Icon, useEvent, type ViewProps } from "../sdk"
 import { call } from "../sdk/runtime"
 import { CardView } from "./renderers"
-import { dismissToast, type ServerCard, startCards, useCards } from "./store"
+import { dismissToast, isLive, recentlyAnsweredLate, type ServerCard, startCards, useCards } from "./store"
 
 const isOpen = (c: ServerCard) => !c.status
 
-/** The agent's open cards, above its composer. A closed one leaves the dock: the
- * conversation carries what was answered. */
+/** The agent's open cards, above its composer, and its questions it stopped waiting for,
+ * which still take a late answer. A closed one leaves the dock: the conversation carries
+ * what was answered. A late answer stays a moment, to show it was sent. */
 export function CardDock() {
   useEffect(startCards, [])
-  const open = useCards("inline").filter((s) => isOpen(s.card))
+  const open = useCards("inline").filter((s) => isLive(s.card) || recentlyAnsweredLate(s.card))
   if (open.length === 0) return null
   return (
     <div
@@ -88,13 +89,13 @@ export function CardsWindow(_: ViewProps) {
   const refresh = useCallback(() => void call<ServerCard[]>("GET", "/api/cards?all=1").then(setAll), [])
   useEffect(refresh, [refresh])
   useEvent("cards.changed", refresh)
-  const open = all.filter(isOpen)
-  const closed = all.filter((c) => !isOpen(c)).reverse()
+  const open = all.filter(isLive)
+  const closed = all.filter((c) => !isLive(c)).reverse()
   return (
     <div className="flex flex-col gap-3 p-4">
       <p className="text-muted-foreground">
         Cards are what the app puts in front of you outside a window: a question, a request to approve, progress on
-        work. The open ones wait here until they are answered.
+        work. The open ones wait here until they are answered, and so does a question the agent stopped waiting for.
       </p>
       {all.length === 0 && (
         <Empty>

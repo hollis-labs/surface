@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangleIcon, CheckCircle2Icon, ClockIcon, Link2OffIcon, XCircleIcon } from "lucide-react"
+import { AlertTriangleIcon, CheckCircle2Icon, ClockIcon, Link2OffIcon, PauseCircleIcon, XCircleIcon } from "lucide-react"
 import * as React from "react"
 
 import { cn } from "cn"
@@ -17,7 +17,7 @@ import { Markdown } from "@/components/ui/markdown"
  */
 
 /** Where a card stands. "open" takes input; "pending" is being handled; the rest are closed. */
-type CardState = "open" | "pending" | "submitted" | "canceled" | "expired" | "superseded" | "failed" | "unrecognized"
+type CardState = "open" | "pending" | "submitted" | "canceled" | "expired" | "abandoned" | "superseded" | "failed" | "unrecognized"
 
 /** What the person did with a card: answered it or declined. */
 type CardOutcome =
@@ -43,14 +43,23 @@ interface AnswerableCardProps {
   /** When the card lapses, already worded ("in 4 min", "at 14:05"). */
   expires?: string
   onRespond: (outcome: CardOutcome) => void | Promise<void>
+  /** What the person had entered before (a draft the host kept), to start from. */
+  draft?: CardDraft
+  /** Called with what the person has entered so far, as they enter it, for the host to
+   * keep (a reload, a server restart). Not called for what the card started with. */
+  onDraft?: (draft: CardDraft) => void
   className?: string
 }
+
+/** What a card's controls hold while it is open: its own names, its own values. */
+type CardDraft = Record<string, unknown>
 
 const STATES: Record<Exclude<CardState, "open">, { label: string; text: string; icon: typeof ClockIcon; tone: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Working", text: "Working…", icon: ClockIcon, tone: "secondary" },
   submitted: { label: "Answered", text: "Answered", icon: CheckCircle2Icon, tone: "secondary" },
   canceled: { label: "Dismissed", text: "Dismissed", icon: XCircleIcon, tone: "outline" },
   expired: { label: "Expired", text: "Expired: no longer taking an answer", icon: ClockIcon, tone: "outline" },
+  abandoned: { label: "Stopped waiting", text: "Its sender stopped waiting for an answer", icon: PauseCircleIcon, tone: "outline" },
   superseded: { label: "Replaced", text: "Replaced by a newer card", icon: Link2OffIcon, tone: "outline" },
   failed: { label: "Failed", text: "Failed", icon: AlertTriangleIcon, tone: "destructive" },
   unrecognized: { label: "Unknown state", text: "In a state this app does not know", icon: AlertTriangleIcon, tone: "outline" },
@@ -162,6 +171,23 @@ function CardFoot({
   )
 }
 
+/** Reports a card's draft to `onDraft` each time it changes, but not the value it started
+ * with, so a card that is only looked at saves nothing. */
+function useCardDraft(draft: CardDraft, onDraft: AnswerableCardProps["onDraft"]) {
+  const first = React.useRef(true)
+  const report = React.useRef(onDraft)
+  report.current = onDraft
+  const key = JSON.stringify(draft)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the serialised draft is the change
+  React.useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    report.current?.(JSON.parse(key) as CardDraft)
+  }, [key])
+}
+
 /** Runs a card's responder with a busy flag around it, and says whether its controls are off. */
 function useCardRespond({ state, busy, stale, onRespond }: Pick<AnswerableCardProps, "state" | "busy" | "stale" | "onRespond">) {
   const [sending, setSending] = React.useState(false)
@@ -179,5 +205,5 @@ function useCardRespond({ state, busy, stale, onRespond }: Pick<AnswerableCardPr
   return { disabled, working, respond }
 }
 
-export { CardActions, CardBody, CardFoot, CardFrame, CardReceipt, CardStatus, useCardRespond }
-export type { AnswerableCardProps, CardFrameProps, CardOutcome, CardState }
+export { CardActions, CardBody, CardFoot, CardFrame, CardReceipt, CardStatus, useCardDraft, useCardRespond }
+export type { AnswerableCardProps, CardDraft, CardFrameProps, CardOutcome, CardState }

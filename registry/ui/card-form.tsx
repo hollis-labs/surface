@@ -4,7 +4,7 @@ import { ClipboardListIcon } from "lucide-react"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
-import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardRespond } from "@/components/ui/card-frame"
+import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardDraft, useCardRespond } from "@/components/ui/card-frame"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -37,20 +37,22 @@ interface CardFormProps extends AnswerableCardProps {
   fields: readonly CardFormField[]
   /** Problems with the form as a whole. Any makes it unsubmittable, and they are shown. */
   issues?: readonly string[]
-  /** Values to start from, by field key. */
+  /** Values to start from, by field key. A `draft` (the person's own, kept by the host) wins. */
   values?: Record<string, unknown>
   /** Checks the values: an error sentence per field key that is wrong. */
   validate?: (values: Record<string, unknown>) => Record<string, string>
   submitLabel?: string
 }
 
-function CardForm({ title, body, fields, issues = [], values: initial, validate, submitLabel = "Submit", className, ...a }: CardFormProps) {
+function CardForm({ title, body, fields, issues = [], values: initial, validate, submitLabel = "Submit", draft, onDraft, className, ...a }: CardFormProps) {
   const { disabled, working, respond } = useCardRespond(a)
   const [values, setValues] = React.useState<Record<string, unknown>>(() => {
     const start: Record<string, unknown> = {}
-    for (const f of fields) start[f.key] = initial?.[f.key] ?? f.default ?? (f.kind === "boolean" ? false : f.kind === "multi" ? [] : "")
+    for (const f of fields)
+      start[f.key] = draft?.[f.key] ?? initial?.[f.key] ?? f.default ?? (f.kind === "boolean" ? false : f.kind === "multi" ? [] : "")
     return start
   })
+  useCardDraft(values, onDraft)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const uid = React.useId()
   const set = (key: string, value: unknown) => {

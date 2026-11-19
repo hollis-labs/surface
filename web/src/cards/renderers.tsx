@@ -11,6 +11,7 @@ import {
   validateForm,
 } from "@hollis-labs/surface-cards"
 import { Component, type ComponentType, type ReactNode, useMemo } from "react"
+import { Button } from "@/components/ui/button"
 import { CardApproval, type CardApprovalChange } from "@/components/ui/card-approval"
 import { CardChoice, type CardChoiceOption } from "@/components/ui/card-choice"
 import { CardConfirm } from "@/components/ui/card-confirm"
@@ -22,7 +23,7 @@ import { CardPlan, type CardPlanStep } from "@/components/ui/card-plan"
 import { CardProgress } from "@/components/ui/card-progress"
 import { CardPrompt } from "@/components/ui/card-prompt"
 import { GenuiCard } from "../genui/card"
-import { isStale, respond, type ServerCard } from "./store"
+import { isLive, isStale, lateOpen, loadDraft, respond, type ServerCard, saveDraft } from "./store"
 
 /** What a renderer is handed: the card, and how to answer it. */
 export interface CardRendererProps {
@@ -63,17 +64,28 @@ export function describeOutcome(card: ServerCard): string | undefined {
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" })
 
-/** The props every answerable card shares, from the card as the server has it. */
+/** What stands after "Answered" on a closed card. */
+function receiptOf(card: ServerCard): string | undefined {
+  const said = describeOutcome(card)
+  if (!card.late || card.status !== "submitted") return said
+  const sent = card.delivered ? "Sent to the agent" : "Sending to the agent"
+  return said ? `${sent} · ${said}` : sent
+}
+
+/** The props every answerable card shares, from the card as the server has it. An agent's
+ * question it stopped waiting for is drawn open: the owner can still answer it (late). */
 function answerable({ card, respond: send }: CardRendererProps): AnswerableCardProps {
-  const state = classifyPriorResponse(card.status)
+  const late = lateOpen(card)
+  const state = late ? "open" : classifyPriorResponse(card.status).kind
   const at = card.expires_at ? Date.parse(card.expires_at) : Number.NaN
   return {
     title: card.title,
-    state: state.kind,
+    state,
     stale: isStale(card.id),
-    receipt: describeOutcome(card),
-    expires: state.kind === "open" && Number.isFinite(at) ? `at ${clock.format(at)}` : undefined,
+    receipt: receiptOf(card),
+    expires: !late && state === "open" && Number.isFinite(at) ? `at ${clock.format(at)}` : undefined,
     onRespond: send,
+    ...(isLive(card) ? { draft: loadDraft(card.id), onDraft: (d) => saveDraft(card.id, d) } : {}),
   }
 }
 
@@ -206,9 +218,28 @@ export function CardView({ card }: { card: ServerCard }) {
     )
   }
   const Draw = found.component
-  return (
+  const drawn = (
     <Boundary card={card} key={`${card.kind}@${card.version ?? "1"}`}>
       <Draw card={card} respond={(outcome) => respond(card.id, outcome)} />
     </Boundary>
+  )
+  if (!lateOpen(card)) return drawn
+  return (
+    <div data-slot="card-late" className="flex flex-col gap-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-muted-foreground text-xs">
+          The agent stopped waiting for this (its run ended). Answer anyway and it is sent to the agent as a message.
+        </p>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="shrink-0"
+          onClick={() => void respond(card.id, { status: "canceled" })}
+        >
+          Dismiss
+        </Button>
+      </div>
+      {drawn}
+    </div>
   )
 }

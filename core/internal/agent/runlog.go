@@ -91,7 +91,7 @@ type collector struct {
 	start time.Time
 }
 
-func (l *runLog) begin(runID string) *collector {
+func (l *runLog) begin(runID, model string) *collector {
 	if l == nil {
 		return nil
 	}
@@ -102,7 +102,8 @@ func (l *runLog) begin(runID string) *collector {
 	if t.origin == "" {
 		t.origin = "owner"
 	}
-	c := &collector{start: time.Now(), rec: RunRecord{RunID: runID, Origin: t.origin, Slot: t.slot, Tools: []string{}}}
+	// The model the app's config names; a run.start that names one wins.
+	c := &collector{start: time.Now(), rec: RunRecord{RunID: runID, Origin: t.origin, Slot: t.slot, Model: model, Tools: []string{}}}
 	c.rec.StartedAt = c.start.UTC().Format(time.RFC3339)
 	_, _ = l.db.ExecContext(context.Background(), `INSERT OR IGNORE INTO agent_runs(run_id, started_at, origin, slot) VALUES(?,?,?,?)`,
 		runID, c.rec.StartedAt, t.origin, t.slot)
@@ -117,8 +118,15 @@ func (c *collector) see(ev chatstream.Event) {
 		c.rec.Provider = firstOf(ev.Provider, c.rec.Provider)
 		c.rec.Model = firstOf(ev.Model, c.rec.Model)
 	}
-	if ev.Verb == chatstream.VerbPartStart && ev.Kind == "tool_call" && ev.Name != "" && len(c.rec.Tools) < 200 {
-		c.rec.Tools = append(c.rec.Tools, ev.Name)
+	if ev.Verb == chatstream.VerbPartStart && ev.Kind == "tool_call" && len(c.rec.Tools) < 200 {
+		// The tool's name is in the part's meta (Nanite), or on the event.
+		name := ev.Name
+		if raw, ok := ev.Meta["name"]; ok && name == "" {
+			_ = json.Unmarshal(raw, &name)
+		}
+		if name != "" {
+			c.rec.Tools = append(c.rec.Tools, name)
+		}
 	}
 	if u := ev.Usage; u != nil {
 		switch u.Scope {

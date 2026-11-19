@@ -142,6 +142,9 @@ type Setting struct {
 	Default any `json:"default"`
 	// Options are the allowed values of a SettingEnum.
 	Options []string `json:"options,omitempty"`
+	// Owner marks a setting only the owner changes (the page, the CLI, the HTTP API): the
+	// agent's settings_set refuses it. For what decides where a credential goes, or which.
+	Owner bool `json:"owner,omitempty"`
 }
 
 // Slot is what a module feeds the embedded agent when one kind of work is in front, so one

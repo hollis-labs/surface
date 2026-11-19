@@ -5,12 +5,29 @@
  */
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
+import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
+import { moduleApi } from "./desk/moduleApi"
 import { loadManifest } from "./desk/store"
 import { call, connect, loadSettings } from "./sdk/runtime"
 import type { ModuleWeb } from "./sdk/types"
+
+const registered = new Set<string>()
+
+/** Registers the card renderers the modules bring (ModuleWeb.cards), once per kind. */
+function registerModuleCards(modules: Record<string, ModuleWeb>) {
+  for (const [id, m] of Object.entries(modules)) {
+    for (const [key, Cmp] of Object.entries(m.cards ?? {})) {
+      const [kind, version = "1"] = key.split("@")
+      if (registered.has(`${kind}@${version}`)) continue
+      registered.add(`${kind}@${version}`)
+      const api = moduleApi(id)
+      registerCard(kind, version, ({ card, respond }) => <Cmp card={card} respond={respond} api={api} />)
+    }
+  }
+}
 
 export interface PageProps {
   /** The views compiled into this app's page, by module id. */
@@ -21,6 +38,7 @@ export interface PageProps {
 
 /** The whole page: a loading state until the server answers, then the desktop and the cards. */
 export function Page({ modules, core }: PageProps) {
+  registerModuleCards(modules)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState("")
   useEffect(() => {

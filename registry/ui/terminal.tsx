@@ -4,7 +4,7 @@ import "@xterm/xterm/css/xterm.css"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
-import { type ITheme, Terminal as XTerm } from "@xterm/xterm"
+import { type ILinkProvider, type ITheme, Terminal as XTerm } from "@xterm/xterm"
 import * as React from "react"
 
 import { cn } from "cn"
@@ -24,6 +24,12 @@ interface TerminalProps {
   fontSize?: number
   /** The shell ended (code -1: the session is gone). */
   onExit?: (code: number) => void
+  /**
+   * Link providers for text in the terminal (xterm's ILinkProvider), each made for this
+   * terminal: an app's references, say. Web addresses are linked already. Keep the array
+   * stable (a module-level constant): it is read once, when the terminal is made.
+   */
+  linkProviders?: ((term: XTerm) => ILinkProvider)[]
   className?: string
 }
 
@@ -66,7 +72,7 @@ function themeOf(el: HTMLElement): ITheme {
   }
 }
 
-function Terminal({ socketUrl, active = true, fontSize = 13, onExit, className }: TerminalProps) {
+function Terminal({ socketUrl, active = true, fontSize = 13, onExit, linkProviders, className }: TerminalProps) {
   const host = React.useRef<HTMLDivElement>(null)
   const term = React.useRef<XTerm | null>(null)
   const fit = React.useRef<FitAddon | null>(null)
@@ -92,6 +98,7 @@ function Terminal({ socketUrl, active = true, fontSize = 13, onExit, className }
     const f = new FitAddon()
     t.loadAddon(f)
     t.loadAddon(new WebLinksAddon((_e, uri) => window.open(uri, "_blank", "noopener")))
+    const providers = (linkProviders ?? []).map((make) => t.registerLinkProvider(make(t)))
     t.open(el)
     try {
       const gl = new WebglAddon()
@@ -197,6 +204,7 @@ function Terminal({ socketUrl, active = true, fontSize = 13, onExit, className }
       sized.disconnect()
       recolor.disconnect()
       onData.dispose()
+      for (const p of providers) p.dispose()
       onBinary.dispose()
       onResize.dispose()
       ws?.close()

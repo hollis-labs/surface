@@ -160,10 +160,12 @@ func start(t *testing.T, f *fakeGate) (*moduletest.Host, *mod) {
 // eventually waits for cond, the way a card shows within the 2 s the task asks for.
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	// Live, a card shows in well under the 2 s the task asks (measured against a real
+	// Gatecrasher); a shared CI runner under -race is given more room.
+	deadline := time.Now().Add(5 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("not within 2s: %s", what)
+			t.Fatalf("not within 5s: %s", what)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

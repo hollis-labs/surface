@@ -53,9 +53,13 @@ type FileConfig struct {
 
 // ClassifierConfig is the classifier's async tier.
 type ClassifierConfig struct {
-	// DecideURL is a decision gateway: the classifier posts to <url>/ai/decide. Also
-	// unix:///path.sock.
+	// DecideURL is the AI gateway: the classifier posts to <url>/ai/decide, and to
+	// <url>/ai/embeddings when EmbedModel is set. Also unix:///path.sock.
 	DecideURL string `json:"decide_url,omitempty"`
+	// EmbedModel turns on the centroid judges and the emerging-label report: the gateway's
+	// embedding model to use ("text-embedding-3-small"). Pin it: vectors from different
+	// models do not compare.
+	EmbedModel string `json:"embed_model,omitempty"`
 	// KeyFile holds the gateway's bearer key. "~/" is the home directory. Optional.
 	KeyFile string `json:"key_file,omitempty"`
 	// Model is the model hint; pin one (jev-1.13.0) to keep results comparable.

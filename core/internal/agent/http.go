@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/reflex"
@@ -32,6 +33,7 @@ import (
 //	POST   /api/agent/classify             {text} → the classifier's result for a draft (classify.Result); records nothing
 //	POST   /api/agent/classify/feedback    {text, facet, label, accepted}: the owner's answer to a hint (an accepted slot pins it)
 //	GET    /api/agent/classify/replay      a fresh classifier replayed over the trace, against the selector
+//	GET    /api/agent/classify/emerging    ?facet=act&limit=500: clusters among turns the facet abstained on (needs an embedder)
 //
 // The app is loopback-only and single-user: every request is the owner's.
 func (s *Service) Mount(mux *http.ServeMux) {
@@ -127,6 +129,27 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			s.k.Events().Publish("agent.context", s.Preview(r.Context()))
 		}
 		reply(w, 200, s.Preview(r.Context()))
+	})
+	// Clusters forming among the newest turns a facet abstained on: candidate new labels.
+	mux.HandleFunc("GET "+Prefix+"/classify/emerging", func(w http.ResponseWriter, r *http.Request) {
+		facet := r.URL.Query().Get("facet")
+		if facet == "" {
+			facet = classifier.Act
+		}
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 || limit > 1000 {
+			limit = 500
+		}
+		groups, n, err := s.emerging(r.Context(), facet, limit)
+		switch {
+		case errors.Is(err, errNoEmbedder):
+			fail(w, 409, err.Error())
+			return
+		case err != nil:
+			fail(w, 502, err.Error())
+			return
+		}
+		reply(w, 200, map[string]any{"facet": facet, "abstained": n, "groups": groups})
 	})
 	// How a fresh classifier would have done on the whole trace, against the focus selector.
 	mux.HandleFunc("GET "+Prefix+"/classify/replay", func(w http.ResponseWriter, r *http.Request) {

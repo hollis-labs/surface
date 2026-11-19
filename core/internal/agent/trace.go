@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/hollis-labs/libs/core/util/classify"
 	"github.com/hollis-labs/libs/core/util/decide"
+	"github.com/hollis-labs/libs/core/util/embed"
 
 	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/kernel"
@@ -80,24 +82,44 @@ func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int
 
 // setupAsync gives the classifier its async tier: the decider handed in, or the decision
 // gateway the config file names. Without either there is none.
-func (s *Service) setupAsync(cfg FileConfig, d decide.Decider) {
+func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedder) {
 	s.asyncCtx, s.asyncCancel = context.WithCancel(context.Background()) //nolint:gosec // G118: Close calls it
 	cc := cfg.Classifier
-	if d == nil && cc.DecideURL != "" {
+	if (d == nil || e == nil) && cc.DecideURL != "" {
 		token := ""
 		if cc.KeyFile != "" {
 			raw, err := os.ReadFile(cc.KeyFile) //nolint:gosec // the operator's own key file, named in their config
 			if err != nil {
-				s.log.Warn("classifier: the decision gateway's key file is not readable; no async tier", "err", err)
+				s.log.Warn("classifier: the gateway's key file is not readable; no async tier", "err", err)
 				return
 			}
 			token = strings.TrimSpace(string(raw))
 		}
-		if c := decide.NewClient(cc.DecideURL, token, "surface"); c != nil {
+		if c := decide.NewClient(cc.DecideURL, token, "surface"); d == nil && c != nil {
 			d = c
 		}
+		if cc.EmbedModel != "" && e == nil {
+			if c := embed.NewClient(cc.DecideURL, token, "surface", cc.EmbedModel); c != nil {
+				e = c
+			}
+		}
+	}
+	if e != nil {
+		s.cls.SetEmbedder(e)
+		s.asyncWG.Add(1)
+		go func() {
+			defer s.asyncWG.Done()
+			ctx, cancel := context.WithTimeout(s.asyncCtx, 2*time.Minute)
+			defer cancel()
+			if err := s.cls.FitCentroids(ctx, s.k.Slots()); err != nil {
+				s.log.Warn("classifier: centroids not fitted; they vote nothing", "err", err)
+			}
+		}()
 	}
 	if d == nil {
+		if e != nil {
+			s.log.Info("classifier: async tier on (embeddings only)", "embedder", e.Name())
+		}
 		return
 	}
 	purpose := cc.Purpose
@@ -111,7 +133,7 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider) {
 // classifyAsync asks the async tier about a recorded turn, off the turn's path, and keeps
 // its result beside the turn. A failure leaves the column empty.
 func (s *Service) classifyAsync(sit module.Situation, id int64, text string) {
-	if !s.cls.HasAsync() || s.asyncCtx == nil {
+	if (!s.cls.HasAsync() && s.cls.Embedder() == nil) || s.asyncCtx == nil {
 		return
 	}
 	all := s.k.Slots()
@@ -255,3 +277,50 @@ func (s *Service) learnFeedback(f slots.Feedback) {
 		s.cls.LearnAct(f.Text, f.Label)
 	}
 }
+
+// emerging clusters the newest turns whose facet abstained, through the embedder: what the
+// owner keeps asking that the classifier has no label for. Candidate labels, not answers.
+func (s *Service) emerging(ctx context.Context, facet string, limit int) ([]classify.Group, int, error) {
+	e := s.cls.Embedder()
+	if e == nil {
+		return nil, 0, errNoEmbedder
+	}
+	turns, err := s.trace.Recent(ctx, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	var items []classify.Item
+	for _, t := range turns {
+		if len(t.Classified) == 0 {
+			continue
+		}
+		var r classify.Result
+		if json.Unmarshal(t.Classified, &r) != nil {
+			continue
+		}
+		if fr, ok := r.Facets[facet]; ok && fr.Abstained && strings.TrimSpace(t.Text) != "" {
+			items = append(items, classify.Item{ID: strconv.FormatInt(t.ID, 10), Text: t.Text})
+		}
+	}
+	if len(items) == 0 {
+		return []classify.Group{}, 0, nil
+	}
+	texts := make([]string, len(items))
+	for i, it := range items {
+		texts[i] = it.Text
+	}
+	vecs, err := e.Embed(ctx, texts)
+	if err != nil {
+		return nil, len(items), err
+	}
+	for i := range items {
+		items[i].Vector = vecs[i]
+	}
+	groups := classify.Emerging(items, 0, 0)
+	if groups == nil {
+		groups = []classify.Group{}
+	}
+	return groups, len(items), nil
+}
+
+var errNoEmbedder = errors.New("no embedder: set classifier.decide_url and classifier.embed_model in the agent config")

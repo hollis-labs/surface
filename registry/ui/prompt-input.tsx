@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ArrowUpIcon, SquareIcon } from "lucide-react"
+import { ArrowUpIcon, Loader2Icon, SquareIcon } from "lucide-react"
 import { cn } from "cn"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
 
@@ -11,7 +11,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 function PromptInput({ className, children, ...props }: React.ComponentProps<"form">) {
   return (
     <form data-slot="prompt-input" className={cn("w-full", className)} {...props}>
-      <InputGroup className="h-auto flex-col">{children}</InputGroup>
+      <InputGroup className="h-auto flex-col has-[textarea:enabled]:has-disabled:bg-transparent has-[textarea:enabled]:has-disabled:opacity-100 dark:has-[textarea:enabled]:has-disabled:bg-input/30">{children}</InputGroup>
     </form>
   )
 }
@@ -19,7 +19,7 @@ function PromptInput({ className, children, ...props }: React.ComponentProps<"fo
 function PromptInputTextarea({ className, onKeyDown, ...props }: React.ComponentProps<typeof InputGroupTextarea>) {
   return (
     <InputGroupTextarea
-      data-slot="prompt-input-textarea"
+      data-prompt-input-textarea=""
       className={cn("field-sizing-content max-h-48 min-h-14 px-3", className)}
       onKeyDown={(e) => {
         onKeyDown?.(e)
@@ -42,24 +42,28 @@ function PromptInputSubmit({
   status = "ready",
   onStop,
   className,
+  disabled,
   ...props
 }: Omit<React.ComponentProps<typeof InputGroupButton>, "type" | "children"> & {
-  status?: "ready" | "streaming"
+  status?: "ready" | "sending" | "streaming"
   onStop?: () => void
 }) {
   const streaming = status === "streaming"
+  const sending = status === "sending"
   return (
     <InputGroupButton
       data-slot="prompt-input-submit"
       variant="default"
       size="icon-xs"
       className={cn("ml-auto rounded-full", className)}
-      aria-label={streaming ? "Stop" : "Send"}
+      aria-label={sending ? "Sending message" : streaming ? "Stop" : "Send"}
       {...props}
-      type={streaming ? "button" : "submit"}
+      disabled={disabled || sending}
+      aria-busy={sending || undefined}
+      type={streaming || sending ? "button" : "submit"}
       onClick={streaming ? onStop : props.onClick}
     >
-      {streaming ? <SquareIcon className="fill-current" /> : <ArrowUpIcon />}
+      {sending ? <Loader2Icon className="animate-spin motion-reduce:animate-none" /> : streaming ? <SquareIcon className="fill-current" /> : <ArrowUpIcon />}
     </InputGroupButton>
   )
 }

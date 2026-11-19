@@ -57,12 +57,17 @@ type store struct {
 // clean turns what a caller named into a path inside the folder: forward slashes, no
 // leading slash, no "..", and ".md" on the end.
 func clean(p string) (string, error) {
+	return cleanPath(p, true)
+}
+
+// cleanPath is clean for any file of the folder; note adds ".md" when it is missing.
+func cleanPath(p string, note bool) (string, error) {
 	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
 	p = strings.TrimPrefix(p, "/")
 	if p == "" {
 		return "", errors.New("a note needs a name")
 	}
-	if !strings.HasSuffix(strings.ToLower(p), ".md") {
+	if note && !strings.HasSuffix(strings.ToLower(p), ".md") {
 		p += ".md"
 	}
 	c := filepath.ToSlash(filepath.Clean(p))
@@ -80,11 +85,25 @@ func (s *store) abs(p string) (rel, full string, err error) {
 	if err != nil {
 		return "", "", err
 	}
+	return s.inside(rel)
+}
+
+// file resolves any file of the folder (an image a note shows), with the same checks as a note.
+func (s *store) file(p string) (rel, full string, err error) {
+	rel, err = cleanPath(p, false)
+	if err != nil {
+		return "", "", err
+	}
+	return s.inside(rel)
+}
+
+// inside joins a cleaned path to the folder, refusing one that leaves it through a link.
+func (s *store) inside(rel string) (string, string, error) {
 	root, err := s.root()
 	if err != nil {
 		return "", "", err
 	}
-	full = filepath.Join(root, filepath.FromSlash(rel))
+	full := filepath.Join(root, filepath.FromSlash(rel))
 	// The deepest existing ancestor must still be inside the folder once links are resolved.
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {

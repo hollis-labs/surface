@@ -1,8 +1,9 @@
 /**
- * Notes: the list of notes on the left, the note in the middle (the Markdown, its preview,
- * or both), and the marks on it on the right; a narrow window stacks them. The text is saved
- * as you write; every save names the revision it started from, so a change the agent made
- * meanwhile is never lost.
+ * Notes: the list of notes on the left, the note in the middle (read, as rendered Markdown with
+ * an outline of its headings; or its Markdown; or both side by side), and the marks on it on the
+ * right; a narrow window stacks them. A note opens to be read and Edit turns it to its Markdown,
+ * as in Basalisk. The text is saved as you write; every save names the revision it started from,
+ * so a change the agent made meanwhile is never lost.
  */
 import {
   ApiError,
@@ -18,8 +19,6 @@ import {
   type ViewProps,
 } from "@hollis-labs/surface-page/sdk"
 import { type ComponentProps, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import {
@@ -35,11 +34,14 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from "@/components
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Markdown, type MarkdownHeading } from "@/components/ui/markdown"
 import { TextEditor } from "@/components/ui/text-editor"
 import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "./notes.css"
+import { FILE, noteMarkdown, WIKI } from "./rich"
 
 interface Note {
   path: string
@@ -61,13 +63,6 @@ interface Hit {
   text: string
 }
 type LayoutMode = "split" | "edit" | "preview"
-
-/** [[name]] and [[name|label]] become links the preview can open. */
-const wikiToLinks = (text: string) =>
-  text.replace(/\[\[([^\]|#]+)(?:\|([^\]]*))?\]\]/g, (_m, name: string, label?: string) => {
-    const n = name.trim()
-    return `[${(label ?? n).trim()}](#note:${encodeURIComponent(n)})`
-  })
 
 /** A lone icon in a toolbar, with what it does shown on hover. */
 function IconButton({ label, children, ...props }: { label: string } & ComponentProps<typeof Button>) {
@@ -234,6 +229,8 @@ function Notes({ win, desk, api }: ViewProps) {
   }, [api, query])
 
   const open = useCallback((p: string) => void desk.setArgs(win.id, { path: p }), [desk, win.id])
+  /** A note just made opens for writing. */
+  const openNew = useCallback((p: string) => void desk.setArgs(win.id, { path: p, fresh: true }), [desk, win.id])
 
   const create = async (name?: string) => {
     const title =
@@ -241,7 +238,7 @@ function Notes({ win, desk, api }: ViewProps) {
     try {
       const n = await api.post<Note>("notes", { path: title, text: `# ${title.split("/").pop()}\n\n` })
       setQuery("")
-      open(n.path)
+      openNew(n.path)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -341,7 +338,14 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
   const [selection, setSelection] = useState("")
   const [showMarks, setShowMarks] = useState(true)
   const [asking, setAsking] = useState<Question | null>(null)
-  const layout = (useSetting<LayoutMode>("notes.layout") ?? "split") as LayoutMode
+  const opensIn = (useSetting<LayoutMode>("notes.layout") ?? "preview") as LayoutMode
+  // How this note shows: the setting's choice when it opens (a new note opens for writing), then
+  // the owner's, from the Read / Edit / Split switch.
+  const [layout, setLayout] = useState<LayoutMode>(() =>
+    win.args.fresh === true && opensIn === "preview" ? "edit" : opensIn,
+  )
+  const [headings, setHeadings] = useState<MarkdownHeading[]>([])
+  const page = useRef<HTMLElement>(null)
   const revRef = useRef("")
   const textRef = useRef("")
   const dirtyRef = useRef(false)
@@ -482,11 +486,80 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
       answer: (to) => void renameTo(to),
     })
 
-  const follow = (name: string) => {
-    const target = loaded?.links[name]
-    if (target) onOpen(target)
-    else void onCreate(name)
-  }
+  const follow = useCallback(
+    (name: string) => {
+      const target = loaded?.links[name]
+      if (target) onOpen(target)
+      else void onCreate(name)
+    },
+    [loaded, onOpen, onCreate],
+  )
+
+  // The note as drawn: [[links]] and relative links and images resolved for this note's folder.
+  const drawn = useMemo(
+    () => noteMarkdown(text, path, (p) => api.url(`asset?path=${encodeURIComponent(p)}`)),
+    [text, path, api],
+  )
+  const links = loaded?.links
+  const components = useMemo<ComponentProps<typeof Markdown>["components"]>(
+    () => ({
+      a({ node: _n, href, children }) {
+        if (href?.startsWith(WIKI)) {
+          const name = decodeURIComponent(href.slice(WIKI.length))
+          return (
+            <a
+              href={href}
+              className="notes-wiki"
+              data-missing={!links?.[name]}
+              title={links?.[name] ?? "No note yet: click to start it"}
+              onClick={(e) => {
+                e.preventDefault()
+                follow(name)
+              }}
+            >
+              {children}
+            </a>
+          )
+        }
+        if (href?.startsWith(FILE)) {
+          // A relative link: a note opens here; any other file of the folder opens on its own.
+          const [file] = href.slice(FILE.length).split("#")
+          const target = decodeURIComponent(file)
+          return (
+            <a
+              href={href}
+              className="notes-wiki"
+              title={target}
+              onClick={(e) => {
+                e.preventDefault()
+                if (/\.md$/i.test(target)) onOpen(target)
+                else window.open(api.url(`asset?path=${encodeURIComponent(target)}`), "_blank", "noopener")
+              }}
+            >
+              {children}
+            </a>
+          )
+        }
+        // An anchor in the note scrolls to its heading (the Markdown view does that).
+        if (href?.startsWith("#")) return <a href={href}>{children}</a>
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault()
+              if (href)
+                void desk.open("browser", { args: { url: href } }).catch(() => window.open(href, "_blank", "noopener"))
+            }}
+          >
+            {children}
+          </a>
+        )
+      },
+    }),
+    [links, follow, onOpen, desk, api],
+  )
+  const goTo = (id: string) =>
+    page.current?.querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" })
 
   if (status === "missing") {
     return (
@@ -520,6 +593,26 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
                 : "changed elsewhere"}
         </span>
         <span className="flex-1" />
+        <ToggleGroup
+          size="sm"
+          spacing={0}
+          aria-label="Read or edit the note"
+          value={[layout]}
+          onValueChange={(v: string[]) => v[0] && setLayout(v[0] as LayoutMode)}
+        >
+          <ToggleGroupItem value="preview" aria-label="Read">
+            <Icon name="book-open" />
+            <span className="hidden @lg/main:inline">Read</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="edit" aria-label="Edit">
+            <Icon name="pencil" />
+            <span className="hidden @lg/main:inline">Edit</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="split" aria-label="Split">
+            <Icon name="columns-2" />
+            <span className="hidden @lg/main:inline">Split</span>
+          </ToggleGroupItem>
+        </ToggleGroup>
         <Tooltip>
           <TooltipTrigger
             render={<Button variant="ghost" size="sm" aria-label="Mark" onClick={() => void markSelection()} />}
@@ -578,6 +671,8 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
             <div className="min-h-0 min-w-0 flex-1 basis-0">
               <TextEditor
                 ref={area}
+                markdown
+                autoFocus={layout === "edit" && win.args.fresh === true}
                 value={text}
                 spellCheck
                 aria-label="The note's Markdown"
@@ -589,59 +684,49 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
             </div>
           )}
           {layout !== "edit" && (
-            <article className="notes-preview min-h-0 min-w-0 flex-1 basis-0 overflow-auto px-5 pt-3.5 pb-8">
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                urlTransform={(url) => url}
-                components={{
-                  a({ href, children }) {
-                    if (href?.startsWith("#note:")) {
-                      const name = decodeURIComponent(href.slice(6))
-                      return (
-                        <a
-                          href={href}
-                          className="notes-wiki"
-                          data-missing={!loaded?.links[name]}
-                          title={loaded?.links[name] ?? "No note yet: click to start it"}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            follow(name)
-                          }}
-                        >
-                          {children}
-                        </a>
-                      )
-                    }
-                    return (
-                      <a
-                        href={href}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          if (href)
-                            void desk
-                              .open("browser", { args: { url: href } })
-                              .catch(() => window.open(href, "_blank", "noopener"))
-                        }}
-                      >
-                        {children}
-                      </a>
-                    )
-                  },
-                }}
-              >
-                {wikiToLinks(text)}
-              </Markdown>
-              {loaded && loaded.backlinks.length > 0 && (
-                <footer className="mt-6 flex flex-wrap items-center gap-x-1 gap-y-0.5 border-t border-border pt-2.5">
-                  <span className="text-xs text-muted-foreground">Linked from</span>
-                  {loaded.backlinks.map((b) => (
-                    <Button key={b.path} variant="link" size="xs" onClick={() => onOpen(b.path)}>
-                      {b.title}
+            <div className="flex min-h-0 min-w-0 flex-1 basis-0">
+              {layout === "preview" && headings.length > 2 && (
+                <nav
+                  aria-label="Outline"
+                  className="hidden w-44 shrink-0 flex-col gap-px overflow-auto border-r border-border py-3 @4xl/main:flex"
+                >
+                  {headings.map((h) => (
+                    <Button
+                      key={h.id}
+                      variant="ghost"
+                      size="xs"
+                      className="justify-start"
+                      style={{ paddingLeft: `${0.5 + (Math.min(h.level, 4) - 1) * 0.75}rem` }}
+                      title={h.text}
+                      onClick={() => goTo(h.id)}
+                    >
+                      <span className="truncate">{h.text}</span>
                     </Button>
                   ))}
-                </footer>
+                </nav>
               )}
-            </article>
+              <article
+                ref={page}
+                className="notes-preview min-h-0 min-w-0 flex-1 overflow-auto px-6 pt-4 pb-10"
+                onDoubleClick={() => layout === "preview" && setLayout("edit")}
+              >
+                <div className="mx-auto max-w-3xl">
+                  <Markdown size="document" images components={components} onHeadings={setHeadings}>
+                    {drawn}
+                  </Markdown>
+                  {loaded && loaded.backlinks.length > 0 && (
+                    <footer className="mt-6 flex flex-wrap items-center gap-x-1 gap-y-0.5 border-t border-border pt-2.5">
+                      <span className="text-xs text-muted-foreground">Linked from</span>
+                      {loaded.backlinks.map((b) => (
+                        <Button key={b.path} variant="link" size="xs" onClick={() => onOpen(b.path)}>
+                          {b.title}
+                        </Button>
+                      ))}
+                    </footer>
+                  )}
+                </div>
+              </article>
+            </div>
           )}
         </div>
         {showMarks && openMarks.length > 0 && (
@@ -676,11 +761,11 @@ function MarkNote({ mark }: { mark: Mark }) {
         {mark.quote && (
           <blockquote className="border-l-2 border-border pl-2 text-muted-foreground">{mark.quote}</blockquote>
         )}
-        <p className="wrap-anywhere whitespace-pre-wrap">{mark.body}</p>
+        <Markdown className="wrap-anywhere">{mark.body}</Markdown>
         {mark.replies?.map((r) => (
           <p key={r.created + r.body} className="flex items-start gap-1.5 text-muted-foreground">
             <Icon name={r.author === "agent" ? "bot" : "user"} size={12} className="mt-1 shrink-0" />
-            <span className="min-w-0 wrap-anywhere">{r.body}</span>
+            <Markdown className="min-w-0 wrap-anywhere">{r.body}</Markdown>
           </p>
         ))}
         <form

@@ -135,6 +135,20 @@ the owner's text. Drafts and Notes do this. A change to what the window shows (`
 args) is held by the desk for you, and returns `desk.ErrHeld`'s message (docs/desk-rules.md, rule 7). In tests,
 `moduletest`'s `DeskState.SetWorking` and `ToolAs` set this up.
 
+### Around, and errands for the agent
+
+Two ways for a module to reach the agent outside its own slot:
+
+- **`Manifest.Around`** returns a few lines the agent carries with every message, whatever the slot: what waits on
+  the owner, an answer that came back. It runs on every message, so read what the module already holds. The core
+  gives it 1.5 seconds and caps it at 1500 characters; `""` adds nothing. It shows in the context block as
+  `Around (<module>):`.
+- **`Host.Agent().Ask`** hands the agent an errand: a turn that did not come from the owner, such as mail that asks
+  for something. It runs on the agent's conversation, headed as the module's errand. The router does not route it,
+  and the context trace (the owner's messages, the classifier's training data) does not record it. It returns the
+  run id without waiting; `module.ErrAgentBusy` while a run is active (ask again later); `module.ErrNoAgent` when
+  the agent is not on the conversation wire. `moduletest.Host.AgentState` records the errands in tests.
+
 ## The web side
 
 ```tsx

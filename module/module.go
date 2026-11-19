@@ -64,6 +64,11 @@ type Manifest struct {
 	Settings []Setting `json:"settings,omitempty"`
 	// Slots are what the module feeds the embedded agent's context when its work is in front.
 	Slots []Slot `json:"slots,omitempty"`
+	// Around is a few lines the agent carries with every message, whatever the slot: what
+	// waits on the owner, what came back while they were away. "" adds nothing. It runs on
+	// every message, so it reads what the module already holds; the core bounds its time and
+	// caps it at 1500 characters. Optional.
+	Around func(ctx context.Context, h Host) (string, error) `json:"-"`
 }
 
 // Base gives a module no-op Start and Stop, for one that needs neither.

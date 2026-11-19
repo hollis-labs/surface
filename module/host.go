@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 )
@@ -36,7 +37,34 @@ type Host interface {
 	Handle(pattern string, handler http.Handler)
 	// RunCommand runs any command in the app by id.
 	RunCommand(ctx context.Context, id string, args map[string]any) (any, error)
+	// Agent is the app's embedded agent, for a module to hand it an errand of its own.
+	Agent() Agent
 }
+
+// Agent is the app's embedded agent as a module reaches it.
+type Agent interface {
+	// Ask hands the agent a turn that did not come from the owner: the module's own errand,
+	// such as mail that asks for something. It runs on the agent's conversation, marked as the
+	// module's, and returns its run id without waiting for it. ErrAgentBusy while a run is
+	// active (try again later); ErrNoAgent when the app's agent cannot take one.
+	Ask(ctx context.Context, a Ask) (string, error)
+}
+
+// Ask is an errand for the agent.
+type Ask struct {
+	// Title names it in a line ("Mail for you: 3 requests").
+	Title string `json:"title"`
+	// Text is what the agent is asked to do. Write it as the module, not as the owner.
+	Text string `json:"text"`
+}
+
+var (
+	// ErrNoAgent: the app's agent cannot take an errand (none is configured, or it is not on
+	// the conversation wire).
+	ErrNoAgent = errors.New("surface: the app's agent cannot take an errand")
+	// ErrAgentBusy: the agent is on a run; ask again later.
+	ErrAgentBusy = errors.New("surface: the agent is busy")
+)
 
 // Window is one open window.
 type Window struct {

@@ -276,6 +276,14 @@ Built-in rules (`router/rules.json`): `/open <view>`, `/layout <name>`, `/run <c
 (`agent_rule_put`, `PUT /api/agent/rules/{id}`) live in the core database and are tried first. A rule for one
 layout only carries `{"field":"layout","op":"eq","value":"<name>"}`.
 
+## What modules add: Around and errands
+
+Besides its slots, a module can add lines to every message's context (`Manifest.Around`, shown as
+`Around (<module>):`, 1.5 s and 1500 characters each) and hand the agent an errand (`Host.Agent().Ask`). An errand
+is a turn on the agent's conversation with meta `{auto, errand: <module>, title}`. It skips the router and is not
+recorded in the context trace, and the agent is told it is not the owner speaking. It needs the conversation
+wire; `agent.errand` is published when one starts.
+
 ## Reflexes and triggers
 
 A reflex is a trigger and an action, kept in the core database.

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { CardsWindow } from "../cards/views"
+import { CiteRecordView } from "../cite/record.tsx"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
 import { ContextInspector } from "./ContextInspector"
@@ -257,5 +258,6 @@ export const coreWeb: ModuleWeb = {
     "surface/marks": Marks,
     "surface/cards": CardsWindow,
     "surface/context": ContextInspector,
+    "surface/cite": CiteRecordView,
   },
 }

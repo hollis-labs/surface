@@ -62,6 +62,7 @@ func (m *mod) Manifest() module.Manifest {
 		},
 		Store: &module.Store{Migrations: migrations, Dir: "migrations"},
 		Tools: m.tools(),
+		Refs:  m.refs(),
 		Slots: []module.Slot{{
 			Name:  "work",
 			About: "plans and what is in flight, and the owner's own writing: goals, plans, tasks (Planner), content on its way to being published (Content), books and settings (Writer)",

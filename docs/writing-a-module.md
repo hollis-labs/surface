@@ -149,6 +149,29 @@ Two ways for a module to reach the agent outside its own slot:
   run id without waiting; `module.ErrAgentBusy` while a run is active (ask again later); `module.ErrNoAgent` when
   the agent is not on the conversation wire. `moduletest.Host.AgentState` records the errands in tests.
 
+### References (Cite)
+
+A module that owns records people name in text (a task id, a path, an item) declares the kinds it
+resolves, and the page shows each reference as a chip with a preview card wherever text is shown:
+
+```go
+Refs: []module.RefKind{{
+	Kind: "work.item", Label: "Work item", ID: regexp.MustCompile(`^[a-z0-9-]+/[a-z0-9]{8}$`),
+	Ready:   func(ctx context.Context, h module.Host) bool { … },            // configured now? optional
+	Resolve: func(ctx context.Context, h module.Host, ids []string) (map[string]module.RefEntity, error) { … },
+	Record:  func(ctx context.Context, h module.Host, id string) (module.RefEntity, error) { … }, // optional
+}},
+```
+
+`Resolve` gets a batch (at most 50) and leaves out what it did not find; an error means the lookup
+failed, not that the record is missing. `Record` returns the whole record with its `Body` (Markdown)
+for the record window, or `module.ErrRefNotFound`. A `RefEntity` may name a command that opens the
+record in the module's own window (`Open`) and an outside link (`URL`). Resolving is reading: never
+write anything, here or in a service it reaches. The core batches and caches the answers (45 s, 15 s
+for not found) and serves them at `GET /api/cite/resolve` and `/api/cite/record`; the agent has
+`cite_resolve`. The page finds references with the detector in `web/src/cite/core`: a new kind needs
+a `RefKind` there too.
+
 ## The web side
 
 ```tsx

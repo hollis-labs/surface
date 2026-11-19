@@ -61,6 +61,10 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("POST /api/layouts/{name}/load", s.loadLayout)
 	mux.HandleFunc("DELETE /api/layouts/{name}", s.deleteLayout)
 
+	mux.HandleFunc("GET /api/cite", s.citeKinds)
+	mux.HandleFunc("GET /api/cite/resolve", s.citeResolve)
+	mux.HandleFunc("GET /api/cite/record", s.citeRecord)
+
 	mux.HandleFunc("GET /api/tools", s.tools)
 	mux.HandleFunc("POST /api/tools/{name}", s.callTool)
 	mux.HandleFunc("POST /mcp", s.mcp)

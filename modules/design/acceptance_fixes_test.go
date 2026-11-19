@@ -333,3 +333,59 @@ func TestOwedAskNotOnAGitHubFailure(t *testing.T) {
 		t.Fatalf("not asked once GitHub showed the head: %+v", open)
 	}
 }
+
+// Closing a job by hand tells the Design team to stop and close the pull request; a merged job
+// cannot be closed, and closing again sends nothing more.
+func TestClosingByHandTellsTheDesigner(t *testing.T) {
+	h, m, box := startWith(t, time.Hour)
+	ctx := context.Background()
+	j := newJob(t, h, "Dismissed")
+	box.put(designerReply("d1", j.ID, "head: "+headA+"\npr: "+prA, 1))
+	_, _ = m.refresh(ctx, j.ID)
+	sent := len(box.sent)
+	if _, err := h.Tool("design_set", `{"id":"`+j.ID+`","status":"closed"}`); err != nil {
+		t.Fatal(err)
+	}
+	if len(box.sent) != sent+1 {
+		t.Fatalf("messages %d -> %d", sent, len(box.sent))
+	}
+	last := box.sent[len(box.sent)-1]
+	for _, want := range []string{"closed by the owner", "Close " + prA + " without merging", "\nclosed: closed by hand in Surface\n"} {
+		if !strings.Contains(last.Body, want) {
+			t.Errorf("the closing notice lacks %q:\n%s", want, last.Body)
+		}
+	}
+	if _, err := h.Tool("design_set", `{"id":"`+j.ID+`","status":"closed"}`); err != nil || len(box.sent) != sent+1 {
+		t.Fatalf("closing again: %v, messages %d", err, len(box.sent))
+	}
+	if _, err := m.st.db.ExecContext(ctx, `UPDATE jobs SET status = 'merged' WHERE id = ?`, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Tool("design_set", `{"id":"`+j.ID+`","status":"closed"}`); err == nil {
+		t.Fatal("closed a merged job")
+	}
+}
+
+// Review finding: a close computed from an older read never overwrites a merge that landed
+// meanwhile, and then sends no closing notice.
+func TestCloseDoesNotOverwriteAMerge(t *testing.T) {
+	h, m, box := startWith(t, time.Hour)
+	ctx := context.Background()
+	j := newJob(t, h, "Raced")
+	box.put(designerReply("r1", j.ID, "head: "+headA+"\npr: "+prA, 1))
+	_, _ = m.refresh(ctx, j.ID)
+	// The read set() makes says "in progress"; the merge lands before its write.
+	if _, err := m.st.db.ExecContext(ctx, `UPDATE jobs SET status = 'merged' WHERE id = ?`, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := m.st.setStatus(ctx, j.ID, StatusInProgress, StatusClosed, "closed by hand in Surface"); ok {
+		t.Fatal("the close overwrote the merge")
+	}
+	sent := len(box.sent)
+	if _, err := h.Tool("design_set", `{"id":"`+j.ID+`","status":"changes requested"}`); err == nil {
+		t.Fatal("a merged job's status was changed by hand")
+	}
+	if got, _ := m.st.get(ctx, j.ID); got.Status != StatusMerged || len(box.sent) != sent {
+		t.Fatalf("job %s, messages %d -> %d", got.Status, sent, len(box.sent))
+	}
+}

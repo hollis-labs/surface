@@ -664,3 +664,17 @@ func (s *store) owe(ctx context.Context, id string, owed bool) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET approval_owed = ? WHERE id = ?`, boolInt(owed), id)
 	return err
 }
+
+// setStatus sets a job's status by hand, and its closed reason with it, only if the status is
+// still from: what someone else wrote since (a merge, an approval) is never overwritten.
+func (s *store) setStatus(ctx context.Context, id, from, to, reason string) (bool, error) {
+	if !statuses[to] {
+		return false, fmt.Errorf("unknown status %q", to)
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE jobs SET status = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND status = ?`, to, reason, stamp(), id, from)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}

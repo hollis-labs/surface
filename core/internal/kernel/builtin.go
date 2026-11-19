@@ -34,6 +34,14 @@ var coreViews = []module.View{
 	// Why the agent gets the context it gets: now, and turn by turn (the context trace).
 	{ID: "surface.context", Title: "Context", Icon: "scan-eye", Width: 1000, Height: 720, Menu: true, Render: module.Component("surface/context")},
 	// Every registry component in its variants and states, for design work and screenshots.
+	// A cited record (a Torque task, a Tesseract item, a fragment) read whole, for a reference
+	// whose module has no window of its own to show it in. Args: {kind, id}.
+	{ID: "surface.cite", Title: "Record", Icon: "quote", Width: 720, Height: 680, Multi: true, Bare: true, Render: module.Component("surface/cite"),
+		Describe: func(_ context.Context, _ module.Host, w module.Window) (module.WindowContext, error) {
+			kind, _ := w.Args["kind"].(string)
+			id, _ := w.Args["id"].(string)
+			return module.WindowContext{Kind: "record", Ref: "cite:" + kind + ":" + id, Extra: map[string]any{"kind": kind, "id": id}}, nil
+		}},
 	{ID: "surface.gallery", Title: "Components", Icon: "swatch-book", Width: 960, Height: 760, Menu: true, Render: module.Component("surface/gallery")},
 }
 
@@ -187,6 +195,29 @@ func coreTools(a *App) []module.Tool {
 					mods = append(mods, m{ID: mi.ID, Title: mi.Title, About: mi.About})
 				}
 				return map[string]any{"views": out, "modules": mods}, nil
+			}},
+		{Name: "cite_resolve", Level: module.LevelRead,
+			Description: "Look up references named in text: what a Torque task id, a Tesseract item, a fragment, a path or a Planner item stands for, through the module that owns it. Give kind and ids for short previews, or kind and one id with full for the whole record. With no kind, lists the kinds this app resolves. Reading only.",
+			Input:       schema(`{"type":"object","properties":{"kind":{"type":"string","description":"The kind, for example torque.task, tesseract.item, fragments.fragment, path, work.item."},"ids":{"type":"array","items":{"type":"string"},"description":"Up to 50 ids of that kind."},"full":{"type":"boolean","description":"With one id: the whole record, with its body."}}}`),
+			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
+				in, err := decode[struct {
+					Kind string   `json:"kind"`
+					IDs  []string `json:"ids"`
+					Full bool     `json:"full"`
+				}](raw)
+				if err != nil {
+					return nil, err
+				}
+				if in.Kind == "" {
+					return map[string]any{"kinds": a.RefKinds(ctx)}, nil
+				}
+				if in.Full {
+					if len(in.IDs) != 1 {
+						return nil, errors.New("full reads one record: give one id")
+					}
+					return a.RecordRef(ctx, in.Kind, in.IDs[0])
+				}
+				return a.ResolveRefs(ctx, in.Kind, in.IDs)
 			}},
 		{Name: "window_context", Level: module.LevelRead,
 			Description: "What a window is showing: the document, page, file or record in front, and the selection. The focused window when no id is given.",

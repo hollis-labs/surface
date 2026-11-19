@@ -5,6 +5,10 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Work: Planner, Content and Writer windows.** The Work module's views, ported from Basalisk: a workspace's
+  board, outline, calendar, canvas and flow, and an item's detail with its review, sign-off, Torque link and
+  revisions. Three windows on one component, one for each preset, with commands to open each on a workspace.
+  See modules/work/README.md.
 - **Files reaches folders on other hosts over ssh.** The live setting `files.remotes` is a JSON list of
   `{id, label, host, path}`. The host is an ssh destination from the owner's ssh config. Each remote is a place with
   the id `remote:<id>`: it is listed by `files_places`, shown in the Files window's place picker, and taken by

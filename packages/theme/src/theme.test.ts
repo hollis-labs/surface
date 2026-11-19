@@ -81,3 +81,12 @@ test("every shipped palette's body text reads (4.5:1 on background and card)", (
     }
   }
 })
+
+test("a palette's missing colours come from its own, never the default's", () => {
+  const p = parseTheme(fixture("wal.colors.json"), "City")
+  const css = paletteCSS(p)
+  assert.equal(css["--p-accent-2"], p.cyan)
+  assert.match(css["--p-selection"] ?? "", /^#[0-9a-f]{6}$/)
+  assert.match(css["--p-orange"] ?? "", /^#[0-9a-f]{6}$/)
+  assert.equal(Object.keys(css).length, 13)
+})

@@ -43,7 +43,10 @@ function AppFrame({
   return (
     <div data-slot="app-frame" className={cn("flex h-full min-h-0 flex-col bg-background text-foreground", className)} {...props}>
       {showBar && bar !== undefined && bar !== null && (
-        <header data-slot="app-frame-bar" className="flex h-9 shrink-0 items-center gap-3 border-b border-border bg-background px-2 select-none">
+        <header
+          data-slot="app-frame-bar"
+          className="flex h-9 shrink-0 items-center gap-3 border-b border-border bg-desk px-2 text-xs select-none"
+        >
           {bar}
         </header>
       )}

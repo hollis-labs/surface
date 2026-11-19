@@ -33,12 +33,13 @@ export function Windows() {
   const [focus, setFocus] = useState<string | undefined>("draft")
   return (
     <Section
+      draft="d_3f9690aa"
       title="window-manager"
       about="Drag a tab to move, split, tab or float a window. The tree is local to this window."
     >
       <Specimen label="two stacks and a float" wide>
         <div
-          className="relative h-80 w-full overflow-hidden rounded-md border border-border bg-muted/40"
+          className="relative h-80 w-full overflow-hidden rounded-md border border-border bg-desk"
           style={{ "--window-gap": "6px" } as React.CSSProperties}
         >
           <WindowManager

@@ -1,3 +1,5 @@
+import { mix } from "./color.ts"
+
 /**
  * A palette: what a Linux theme says about colour, in one shape. Every theme format reduces to this
  * (Omarchy's colors.toml, base16 / tinted-theming, pywal / wallust, a terminal's 16 colours), and
@@ -46,13 +48,20 @@ export const PALETTE_VARS: Record<Exclude<keyof Palette, "id" | "name" | "mode" 
   orange: "--p-orange",
 }
 
-/** The CSS a palette is: its --p-* properties, for a stylesheet or an element's style. */
+/** The CSS a palette is: its --p-* properties, for a stylesheet or an element's style. The optional
+ * colours a palette leaves out come from its own (never from the default palette's): the second
+ * accent is its cyan, selection its background a quarter toward the accent, muted its foreground
+ * halfway to the background, orange between its red and yellow. */
 export function paletteCSS(p: Palette): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [field, name] of Object.entries(PALETTE_VARS)) {
-    const v = p[field as keyof typeof PALETTE_VARS]
-    if (v) out[name] = v
+  const full: Required<Omit<Palette, "id" | "name" | "mode" | "source">> = {
+    ...p,
+    accent2: p.accent2 ?? p.cyan,
+    selection: p.selection ?? mix(p.background, p.accent, 0.25),
+    muted: p.muted ?? mix(p.foreground, p.background, 0.45),
+    orange: p.orange ?? mix(p.red, p.yellow, 0.5),
   }
+  const out: Record<string, string> = {}
+  for (const [field, name] of Object.entries(PALETTE_VARS)) out[name] = full[field as keyof typeof PALETTE_VARS]
   return out
 }
 

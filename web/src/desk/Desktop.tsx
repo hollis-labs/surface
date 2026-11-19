@@ -4,6 +4,7 @@
  * Window state comes from the server (./store); this file draws it and turns what the
  * owner does into actions.
  */
+import { applyPalette, DEFAULT_PALETTE, paletteById } from "@hollis-labs/surface-theme"
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { AppFrame } from "@/components/ui/app-frame"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +40,7 @@ import {
   useDeskState,
   viewById,
 } from "./store"
+import { Clock, ThemePicker } from "./ThemePicker"
 
 export interface DesktopProps {
   /** The views compiled into this app's page, by module id. */
@@ -60,7 +62,8 @@ export function Desktop({ modules }: DesktopProps) {
   })
   const [up, setUp] = useState(isConnected())
   const gap = (useSetting<number>("surface.gap") ?? 10) as number
-  const theme = (useSetting<string>("surface.theme") ?? "dark") as string
+  const paletteId = (useSetting<string>("surface.palette") ?? DEFAULT_PALETTE.id) as string
+  const typeStyle = (useSetting<string>("surface.type") ?? "mixed") === "mono" ? "mono" : "mixed"
   const panelWidth = (useSetting<number>("surface.agent_panel_width") ?? 420) as number
 
   useEffect(() => {
@@ -68,11 +71,11 @@ export function Desktop({ modules }: DesktopProps) {
     return onConnection(setUp)
   }, [])
 
-  // The theme is a live setting: changing it redraws the desk at once, with no reload.
+  // The palette and the type style are live settings: changing one redraws the desk at once, with no
+  // reload. The palette also says dark or light.
   useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle("dark", theme !== "light")
-  }, [theme])
+    applyPalette(paletteById(paletteId) ?? DEFAULT_PALETTE, document.documentElement, typeStyle)
+  }, [paletteId, typeStyle])
 
   useEffect(() => {
     document.title = manifest.title
@@ -203,6 +206,7 @@ export function Desktop({ modules }: DesktopProps) {
           <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
           <span>{state.layout}</span>
         </Button>
+        <ThemePicker />
         <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
           <Icon name="search" />
           <Kbd>{showKeys("cmd+k")}</Kbd>
@@ -216,6 +220,7 @@ export function Desktop({ modules }: DesktopProps) {
         >
           <Icon name="bot" />
         </Button>
+        <Clock />
         <span
           className={`mx-1.5 size-2 rounded-full ${up ? "bg-success" : "bg-warning"}`}
           title={up ? "Connected" : "Reconnecting…"}

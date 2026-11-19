@@ -46,6 +46,8 @@ export interface Setup {
   reason?: string
   /** "conversation" when the agent is on the conversation wire; absent on the run-at-a-time one. */
   wire?: string
+  /** Same-origin attachment endpoint when the runner lives in Tether. */
+  wire_base?: string
   /** The agent's name on the conversation wire. */
   agent?: string
 }

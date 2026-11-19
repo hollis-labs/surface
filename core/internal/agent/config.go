@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 // The key itself is never in this file: KeyFile names a file that holds it, read on every
 // request, so it can be rotated without a restart.
 type FileConfig struct {
+	// Tether attaches the page to an app-bound CLI seat instead of the embedded runner.
+	Tether TetherConfig `json:"tether,omitempty"`
+
 	// Model is the gateway's model name ("anthropic-opus").
 	Model string `json:"model"`
 	// GatewayURL is an Anthropic-compatible endpoint; the engine posts to <url>/v1/messages.
@@ -49,6 +53,28 @@ type FileConfig struct {
 
 	// Path is the file this was read from ("" when there was none).
 	Path string `json:"-"`
+}
+
+// TetherConfig names the chat wire endpoint and the statically app-bound seat.
+// KeyFile stays on the server and is read per request; it is never sent to the page.
+type TetherConfig struct {
+	URL     string `json:"url"`
+	Seat    string `json:"seat"`
+	KeyFile string `json:"key_file,omitempty"`
+}
+
+func (c TetherConfig) validate() error {
+	if c.URL == "" && c.Seat == "" && c.KeyFile == "" {
+		return nil
+	}
+	u, err := url.Parse(c.URL)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("tether.url must be an HTTP(S) chat wire URL without credentials, query or fragment")
+	}
+	if strings.TrimSpace(c.Seat) == "" || strings.ContainsAny(c.Seat, "/\\?#") || c.Seat == "." || c.Seat == ".." {
+		return errors.New("tether.seat must name one seat")
+	}
+	return nil
 }
 
 // ClassifierConfig is the classifier's async tier: a model gateway asked about each message
@@ -123,6 +149,20 @@ func LoadConfig(app string) (FileConfig, error) {
 	}
 	if v := os.Getenv("SURFACE_AGENT_KEY_FILE"); v != "" {
 		c.KeyFile = v
+	}
+	if v := os.Getenv("SURFACE_TETHER_URL"); v != "" {
+		c.Tether.URL = v
+	}
+	if v := os.Getenv("SURFACE_TETHER_SEAT"); v != "" {
+		c.Tether.Seat = v
+	}
+	if v := os.Getenv("SURFACE_TETHER_KEY_FILE"); v != "" {
+		c.Tether.KeyFile = v
+	}
+	c.Tether.URL = strings.TrimRight(c.Tether.URL, "/")
+	c.Tether.KeyFile = expandHome(c.Tether.KeyFile)
+	if err := c.Tether.validate(); err != nil {
+		return c, err
 	}
 	c.KeyFile = expandHome(c.KeyFile)
 	c.Classifier.KeyFile = expandHome(c.Classifier.KeyFile)

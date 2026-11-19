@@ -12,3 +12,4 @@ modules:
   - design
   - terminal
   - viewer
+  - diagram

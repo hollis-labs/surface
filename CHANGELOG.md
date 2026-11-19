@@ -5,6 +5,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Fixed: message texts are scrubbed before they go to the embedding gateway** (libs `core/util` v0.11.1). The JEV
+  path already scrubbed them; the embeddings path (the slot centroid and the emerging report) did not.
 - **The centroid judge is on the slot facet.**
   - It is fitted on each slot's description and the newest texts the owner's turns landed in or were moved to,
     and refitted every 25 learned turns.

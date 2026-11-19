@@ -126,6 +126,7 @@
       "type": "registry:ui",
       "title": "Card Approval",
       "dependencies": [
+        "cn@0.5.2",
         "lucide-react@1.74.0"
       ],
       "registryDependencies": [

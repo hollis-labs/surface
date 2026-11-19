@@ -92,10 +92,16 @@ func TestAModuleOnTheContractAloneWorksThroughTheCore(t *testing.T) {
 		}
 	}
 	do(t, srv, "POST", "/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"scratch_update","arguments":{"id":"`+idOf(t, called.Result)+`","done":true}}}`, &rpc)
-	if rpc.Result.IsError || len(rpc.Result.Content) == 0 || !strings.Contains(rpc.Result.Content[0].Text, `"done":true`) {
-		t.Fatalf("tool over MCP: %+v", rpc.Result)
+	if !rpc.Result.IsError {
+		t.Fatalf("write tool must be refused over MCP: %+v", rpc.Result)
 	}
 
+	do(t, srv, "POST", "/api/tools/scratch_update", `{"id":"`+idOf(t, called.Result)+`","done":true}`, nil)
+	rpc.Result.IsError = false
+	do(t, srv, "POST", "/mcp", `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"scratch_list","arguments":{"done":true}}}`, &rpc)
+	if rpc.Result.IsError || len(rpc.Result.Content) == 0 || !strings.Contains(rpc.Result.Content[0].Text, `"done":true`) {
+		t.Fatalf("read tool over MCP: %+v", rpc.Result)
+	}
 	var items []struct{ Text string }
 	do(t, srv, "GET", "/api/m/scratch/items", "", &items)
 	if len(items) != 1 {

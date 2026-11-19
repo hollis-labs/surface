@@ -180,7 +180,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		return nil, fmt.Errorf("agent: tools: %w", err)
 	}
 
-	if runner := runnerChoice(); runner != "" {
+	if runner := runnerChoice(); runner != "" && cfg.Tether.URL == "" {
 		if s.wire, err = s.openWire(ctx, runner); err != nil {
 			s.engine.Close()
 			return nil, err

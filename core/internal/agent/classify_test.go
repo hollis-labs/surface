@@ -243,18 +243,62 @@ func TestCentroidsVoteAtAsyncOnceFitted(t *testing.T) {
 	turns, _ := s.trace.Recent(ctx, 1)
 	async := mustResult(t, turns[0].ClassifiedAsync)
 	var centroid bool
-	for _, v := range async.Facets["act"].Votes {
-		centroid = centroid || v.Judge == "centroid:act"
+	for _, v := range async.Facets["slot"].Votes {
+		centroid = centroid || v.Judge == "centroid:slot"
 	}
 	if !centroid {
-		t.Fatalf("no centroid vote at async: %+v", async.Facets["act"].Votes)
+		t.Fatalf("no slot centroid vote at async: %+v", async.Facets["slot"].Votes)
 	}
-	for _, v := range mustResult(t, turns[0].Classified).Facets["act"].Votes {
-		if v.Judge == "centroid:act" {
+	for _, f := range []string{"act", "affect"} {
+		for _, v := range async.Facets[f].Votes {
+			if strings.HasPrefix(v.Judge, "centroid:") {
+				t.Fatalf("a centroid voted on %s, which embeddings cannot tell", f)
+			}
+		}
+	}
+	for _, v := range mustResult(t, turns[0].Classified).Facets["slot"].Votes {
+		if v.Judge == "centroid:slot" {
 			t.Fatal("a centroid voted at submit")
 		}
 	}
 }
+
+func TestTheSlotCentroidLearnsWhereTheOwnerPutsThings(t *testing.T) {
+	emb := &wordsEmbedder{}
+	s, k, _, _ := setup(t, Options{Embedder: emb})
+	s.asyncWG.Wait()
+	ctx := context.Background()
+	// The owner keeps moving invoice messages to scratch.
+	for i := 0; i < refitEveryForTest; i++ {
+		s.cls.Correct("file the invoice paperwork for march", "scratch")
+		s.cls.Correct("tighten the wording of this paragraph", "notes")
+	}
+	before := emb.calls.Load()
+	if _, err := s.Send(ctx, "hello", "", ""); err != nil { // a learned turn makes the refit due
+		t.Fatal(err)
+	}
+	s.asyncWG.Wait()
+	if emb.calls.Load() <= before {
+		t.Fatal("no refit after enough was learned")
+	}
+	k.desk.focus = "" // nothing in front: only the text can tell
+	res, err := s.cls.ClassifyAsync(ctx, k.Situation(ctx), k.Slots(), "", "invoice paperwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var best string
+	var bw float64
+	for _, v := range res.Facets["slot"].Votes {
+		if v.Judge == "centroid:slot" && (best == "" || v.Weight > bw) {
+			best, bw = v.Label, v.Weight
+		}
+	}
+	if best != "scratch" {
+		t.Fatalf("slot centroid's best vote %q (%v)", best, res.Facets["slot"].Votes)
+	}
+}
+
+const refitEveryForTest = 25
 
 func TestEmergingClustersWhatTheClassifierCouldNotLabel(t *testing.T) {
 	s, _, _, _ := setup(t, Options{Embedder: &wordsEmbedder{}})
@@ -393,7 +437,10 @@ func TestTheConfigFileTurnsOnTheLLMGatewayTier(t *testing.T) {
 	for _, v := range async.Facets["act"].Votes {
 		judges[v.Judge] = true
 	}
-	if !judges["decide"] || !judges["centroid:act"] {
+	for _, v := range async.Facets["slot"].Votes {
+		judges[v.Judge] = true
+	}
+	if !judges["decide"] || !judges["centroid:slot"] {
 		t.Fatalf("async judges %v (failed %v)", judges, async.Failed)
 	}
 }

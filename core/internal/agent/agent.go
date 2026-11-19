@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/libs/agent/host"
@@ -116,6 +117,8 @@ type Service struct {
 	asyncCtx    context.Context
 	asyncCancel context.CancelFunc
 	asyncWG     sync.WaitGroup
+	fitting     atomic.Bool // a centroid fit is running
+	refitAgain  atomic.Bool // fit once more when the running fit ends
 	// trained is closed when the classifier has learned the trace kept before start.
 	trained chan struct{}
 	lastAsm string // the slot and top of mind last published

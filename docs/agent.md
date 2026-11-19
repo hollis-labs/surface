@@ -175,10 +175,13 @@ file (`~/.config/<app>/agent.json`) names a gateway:
 | `dialect` | `llm-gateway` (the default): JEV's System-1 API at `/v1/systemone`, and OpenAI-compatible `/v1/embeddings`, with the gateway's model aliases. `tether`: a decision gateway's `/ai/decide` and `/ai/embeddings`. |
 | `key_file` | The gateway's bearer key. It needs the decide scope for `decide_model` and the embed scope for `embed_model`. |
 | `decide_model` | Turns on the JEV judge on every facet: the gateway's decision route (`jev`). |
-| `embed_model` | Turns on centroid judges on `act` and `affect`, and the emerging-label report: the gateway's embedding route (`embed-local`, `embed-openai`). Vectors from different models do not compare, so a change refits from scratch. |
+| `embed_model` | Turns on the slot centroid judge and the emerging-label report: the gateway's embedding route (`embed-local`, `embed-openai`). Vectors from different models do not compare, so a change refits from scratch. |
 | `purpose` | What a `tether` gateway accounts the spend to (default `surface_classify`). |
 
-The facets' examples are embedded once at start, in the background.
+The slot centroid is fitted on each slot's own description (its About, name and module) and on the newest
+texts each slot was given or corrected to, at most 40 per slot. It is refitted after every 25 learned turns, in the
+background. It is on the slot facet only, because a sentence-embedding model groups texts by topic, not by what
+they ask for. `act` and `affect` are left to rules, the n-gram models and the decider.
 `GET /api/agent/classify/emerging?facet=act&limit=500` clusters the newest turns a facet abstained on, after
 collapsing near-copies. It returns groups with at least three distinct members and a representative text:
 candidate labels, for a person to name, not answers.

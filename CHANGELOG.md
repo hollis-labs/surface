@@ -15,6 +15,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   `held` action, the `desk.held` event, an attention item). Unsent input in the panel keeps the focus where it is.
   Drafts and Notes refuse a delegate's edit to a document the owner is working in. `module.Window` gains `Dirty`,
   `Composing` and `Held`, and `moduletest` gains `ToolAs` and `DeskState.SetWorking`.
+- **Scripts: one walk-through that runs as an onboarding guide, a recorded demo, or a test** (`docs/scripts.md`).
+  Each step is a guide step plus `do` (look-only tool calls that drive the desk, run as the agent) and `expect`
+  (checks on the desk). It runs in three modes:
+  - `guide`: on the owner's desk, moved on by them;
+  - `demo`: on its own, with `script.step` events;
+  - `test`: headless, a pass/fail report, the desk put back after.
+
+  There are tools (`script_*`), HTTP routes (`/api/scripts`) and `scripts/record-demo.mjs`, which records a demo
+  with headless Chrome's screencast (and ffmpeg, when present).
 
 - **Attention: one list of what waits for the owner** (`docs/attention.md`). There are three states: `needs_you`
   (an open card that asks something), `failed` (an error card) and `unseen` (a window a delegate opened while the

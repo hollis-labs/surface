@@ -1,0 +1,10 @@
+{
+  "name": "tour",
+  "about": "A first look at Desk",
+  "steps": [
+    {"say": "This is Notes: your notes, in a folder you choose.", "do": [{"tool": "desk_open", "input": {"view": "notes"}}], "expect": {"focused": "notes"}},
+    {"say": "Scratch is for quick thoughts you will sort later.", "do": [{"tool": "desk_open", "input": {"view": "scratch"}}], "point": [{"view": "scratch"}], "zoom": true, "expect": {"open": ["notes", "scratch"], "focused": "scratch"}},
+    {"say": "Drafts keeps every revision of a longer piece, with comments.", "do": [{"tool": "desk_open", "input": {"view": "drafts"}}], "point": [{"view": "drafts"}], "expect": {"focused": "drafts"}},
+    {"say": "The agent sees what is in front of you, and its context follows you.", "do": [{"tool": "desk_open", "input": {"view": "notes"}}], "expect": {"tool": {"tool": "desk_windows"}, "contains": "drafts"}}
+  ]
+}

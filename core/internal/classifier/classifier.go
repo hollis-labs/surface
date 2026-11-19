@@ -63,22 +63,34 @@ type Classifier struct {
 	slotID  string // the slot set the engine was built for
 	decider decide.Decider
 	dopts   classify.DecisionOptions
-	// centroids are the async tier's embedding judges, one per facet with examples.
+	// centroids are the async tier's embedding judges: one, on the slot facet.
 	centroids []*classify.Centroid
 	emb       classify.Embedder
+
+	// slotTexts are the newest message texts per slot (the slot each turn was given, or the
+	// one the owner moved it to), what the slot centroid is fitted on beside each slot's
+	// own description. sinceFit counts what was learned since the last fit.
+	textsMu   sync.Mutex
+	slotTexts map[string][]string
+	sinceFit  int
 }
 
-// SetEmbedder adds centroid judges on the act and affect facets at classify.Async, over e.
-// They vote nothing until FitCentroids has embedded the facets' examples.
+// slotTextsKept is how many texts per slot the centroid is fitted on.
+const slotTextsKept = 40
+
+// refitEvery is how many learned turns make the slot centroid due for a refit.
+const refitEvery = 25
+
+// SetEmbedder adds a centroid judge on the slot facet at classify.Async, over e. A
+// sentence-embedding model groups texts by topic, not by what they ask for, so the slot
+// (which kind of work) is the facet it can tell; act and affect are left to rules, the
+// n-gram models and the decider. It votes nothing until FitCentroids has run.
 func (c *Classifier) SetEmbedder(e classify.Embedder) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.emb, c.eng, c.centroids = e, nil, nil
-	if e == nil {
-		return
-	}
-	for _, f := range []string{Act, Affect} {
-		c.centroids = append(c.centroids, classify.NewCentroid("centroid:"+f, f, e, classify.CentroidOptions{Phase: classify.Async}))
+	if e != nil {
+		c.centroids = []*classify.Centroid{classify.NewCentroid("centroid:slot", Slot, e, classify.CentroidOptions{Phase: classify.Async})}
 	}
 }
 
@@ -89,24 +101,69 @@ func (c *Classifier) Embedder() classify.Embedder {
 	return c.emb
 }
 
-// FitCentroids embeds each centroid facet's examples (a network call through the embedder).
+// SlotExamples are what the slot centroid is fitted on: each slot's own description (its
+// About, name and module), and the newest texts the slot was given or corrected to.
+func (c *Classifier) SlotExamples(all []kernel.BoundSlot) []classify.Example {
+	label := func(slot string) map[string]string { return map[string]string{Slot: slot} }
+	var out []classify.Example
+	add := func(name, about string, words []string) {
+		out = append(out, classify.Example{Text: strings.TrimSpace(about + " " + strings.Join(words, " ")), Labels: label(name)})
+	}
+	add(slots.General.Name, slots.General.About, nil)
+	for _, s := range all {
+		add(s.Name, s.About, nameWords(s.Name, s.Module))
+	}
+	c.textsMu.Lock()
+	defer c.textsMu.Unlock()
+	for _, s := range append([]kernel.BoundSlot{slots.General}, all...) {
+		for _, t := range c.slotTexts[s.Name] {
+			out = append(out, classify.Example{Text: t, Labels: label(s.Name)})
+		}
+	}
+	return out
+}
+
+// FitCentroids fits the slot centroid on SlotExamples (a call through the embedder). With
+// no slot facet (an app with no slots of its own) there is nothing to fit.
 func (c *Classifier) FitCentroids(ctx context.Context, all []kernel.BoundSlot) error {
-	eng, err := c.engine(all)
-	if err != nil {
-		return err
+	if _, ok := SlotFacet(all); !ok {
+		return nil
 	}
 	c.mu.Lock()
 	cs := slices.Clone(c.centroids)
 	c.mu.Unlock()
-	for i, f := range []string{Act, Affect} {
-		if i >= len(cs) {
-			break
-		}
-		if err := cs[i].Fit(ctx, eng.Pack().Examples(f)); err != nil {
-			return err
-		}
+	if len(cs) == 0 {
+		return nil
 	}
-	return nil
+	c.textsMu.Lock()
+	c.sinceFit = 0
+	c.textsMu.Unlock()
+	return cs[0].Fit(ctx, c.SlotExamples(all))
+}
+
+// RefitDue reports whether enough has been learned since the last fit to fit again.
+func (c *Classifier) RefitDue() bool {
+	c.textsMu.Lock()
+	defer c.textsMu.Unlock()
+	return c.sinceFit >= refitEvery
+}
+
+// remember files a text under a slot, newest last, and out of every other slot.
+func (c *Classifier) remember(text, slot string) {
+	c.textsMu.Lock()
+	defer c.textsMu.Unlock()
+	if c.slotTexts == nil {
+		c.slotTexts = map[string][]string{}
+	}
+	for k, ts := range c.slotTexts {
+		c.slotTexts[k] = slices.DeleteFunc(ts, func(t string) bool { return t == text })
+	}
+	ts := append(c.slotTexts[slot], text)
+	if len(ts) > slotTextsKept {
+		ts = ts[len(ts)-slotTextsKept:]
+	}
+	c.slotTexts[slot] = ts
+	c.sinceFit++
 }
 
 // SetDecider turns on the async tier: d is asked about every facet at classify.Async.
@@ -296,6 +353,7 @@ func (c *Classifier) Learn(t slots.TraceTurn) {
 	}
 	if label, w, _ := SlotLabel(t); label != "" {
 		c.slot.Learn(t.Text, label, w)
+		c.remember(t.Text, label)
 	}
 }
 
@@ -303,6 +361,7 @@ func (c *Classifier) Learn(t slots.TraceTurn) {
 func (c *Classifier) Correct(text, slot string) {
 	if strings.TrimSpace(text) != "" && slot != "" {
 		c.slot.Learn(text, slot, weightCorrected)
+		c.remember(text, slot)
 	}
 }
 

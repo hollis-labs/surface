@@ -74,6 +74,9 @@ func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int
 		s.trace.SetClassified(ctx, id, raw)
 	}
 	s.cls.Learn(turn)
+	if s.cls.RefitDue() {
+		s.refitCentroids()
+	}
 	s.classifyAsync(sit, id, turn.Text)
 	s.lastMu.Lock()
 	s.lastText, s.lastAt = turn.Text, time.Now()
@@ -125,15 +128,7 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedd
 	}
 	if e != nil {
 		s.cls.SetEmbedder(e)
-		s.asyncWG.Add(1)
-		go func() {
-			defer s.asyncWG.Done()
-			ctx, cancel := context.WithTimeout(s.asyncCtx, 2*time.Minute)
-			defer cancel()
-			if err := s.cls.FitCentroids(ctx, s.k.Slots()); err != nil {
-				s.log.Warn("classifier: centroids not fitted; they vote nothing", "err", err)
-			}
-		}()
+		s.refitCentroids() // on the slots' descriptions now; again once the trace is learned
 	}
 	if d == nil {
 		if e != nil {
@@ -175,6 +170,32 @@ func (s *Service) classifyAsync(sit module.Situation, id int64, text string) {
 	}()
 }
 
+// refitCentroids fits the slot centroid again in the background, one fit at a time; a
+// request while one runs makes it run once more after, so nothing learned is left out.
+func (s *Service) refitCentroids() {
+	if s.cls.Embedder() == nil || s.asyncCtx == nil {
+		return
+	}
+	s.refitAgain.Store(true)
+	if !s.fitting.CompareAndSwap(false, true) {
+		return
+	}
+	s.asyncWG.Add(1)
+	go func() {
+		defer s.asyncWG.Done()
+		defer s.fitting.Store(false)
+		for s.refitAgain.Swap(false) {
+			ctx, cancel := context.WithTimeout(s.asyncCtx, 2*time.Minute)
+			err := s.cls.FitCentroids(ctx, s.k.Slots())
+			cancel()
+			if err != nil {
+				s.log.Warn("classifier: the slot centroid was not fitted; it votes nothing until it is", "err", err)
+				return
+			}
+		}
+	}()
+}
+
 // asyncTimeout bounds one async classification.
 const asyncTimeout = 30 * time.Second
 
@@ -212,6 +233,9 @@ func (s *Service) trainClassifier(ctx context.Context, start time.Time) {
 		s.log.Warn("classifier: hint feedback not read", "err", err)
 	}
 	s.log.Debug("classifier trained from the context trace", "turns", n)
+	if s.cls.Embedder() != nil {
+		s.refitCentroids()
+	}
 }
 
 // signal keeps something that followed a turn, when the trace is on.

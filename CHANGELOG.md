@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The centroid judge is on the slot facet.**
+  - It is fitted on each slot's description and the newest texts the owner's turns landed in or were moved to,
+    and refitted every 25 learned turns.
+  - It used to be on `act` and `affect`. A sentence-embedding model groups texts by topic, not by what they ask
+    for ("how come the tests broke?" sits nearer "fix the failing test" than any question), so it can tell slots
+    and not speech acts.
 ## [0.3.0] - 2026-11-19
 
 - **The classifier's async tier speaks an LLM gateway.** The `classifier` agent config is now `gateway_url`,

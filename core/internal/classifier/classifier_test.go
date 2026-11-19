@@ -127,3 +127,29 @@ func TestReplayScoresCorrectionsBeforeLearningThem(t *testing.T) {
 		t.Errorf("corrected hits %d of 40", rep.CorrectedHits)
 	}
 }
+
+func TestSlotExamplesFollowCorrections(t *testing.T) {
+	c, _ := New()
+	c.Learn(slots.TraceTurn{Text: "jot this down", Slot: "notes"})
+	c.Correct("jot this down", "scratch")
+	got := map[string][]string{}
+	for _, x := range c.SlotExamples(testSlots) {
+		got[x.Labels[Slot]] = append(got[x.Labels[Slot]], x.Text)
+	}
+	for _, slot := range []string{"general", "notes", "scratch"} {
+		if len(got[slot]) == 0 {
+			t.Errorf("no description example for %s", slot)
+		}
+	}
+	has := func(slot string) bool {
+		for _, t := range got[slot] {
+			if t == "jot this down" {
+				return true
+			}
+		}
+		return false
+	}
+	if has("notes") || !has("scratch") {
+		t.Fatalf("the corrected text should be under scratch only: %v", got)
+	}
+}

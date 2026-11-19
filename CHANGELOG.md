@@ -5,6 +5,9 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The classifier can pick the slot.** The live setting `surface.agent_selector`: `focus` (the default) or
+  `classifier`. With `classifier` set, a sure answer (p ≥ 0.7) for another slot overrules the window in front; a pin
+  still wins, and the trace says `classified`.
 - **The classifier's centroid judges and emerging labels.**
   - With `classifier.embed_model` set, centroid judges on `act` and `affect` vote at the async tier, through the
     gateway's embeddings.

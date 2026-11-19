@@ -2,11 +2,12 @@
 // asks for (the act facet: command, question, task, correction, approval, chat) and which
 // slot it belongs to (the slot facet: the app's slots and general).
 //
-// It runs in shadow: the agent records each turn's classification beside the turn in the
-// context trace, and nothing reads it to decide anything yet. The trace is also what it
+// It runs in shadow by default: the agent records each turn's classification beside the turn
+// in the context trace. With the setting surface.agent_selector at "classifier", a sure
+// slot answer overrules the window in front (the agent's classifiedSelector). The trace is also what it
 // learns from: the slot a turn was given, and above all a slot the owner pinned after it,
-// which says the choice was wrong. When its answers beat the focus selector on that record,
-// it becomes the second slots.Selector (docs/agent.md).
+// which says the choice was wrong. The replay report (Replay) says whether its answers beat
+// the focus selector on that record (docs/agent.md).
 //
 // The judges are libs core/util/classify's: the pack's rules and priors (act.json, and slot
 // rules made from each slot's views, modes and name), and a naive Bayes model per facet.

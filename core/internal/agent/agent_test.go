@@ -78,20 +78,40 @@ type fakeKernel struct {
 	slots  []kernel.BoundSlot
 	layout string
 	ran    []string
+	cfg    mapConfig // nil: no settings store
 }
 
-func (k *fakeKernel) AppName() string             { return "surface-test" }
-func (k *fakeKernel) DataDir() string             { return "" }
-func (k *fakeKernel) DB() *sql.DB                 { return k.db }
-func (k *fakeKernel) Log() *slog.Logger           { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
-func (k *fakeKernel) Desk() module.Desk           { return k.desk }
-func (k *fakeKernel) Events() module.Events       { return k.bus }
-func (k *fakeKernel) Marks() module.Marks         { return nil }
-func (k *fakeKernel) Cards() module.Cards         { return nil }
-func (k *fakeKernel) Config(string) module.Config { return nil }
-func (k *fakeKernel) Tools() []kernel.BoundTool   { return k.tools }
-func (k *fakeKernel) Slots() []kernel.BoundSlot   { return k.slots }
-func (k *fakeKernel) Commands() []module.Command  { return nil }
+func (k *fakeKernel) AppName() string       { return "surface-test" }
+func (k *fakeKernel) DataDir() string       { return "" }
+func (k *fakeKernel) DB() *sql.DB           { return k.db }
+func (k *fakeKernel) Log() *slog.Logger     { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+func (k *fakeKernel) Desk() module.Desk     { return k.desk }
+func (k *fakeKernel) Events() module.Events { return k.bus }
+func (k *fakeKernel) Marks() module.Marks   { return nil }
+func (k *fakeKernel) Cards() module.Cards   { return nil }
+func (k *fakeKernel) Config(string) module.Config {
+	if k.cfg == nil {
+		return nil
+	}
+	return k.cfg
+}
+
+// mapConfig is a settings store for tests: agent_trace is on unless set.
+type mapConfig map[string]any
+
+func (m mapConfig) String(key string) string { v, _ := m[key].(string); return v }
+func (m mapConfig) Bool(key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return key == "agent_trace"
+}
+func (m mapConfig) Int(key string) int                             { v, _ := m[key].(int); return v }
+func (m mapConfig) Set(_ context.Context, key string, v any) error { m[key] = v; return nil }
+func (m mapConfig) Watch(string, func(any)) func()                 { return func() {} }
+func (k *fakeKernel) Tools() []kernel.BoundTool                    { return k.tools }
+func (k *fakeKernel) Slots() []kernel.BoundSlot                    { return k.slots }
+func (k *fakeKernel) Commands() []module.Command                   { return nil }
 func (k *fakeKernel) RunCommand(_ context.Context, id string, _ map[string]any) (any, error) {
 	k.ran = append(k.ran, id)
 	return nil, nil

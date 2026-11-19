@@ -68,6 +68,7 @@ func (m *mod) Manifest() module.Manifest {
 			{Key: "author", Title: "Author of the agent's writes", About: "Who the agent's Tesseract writes are recorded as made by.", Type: module.SettingString, Default: "surface"},
 		},
 		Tools: m.tools(),
+		Refs:  m.refs(),
 		Slots: []module.Slot{{
 			Name: "systems", About: "the owner's work systems: tasks in Torque, knowledge in Tesseract, services in Cerberus",
 			Tools:        []string{"tesseract_recall", "tesseract_get", "torque_task_list", "torque_task_get", describeTool},

@@ -90,6 +90,7 @@ func (m *mod) Manifest() module.Manifest {
 				}},
 		},
 		Tools: m.tools(),
+		Refs:  m.refs(),
 		Store: &module.Store{Migrations: migrations, Dir: "migrations"},
 		Settings: []module.Setting{
 			{Key: "show_hidden", Title: "Show hidden files", About: "List files and folders whose name starts with a dot.", Type: module.SettingBool, Default: false},

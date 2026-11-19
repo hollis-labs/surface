@@ -61,6 +61,8 @@ type App struct {
 	tools    []BoundTool
 	slots    []BoundSlot
 	arounds  []BoundAround
+	refs     map[string]*boundRef
+	cite     citeCache
 	asker    atomic.Pointer[askerBox]
 	routes   *http.ServeMux
 	started  bool
@@ -100,7 +102,8 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, err
 	}
 	a := &App{name: o.Name, title: o.Title, dataDir: o.DataDir, db: o.DB, log: o.Log,
-		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux()}
+		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux(),
+		refs: map[string]*boundRef{}, cite: citeCache{m: map[string]citeEntry{}}}
 	if a.title == "" {
 		a.title = o.Name
 	}
@@ -227,6 +230,9 @@ func New(ctx context.Context, o Options) (*App, error) {
 				bs.Knowledge = func(ctx context.Context, sit module.Situation) (string, error) { return fn(ctx, hh, sit) }
 			}
 			a.slots = append(a.slots, bs)
+		}
+		if err := a.addRefs(h); err != nil {
+			return nil, a.fail(err)
 		}
 		if h.man.Around != nil {
 			hh, fn := h, h.man.Around

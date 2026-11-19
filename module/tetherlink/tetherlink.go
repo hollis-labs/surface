@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -354,59 +355,14 @@ func (c *Stdio) session(ctx context.Context, use func(request func(method string
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, c.Argv[0], c.Argv[1:]...) //nolint:gosec // the command is the owner's own setting
-	stdin, err := cmd.StdinPipe()
+	pl := poolFor(c.Argv)
+	p, err := pl.lease(ctx)
 	if err != nil {
 		return err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	// The command's own output stays out of everything the module reports.
-	cmd.Stderr = io.Discard
-	if err = cmd.Start(); err != nil {
-		return errors.New("tether: the command did not start")
-	}
-	defer func() {
-		_ = stdin.Close()
-		_ = cmd.Wait()
-	}()
-	enc := json.NewEncoder(stdin)
-	lines := bufio.NewScanner(stdout)
-	lines.Buffer(make([]byte, 0, 64<<10), 16<<20)
-	await := func(id int64) (*rpcResponse, error) {
-		for lines.Scan() {
-			var r rpcResponse
-			if json.Unmarshal(lines.Bytes(), &r) == nil && r.ID == id {
-				return &r, nil
-			}
-		}
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("tether: the command did not answer in %s", timeout)
-		}
-		return nil, errors.New("tether: the command ended without answering")
-	}
-	if err = enc.Encode(rpcRequest{JSONRPC: "2.0", ID: 1, Method: "initialize", Params: initParams("surface-" + c.Module)}); err != nil {
-		return err
-	}
-	r, err := await(1)
-	if err != nil {
-		return err
-	}
-	if r.Error != nil {
-		return errors.New("tether: the command refused to start a session")
-	}
-	if err = enc.Encode(rpcRequest{JSONRPC: "2.0", Method: "notifications/initialized"}); err != nil {
-		return err
-	}
-	var seq int64 = 1
+	defer pl.release(p)
 	return use(func(method string, params any) (json.RawMessage, error) {
-		seq++
-		if err := enc.Encode(rpcRequest{JSONRPC: "2.0", ID: seq, Method: method, Params: params}); err != nil {
-			return nil, err
-		}
-		r, err := await(seq)
+		r, err := p.request(ctx, method, params, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -415,6 +371,188 @@ func (c *Stdio) session(ctx context.Context, use func(request func(method string
 		}
 		return r.Result, nil
 	})
+}
+
+// ---- Kept sessions ----
+//
+// A stdio command is started once and kept: its MCP session is opened when it starts, and
+// each call after that is one request on it, not a process, an ssh handshake and an MCP
+// handshake. Commands are shared by every client with the same command line (modules make a
+// client per call), up to maxProcs at once so calls in parallel do not wait on each other. A
+// command that has been idle for idleFor is closed when next looked at; one that fails, or
+// whose call ran out of time, is killed and not used again. A call is never sent twice: a
+// command that died with a request in flight answers that call with an error.
+
+const (
+	// maxProcs bounds the commands kept for one command line.
+	maxProcs = 4
+	// idleFor is how long an unused command is kept.
+	idleFor = 5 * time.Minute
+)
+
+var (
+	poolsMu sync.Mutex
+	pools   = map[string]*procPool{}
+)
+
+func poolFor(argv []string) *procPool {
+	key := strings.Join(argv, "\x00")
+	poolsMu.Lock()
+	defer poolsMu.Unlock()
+	pl := pools[key]
+	if pl == nil {
+		pl = &procPool{argv: append([]string(nil), argv...), slots: make(chan struct{}, maxProcs)}
+		pools[key] = pl
+	}
+	return pl
+}
+
+type procPool struct {
+	argv  []string
+	slots chan struct{}
+	mu    sync.Mutex
+	idle  []*proc
+	// started counts the commands this pool started (tests).
+	started atomic.Int64
+}
+
+// lease takes an idle command, or starts one, holding one of the pool's slots until release.
+func (pl *procPool) lease(ctx context.Context) (*proc, error) {
+	select {
+	case pl.slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, errors.New("tether: every session to the command is busy")
+	}
+	pl.mu.Lock()
+	for len(pl.idle) > 0 {
+		p := pl.idle[len(pl.idle)-1]
+		pl.idle = pl.idle[:len(pl.idle)-1]
+		if p.usable() {
+			pl.mu.Unlock()
+			return p, nil
+		}
+		p.kill()
+	}
+	pl.mu.Unlock()
+	p, err := pl.start(ctx)
+	if err != nil {
+		<-pl.slots
+		return nil, err
+	}
+	return p, nil
+}
+
+// release puts a command back for the next call, or ends it when it can no longer be used.
+func (pl *procPool) release(p *proc) {
+	defer func() { <-pl.slots }()
+	if !p.usable() {
+		p.kill()
+		return
+	}
+	p.used = time.Now()
+	pl.mu.Lock()
+	pl.idle = append(pl.idle, p)
+	pl.mu.Unlock()
+}
+
+func (pl *procPool) start(ctx context.Context) (*proc, error) {
+	cmd := exec.Command(pl.argv[0], pl.argv[1:]...) //nolint:gosec // the command is the owner's own setting
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	// The command's own output stays out of everything the module reports.
+	cmd.Stderr = io.Discard
+	if err = cmd.Start(); err != nil {
+		return nil, errors.New("tether: the command did not start")
+	}
+	pl.started.Add(1)
+	p := &proc{cmd: cmd, stdin: stdin, enc: json.NewEncoder(stdin), lines: make(chan []byte, 16), used: time.Now()}
+	go p.read(stdout)
+	init, err := p.request(ctx, "initialize", initParams("surface"), 0)
+	if err != nil {
+		p.kill()
+		return nil, err
+	}
+	if init.Error != nil {
+		p.kill()
+		return nil, errors.New("tether: the command refused to start a session")
+	}
+	if err = p.enc.Encode(rpcRequest{JSONRPC: "2.0", Method: "notifications/initialized"}); err != nil {
+		p.kill()
+		return nil, err
+	}
+	return p, nil
+}
+
+// proc is one running command with an open MCP session. One call uses it at a time.
+type proc struct {
+	cmd   *exec.Cmd
+	stdin io.WriteCloser
+	enc   *json.Encoder
+	lines chan []byte
+	seq   int64
+	used  time.Time
+	dead  atomic.Bool
+	ended sync.Once
+}
+
+// read hands the command's lines to the call waiting on them; at the end of its output the
+// command is dead.
+func (p *proc) read(stdout io.Reader) {
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
+	for sc.Scan() {
+		p.lines <- append([]byte(nil), sc.Bytes()...)
+	}
+	p.dead.Store(true)
+	close(p.lines)
+}
+
+func (p *proc) usable() bool { return !p.dead.Load() && time.Since(p.used) < idleFor }
+
+func (p *proc) kill() {
+	p.dead.Store(true)
+	p.ended.Do(func() {
+		_ = p.stdin.Close()
+		if p.cmd.Process != nil {
+			_ = p.cmd.Process.Kill()
+		}
+		go func() { _ = p.cmd.Wait() }()
+	})
+}
+
+// request sends one request and waits for its answer. When the time runs out the command is
+// killed: its answer may still come, and the next call must not read it.
+func (p *proc) request(ctx context.Context, method string, params any, timeout time.Duration) (*rpcResponse, error) {
+	p.seq++
+	id := p.seq
+	if err := p.enc.Encode(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}); err != nil {
+		p.dead.Store(true)
+		return nil, errors.New("tether: the command is gone")
+	}
+	for {
+		select {
+		case line, ok := <-p.lines:
+			if !ok {
+				return nil, errors.New("tether: the command ended without answering")
+			}
+			var r rpcResponse
+			if json.Unmarshal(line, &r) == nil && r.ID == id {
+				return &r, nil
+			}
+		case <-ctx.Done():
+			p.kill()
+			if timeout > 0 {
+				return nil, fmt.Errorf("tether: the command did not answer in %s", timeout)
+			}
+			return nil, errors.New("tether: the command did not answer")
+		}
+	}
 }
 
 // ---- Results the gateway cut short ----

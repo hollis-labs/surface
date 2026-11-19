@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **A classifier labels every message in shadow**: what it asks for (`act`) and which slot it belongs to (`slot`).
+  It is built on libs `core/util/classify`, and its result is kept beside the turn in the context trace
+  (`classified`). Its slot model learns from the trace, and an owner's re-pin counts as a correction.
+  `POST /api/agent/classify` classifies a draft. `GET /api/agent/classify/replay` scores a fresh classifier against
+  the focus selector on the trace (`docs/agent.md`). The selector is unchanged.
 - **The agent's runs announce themselves**, whichever engine runs them: `agent.run.started` and `agent.run.ended`
   (`finished`, `canceled` or `failed`, with a reason). Attention follows them. The subject `agent` is `working` while
   the agent runs, then `unseen` until the owner has read the answer, or `failed`. The context trace keeps each end

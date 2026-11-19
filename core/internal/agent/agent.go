@@ -25,6 +25,7 @@ import (
 
 	"github.com/hollis-labs/libs/agent/host"
 
+	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/reflex"
 	"github.com/hollis-labs/surface/core/internal/router"
@@ -84,6 +85,8 @@ type Service struct {
 	pin      *slots.FocusSelector // the selector, when it is the focus one
 	notes    *slots.Notes
 	trace    *slots.Trace
+	// cls labels each turn in shadow, beside the trace (classifier: act and slot).
+	cls      *classifier.Classifier
 	reflexes *reflex.Set
 	router   *router.Router
 
@@ -98,6 +101,8 @@ type Service struct {
 
 	lastMu    sync.Mutex
 	lastFocus string // the window last seen in front, for focus reflexes
+	lastText  string // the newest traced turn's text, for a correction that follows it
+	lastAt    time.Time
 	lastAsm   string // the slot and top of mind last published
 }
 
@@ -122,6 +127,10 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if s.trace, err = slots.OpenTrace(ctx, k.DB()); err != nil {
 		return nil, fmt.Errorf("agent: context trace: %w", err)
 	}
+	if s.cls, err = classifier.New(); err != nil {
+		return nil, fmt.Errorf("agent: classifier: %w", err)
+	}
+	go s.trainClassifier(ctx)
 	if s.reflexes, err = reflex.Open(ctx, k.DB(), doer{s}, func(msg string, args ...any) { log.Warn(msg, args...) }); err != nil {
 		return nil, fmt.Errorf("agent: reflexes: %w", err)
 	}

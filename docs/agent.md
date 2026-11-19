@@ -128,6 +128,21 @@ A classifier over the owner's input, activity and workspace will be a second `Se
 `Situation` and returns the same `Selection`, so the assembler and the modules do not change. `Options.Selector`
 plugs it in.
 
+That classifier runs today **in shadow** (`core/internal/classifier`, on libs `core/util/classify`). Every traced
+turn is labelled on two facets, and the result is kept beside the turn (`classified`). Nothing reads it to decide
+anything yet.
+- `act`: command, question, task, correction, approval, chat, or an abstention. The rules and examples are in
+  `act.json`.
+- `slot`: the app's slots and `general`. Its priors come from the view and module in front and the mode, and its
+  text rules from the slots' names.
+
+A naive Bayes model per facet learns from the trace. At start it learns every turn's slot, weakly, because that is
+the selector's own guess. An owner's pin soon after a turn counts in full, because it is a correction.
+`GET /api/agent/classify/replay` replays a fresh classifier over the whole trace, each turn classified before it
+is learned. It reports how often the classifier agrees with the selector, and how many of the owner's corrections
+it would have got right. When those numbers are good enough, the classifier becomes the `Selector`.
+`POST /api/agent/classify` classifies a draft in the current situation without recording it, for the composer.
+
 ### Assembly
 
 The assembler turns a selection into the `<context>` block that leads the owner's message:
@@ -304,6 +319,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `GET /api/agent/setup` | `{ready, model, config_path}` |
 | `GET /api/agent/slots`, `POST /api/agent/slots/pin` | every slot with its note; pin a slot (`""` unpins) |
 | `GET /api/agent/trace`, `GET /api/agent/trace/export` | the context trace: the newest turns with their signals; every turn as JSON lines |
+| `POST /api/agent/classify`, `GET /api/agent/classify/replay` | the classifier's result for a draft (records nothing); a fresh classifier replayed over the trace against the selector |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

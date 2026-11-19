@@ -1,0 +1,38 @@
+{
+  "name": "surface.composer",
+  "version": "0.1.0",
+  "facets": [
+    {
+      "name": "act",
+      "about": "What the owner's message asks of the agent.",
+      "min_p": 0.5,
+      "min_margin": 0.15,
+      "labels": [
+        {"name": "command", "about": "A slash command for the app.", "examples": ["/layout focus", "/open notes", "/ping"]},
+        {"name": "question", "about": "Asks for information; changes nothing.", "examples": [
+          "what is open right now?", "why did the build fail?", "how do I pin a slot?", "where are my notes kept?",
+          "is the release branch green?", "which module owns this view?"]},
+        {"name": "task", "about": "Asks the agent to do or change something.", "examples": [
+          "add a note about the release", "fix the failing test", "open the notes window", "summarize this document",
+          "create a task for the review", "rename this file to plan.md", "please clean up the layout"]},
+        {"name": "correction", "about": "Says the last answer or action was wrong.", "examples": [
+          "no, the other one", "actually I meant the draft", "that's wrong, use the notes module", "undo that", "not that window"]},
+        {"name": "approval", "about": "Agrees to what the agent proposed.", "min_p": 0.75, "risk": "high", "examples": [
+          "yes go ahead", "lgtm", "sounds good, do it", "approved", "ship it"]},
+        {"name": "chat", "about": "Conversation with nothing to do.", "examples": ["thanks!", "hi", "nice work", "cool"]}
+      ],
+      "rules": [
+        {"id": "slash", "label": "command", "pattern": "^/[a-z]", "weight": 5, "decisive": true},
+        {"id": "question-mark", "label": "question", "pattern": "\\?$", "weight": 2},
+        {"id": "wh-word", "label": "question", "words": ["what", "why", "how", "where", "when", "which", "who"], "at_start": true, "weight": 1.5},
+        {"id": "yes-no-question", "label": "question", "words": ["is", "are", "does", "do", "did", "should", "can i", "could i"], "at_start": true, "weight": 1},
+        {"id": "imperative", "label": "task", "words": ["add", "create", "make", "fix", "update", "open", "close", "move", "rename", "delete", "remove", "write", "draft", "run", "show", "list", "find", "summarize", "summarise", "refactor", "implement", "build", "test", "check", "review", "pin", "switch", "set", "change", "clean", "start", "stop"], "at_start": true, "weight": 1.5},
+        {"id": "polite-request", "label": "task", "words": ["please", "can you", "could you", "would you"], "at_start": true, "weight": 1},
+        {"id": "correction-opener", "label": "correction", "words": ["no", "nope", "actually", "wait", "not that", "that's wrong", "that is wrong", "undo", "revert", "i meant", "wrong"], "at_start": true, "weight": 2},
+        {"id": "instead", "label": "correction", "words": ["instead"], "weight": 1},
+        {"id": "approval-opener", "label": "approval", "words": ["yes", "yep", "yeah", "ok", "okay", "sure", "go ahead", "do it", "lgtm", "approve", "approved", "sounds good", "ship it", "proceed"], "at_start": true, "weight": 2},
+        {"id": "chat-opener", "label": "chat", "words": ["thanks", "thank you", "hi", "hello", "hey", "cool", "nice", "great"], "at_start": true, "weight": 1.5}
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/router"
@@ -39,11 +40,54 @@ func (s *Service) record(ctx context.Context, sit module.Situation, a slots.Asse
 	if routed != nil {
 		r = routed.Rule + " -> " + routed.Kind + ":" + routed.Name
 	}
-	id, err := s.trace.Record(ctx, slots.TurnFrom(sit.Input, view, mod, sit.Mode, sit.Layout, open, a, r, fired, halted))
+	turn := slots.TurnFrom(sit.Input, view, mod, sit.Mode, sit.Layout, open, a, r, fired, halted)
+	id, err := s.trace.Record(ctx, turn)
 	if err != nil {
 		s.log.Warn("context trace: turn not kept", "err", err)
+		return id
 	}
+	s.classifyTurn(ctx, sit, id, turn)
 	return id
+}
+
+// classifyTurn labels a recorded turn in shadow and keeps the result beside it, then learns
+// the slot it was given (weakly: that is the selector's own guess). Nothing reads the
+// result to decide anything yet.
+func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int64, turn slots.TraceTurn) {
+	if s.cls == nil || id == 0 {
+		return
+	}
+	res, err := s.cls.Classify(ctx, sit, s.k.Slots(), "turn:"+strconv.FormatInt(id, 10), turn.Text)
+	if err != nil {
+		s.log.Warn("classifier: turn not classified", "err", err)
+		return
+	}
+	if raw, err := json.Marshal(res); err == nil {
+		s.trace.SetClassified(ctx, id, raw)
+	}
+	s.cls.Learn(turn)
+	s.lastMu.Lock()
+	s.lastText, s.lastAt = turn.Text, time.Now()
+	s.lastMu.Unlock()
+}
+
+// trainClassifier teaches the classifier the slots of every traced turn, the owner's
+// corrections counting most. It runs once, at start.
+func (s *Service) trainClassifier(ctx context.Context) {
+	if s.cls == nil || s.trace == nil {
+		return
+	}
+	n := 0
+	err := s.trace.Each(ctx, func(t slots.TraceTurn) error {
+		s.cls.Learn(t)
+		n++
+		return nil
+	})
+	if err != nil {
+		s.log.Warn("classifier: trace not read", "err", err)
+		return
+	}
+	s.log.Debug("classifier trained from the context trace", "turns", n)
 }
 
 // signal keeps something that followed a turn, when the trace is on.
@@ -51,8 +95,22 @@ func (s *Service) signal(ctx context.Context, kind string, detail any) {
 	if !s.traceOn() {
 		return
 	}
-	s.trace.Signal(ctx, kind, string(module.ActorOf(ctx)), detail)
+	actor := module.ActorOf(ctx)
+	s.trace.Signal(ctx, kind, string(actor), detail)
+	// An owner's pin right after a turn says which slot the turn wanted.
+	if d, ok := detail.(map[string]string); ok && kind == "pin" && actor == module.ActorOwner && s.cls != nil {
+		s.lastMu.Lock()
+		text, at := s.lastText, s.lastAt
+		s.lastMu.Unlock()
+		if text != "" && time.Since(at) <= correctionWindow {
+			s.cls.Correct(text, d["slot"])
+		}
+	}
 }
+
+// correctionWindow is how long after a turn an owner's pin still corrects it (the trace's
+// own signal window).
+const correctionWindow = 15 * time.Minute
 
 // traceEvent turns the app's events into signals: where the owner went after a turn.
 func (s *Service) traceEvent(ev module.Event) {

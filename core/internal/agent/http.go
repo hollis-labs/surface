@@ -6,8 +6,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/reflex"
 	"github.com/hollis-labs/surface/core/internal/router"
+	"github.com/hollis-labs/surface/core/internal/slots"
 )
 
 // Mount serves the agent under /api/agent/: the agent-host/1 wire (engine), with the turn
@@ -26,6 +28,8 @@ import (
 //	POST   /api/agent/slots/pin            {slot} ("" unpins)
 //	GET    /api/agent/reflexes             PUT/DELETE /api/agent/reflexes/{name}
 //	GET    /api/agent/rules                PUT/DELETE /api/agent/rules/{id}
+//	POST   /api/agent/classify             {text} → the classifier's result for a draft (classify.Result); records nothing
+//	GET    /api/agent/classify/replay      a fresh classifier replayed over the trace, against the selector
 //
 // The app is loopback-only and single-user: every request is the owner's.
 func (s *Service) Mount(mux *http.ServeMux) {
@@ -65,6 +69,38 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		reply(w, 200, map[string]any{"ready": false, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName()), "reason": reason})
 	})
 	s.traceRoutes(mux)
+	// What the classifier makes of a draft in the situation now: for the composer as the
+	// owner types. It records nothing.
+	mux.HandleFunc("POST "+Prefix+"/classify", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Text string `json:"text"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		res, err := s.cls.Classify(r.Context(), s.k.Situation(r.Context()), s.k.Slots(), "", in.Text)
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		reply(w, 200, res)
+	})
+	// How a fresh classifier would have done on the whole trace, against the focus selector.
+	mux.HandleFunc("GET "+Prefix+"/classify/replay", func(w http.ResponseWriter, r *http.Request) {
+		var turns []slots.TraceTurn
+		if s.trace != nil {
+			if err := s.trace.Each(r.Context(), func(t slots.TraceTurn) error { turns = append(turns, t); return nil }); err != nil {
+				fail(w, 500, err.Error())
+				return
+			}
+		}
+		rep, err := classifier.Replay(r.Context(), turns, s.k.Slots())
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		reply(w, 200, rep)
+	})
 	mux.HandleFunc("GET "+Prefix+"/slots", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.slotList(r.Context())) })
 	mux.HandleFunc("POST "+Prefix+"/slots/pin", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {

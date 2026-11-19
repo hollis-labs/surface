@@ -78,10 +78,42 @@ export interface ViewProps {
   api: ModuleAPI
 }
 
+/** A card as a module's card renderer receives it (module.Card). */
+export interface ModuleCard {
+  id: string
+  kind: string
+  version?: string
+  title?: string
+  source?: string
+  subject?: string
+  risk?: string
+  blocking?: boolean
+  payload?: Record<string, unknown>
+  status?: string
+  expires_at?: string
+}
+
+/** An answer to a card (module.CardOutcome). */
+export interface ModuleCardOutcome {
+  status: "submitted" | "canceled"
+  data?: Record<string, unknown>
+  answers?: { questionId: string; value: unknown; note?: string }[]
+  decisions?: { itemId: string; action: string; note?: string }[]
+}
+
+/** What a module's card renderer receives: the card, how to answer it, and the module's routes. */
+export interface CardProps {
+  card: ModuleCard
+  respond: (outcome: ModuleCardOutcome) => Promise<void>
+  api: ModuleAPI
+}
+
 /** A module's web entry. */
 export interface ModuleWeb {
   /** By Render.Entry. */
   views: Record<string, ComponentType<ViewProps>>
+  /** Renderers for card kinds of the module's own, by kind (version 1), or "kind@version". */
+  cards?: Record<string, ComponentType<CardProps>>
 }
 
 /** A mark (module.Mark). */

@@ -484,6 +484,13 @@ func coreTools(a *App) []module.Tool {
 				if err != nil {
 					return nil, err
 				}
+				// Only the agent's own cards: another's card (a module's approval, say) is not
+				// the agent's to rewrite or close.
+				if c, ok, err := a.cards.Get(ctx, in.ID); err != nil {
+					return nil, err
+				} else if !ok || c.Source != "agent" {
+					return nil, fmt.Errorf("card %s is not one you showed", in.ID)
+				}
 				if len(in.Payload) > 0 || in.Title != "" {
 					if _, err := a.cards.Update(ctx, in.ID, in.Title, in.Payload); err != nil {
 						return nil, err
@@ -550,6 +557,9 @@ func coreTools(a *App) []module.Tool {
 				}](raw)
 				if err != nil {
 					return nil, err
+				}
+				if a.ownerSetting(in.Key) {
+					return nil, fmt.Errorf("%s is the owner's to change, in Settings", in.Key)
 				}
 				return "set", a.cfg.Set(ctx, in.Key, in.Value)
 			}},
@@ -619,4 +629,23 @@ func (a *App) Catalog() Catalog {
 		c.Modules = append(c.Modules, *by[id])
 	}
 	return c
+}
+
+// ownerSetting reports whether a setting (by full key, "<module>.<key>") is marked Owner.
+func (a *App) ownerSetting(full string) bool {
+	scope, key, ok := strings.Cut(full, ".")
+	if !ok {
+		return false
+	}
+	for _, h := range a.mods {
+		if h.id != scope {
+			continue
+		}
+		for _, s := range h.man.Settings {
+			if s.Key == key {
+				return s.Owner
+			}
+		}
+	}
+	return false
 }

@@ -75,6 +75,9 @@ type Assembly struct {
 	Reminders []string `json:"reminders,omitempty"`
 	// Block is the <context> block that leads the owner's message.
 	Block string `json:"block"`
+	// Trimmed names the slots whose knowledge a budget cut: "<slot>:clipped" (over the
+	// slot's own budget), then "<slot>:dropped" or "<slot>:trimmed" (to fit the block).
+	Trimmed []string `json:"trimmed,omitempty"`
 }
 
 // SlotView is one active slot as the panel shows it.
@@ -136,7 +139,11 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 			if err != nil {
 				k = "(could not be read: " + err.Error() + ")"
 			}
-			v.Knowledge = clip(strings.TrimSpace(k), budget)
+			k = strings.TrimSpace(k)
+			if len([]rune(k)) > budget {
+				a.Trimmed = append(a.Trimmed, s.Name+":clipped")
+			}
+			v.Knowledge = clip(k, budget)
 		}
 		a.Slots = append(a.Slots, v)
 		for _, t := range s.Tools {
@@ -151,10 +158,15 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 	for i := len(a.Slots) - 1; i >= 0 && len([]rune(a.Block)) > budgetBlock; i-- {
 		over := len([]rune(a.Block)) - budgetBlock
 		k := []rune(a.Slots[i].Knowledge)
+		if len(k) == 0 {
+			continue
+		}
 		if i > 0 || over >= len(k) {
 			a.Slots[i].Knowledge = ""
+			a.Trimmed = append(a.Trimmed, a.Slots[i].Name+":dropped")
 		} else {
 			a.Slots[i].Knowledge = clip(string(k), len(k)-over-40)
+			a.Trimmed = append(a.Trimmed, a.Slots[i].Name+":trimmed")
 		}
 		a.Block = block(sit, a, extra)
 	}

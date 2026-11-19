@@ -25,6 +25,10 @@ func TestBudgets(t *testing.T) {
 	if len([]rune(a.Slots[0].Knowledge)) > budgetPrimary+1 || len([]rune(a.Slots[1].Knowledge)) > budgetSecondary+1 {
 		t.Fatalf("knowledge %d / %d", len(a.Slots[0].Knowledge), len(a.Slots[1].Knowledge))
 	}
+	// What the budget cut is said, for the context trace.
+	if len(a.Trimmed) < 2 || a.Trimmed[0] != "a:clipped" || a.Trimmed[1] != "b:clipped" {
+		t.Errorf("trimmed: %v, want both slots clipped", a.Trimmed)
+	}
 	for _, want := range []string{"Slot: a", "Also in play: b", "Reminder: keep me", "In front:"} {
 		if !strings.Contains(a.Block, want) {
 			t.Errorf("block lacks %q", want)

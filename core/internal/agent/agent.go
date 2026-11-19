@@ -83,6 +83,7 @@ type Service struct {
 	selector slots.Selector
 	pin      *slots.FocusSelector // the selector, when it is the focus one
 	notes    *slots.Notes
+	trace    *slots.Trace
 	reflexes *reflex.Set
 	router   *router.Router
 
@@ -117,6 +118,9 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 
 	if s.notes, err = slots.OpenNotes(ctx, k.DB()); err != nil {
 		return nil, fmt.Errorf("agent: slot notes: %w", err)
+	}
+	if s.trace, err = slots.OpenTrace(ctx, k.DB()); err != nil {
+		return nil, fmt.Errorf("agent: context trace: %w", err)
 	}
 	if s.reflexes, err = reflex.Open(ctx, k.DB(), doer{s}, func(msg string, args ...any) { log.Warn(msg, args...) }); err != nil {
 		return nil, fmt.Errorf("agent: reflexes: %w", err)
@@ -158,6 +162,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		if strings.HasPrefix(ev.Topic, "agent.") {
 			return
 		}
+		go s.traceEvent(ev)
 		go s.onEvent(ev)
 		select {
 		case s.wake <- struct{}{}:
@@ -338,18 +343,23 @@ func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnRe
 	if out.Halt != "" {
 		res.Halted = out.Halt
 		res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
+		s.record(ctx, sit, res.Assembly, res.Routed, out.Fired, true)
 		s.k.Events().Publish("agent.halted", map[string]any{"text": text, "message": out.Halt, "fired": out.Fired})
 		return res, nil
 	}
 	extra.Reminders = out.Reminders
 
 	res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
+	traced := s.record(ctx, sit, res.Assembly, res.Routed, out.Fired, false)
 	raw, _ := json.Marshal(map[string]any{"block": res.Assembly.Block, "assembly": res.Assembly})
 	id, err := s.engine.Start(ctx, Turn{Owner: Owner, Text: text, ClientID: clientID, Context: raw, Auto: auto})
 	if err != nil {
 		return res, err
 	}
 	res.RunID = id
+	if traced != 0 {
+		s.trace.SetRun(ctx, traced, id)
+	}
 	s.k.Events().Publish("agent.turn", map[string]any{"run_id": id, "slot": res.Assembly.Slot, "slots": sel.Names(),
 		"top_of_mind": res.Assembly.TopOfMind, "fired": res.Fired, "routed": res.Routed})
 	return res, nil

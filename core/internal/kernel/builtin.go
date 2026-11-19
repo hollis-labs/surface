@@ -456,7 +456,7 @@ func coreTools(a *App) []module.Tool {
 				return map[string]any{"id": c.ID}, nil
 			}},
 		{Name: "card_ask", Level: module.LevelAct,
-			Description: "Ask the user something with a card and wait for the answer. Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. The result has status (submitted, canceled, expired) and the answer: data for a form, answers for prompt and choice, decisions for approval. canceled means the user declined: do not ask again unasked.",
+			Description: "Ask the user something with a card and wait for the answer. Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. The result has status (submitted, canceled, expired) and the answer: data for a form, answers for prompt and choice, decisions for approval. canceled means the user declined: do not ask again unasked. expired means no answer came in time; the card stays up, and if the user answers it later the answer comes to you as a message.",
 			Input:       schema(`{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
 			Describe:    func(json.RawMessage) string { return "Ask you something" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
@@ -483,8 +483,10 @@ func coreTools(a *App) []module.Tool {
 				}
 				done, err := a.cards.Await(ctx, shown.ID)
 				if err != nil {
-					// The run was stopped while the card was up: it should not stay open.
-					_, _ = a.cards.End(context.WithoutCancel(ctx), shown.ID, "canceled")
+					// The run ended while the card was up (stopped, or the app shutting down): the
+					// card is abandoned, not canceled, which would say the user declined. The
+					// user can still answer it, and the answer comes to the agent as a message.
+					_, _ = a.cards.End(context.WithoutCancel(ctx), shown.ID, cards.Abandoned)
 					return nil, err
 				}
 				out := map[string]any{"id": done.ID, "status": done.Status}

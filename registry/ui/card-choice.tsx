@@ -5,7 +5,7 @@ import * as React from "react"
 
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
-import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardRespond } from "@/components/ui/card-frame"
+import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardDraft, useCardRespond } from "@/components/ui/card-frame"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -26,10 +26,13 @@ interface CardChoiceProps extends AnswerableCardProps {
   allowOther?: boolean
 }
 
-function CardChoice({ title, question, body, options, multiple, allowOther, className, ...a }: CardChoiceProps) {
+function CardChoice({ title, question, body, options, multiple, allowOther, draft, onDraft, className, ...a }: CardChoiceProps) {
   const { disabled, working, respond } = useCardRespond(a)
-  const [picked, setPicked] = React.useState<string[]>([])
-  const [other, setOther] = React.useState("")
+  const [picked, setPicked] = React.useState<string[]>(() =>
+    Array.isArray(draft?.picked) ? draft.picked.filter((x): x is string => typeof x === "string") : [],
+  )
+  const [other, setOther] = React.useState(() => (typeof draft?.other === "string" ? draft.other : ""))
+  useCardDraft({ picked, other }, onDraft)
   const toggle = (id: string) =>
     setPicked((was) => (multiple ? (was.includes(id) ? was.filter((x) => x !== id) : [...was, id]) : was.includes(id) ? [] : [id]))
   const otherOn = picked.includes("other")

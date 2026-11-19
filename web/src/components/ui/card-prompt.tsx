@@ -4,7 +4,7 @@ import { MessageCircleQuestionIcon } from "lucide-react"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
-import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardRespond } from "@/components/ui/card-frame"
+import { type AnswerableCardProps, CardBody, CardFoot, CardFrame, CardStatus, useCardDraft, useCardRespond } from "@/components/ui/card-frame"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,9 +17,10 @@ interface CardPromptProps extends AnswerableCardProps {
   multiline?: boolean
 }
 
-function CardPrompt({ title, question, body, placeholder, multiline, className, ...a }: CardPromptProps) {
+function CardPrompt({ title, question, body, placeholder, multiline, draft, onDraft, className, ...a }: CardPromptProps) {
   const { disabled, working, respond } = useCardRespond(a)
-  const [text, setText] = React.useState("")
+  const [text, setText] = React.useState(() => (typeof draft?.text === "string" ? draft.text : ""))
+  useCardDraft({ text }, onDraft)
   const id = React.useId()
   const send = () => {
     if (text.trim()) void respond({ status: "submitted", answers: [{ questionId: "answer", value: text.trim() }] })

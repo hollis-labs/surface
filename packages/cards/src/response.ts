@@ -87,6 +87,11 @@ export type PriorResponseState =
   | { readonly kind: "canceled" }
   /** The server says the ask lapsed. Terminal; the client never infers this from a clock. */
   | { readonly kind: "expired" }
+  /**
+   * The sender stopped waiting for the answer (an agent's run ended while it asked).
+   * Closed to the sender; a host may still take a late answer (`acceptsLateAnswer`).
+   */
+  | { readonly kind: "abandoned" }
   /** Replaced by a newer card. Terminal; the host may link the replacement. */
   | { readonly kind: "superseded" }
   /** The handler failed. Terminal on the wire; a host may still offer a retry. */
@@ -116,6 +121,8 @@ export function classifyPriorResponse(status: string | null | undefined): PriorR
       return { kind: "canceled" }
     case "expired":
       return { kind: "expired" }
+    case "abandoned":
+      return { kind: "abandoned" }
     case "superseded":
       return { kind: "superseded" }
     case "error":
@@ -139,4 +146,30 @@ export function classifyPriorResponse(status: string | null | undefined): PriorR
  */
 export function acceptsInput(state: PriorResponseState): boolean {
   return state.kind === "open"
+}
+
+/** The kinds of card that ask the person something. */
+export const ANSWERABLE_KINDS: readonly string[] = ["confirm", "prompt", "choice", "form", "approval"]
+
+/** What `acceptsLateAnswer` reads of a card, as the server sends it. */
+export interface LateAnswerCard {
+  readonly source?: string
+  readonly kind: string
+  readonly status?: string | null
+  /** Set once a late answer was taken. */
+  readonly late?: boolean
+}
+
+/**
+ * Whether a closed card still takes one late answer: an agent's question the agent stopped
+ * waiting for, because its run ended (`abandoned`) or its wait ran out (`expired`), not yet
+ * answered late. The server holds the same rule and decides; this only says what to draw.
+ */
+export function acceptsLateAnswer(card: LateAnswerCard): boolean {
+  return (
+    card.source === "agent" &&
+    ANSWERABLE_KINDS.includes(card.kind) &&
+    card.late !== true &&
+    (card.status === "abandoned" || card.status === "expired")
+  )
 }

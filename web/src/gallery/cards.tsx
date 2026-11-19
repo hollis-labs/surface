@@ -13,16 +13,22 @@ import { Approval } from "./approval"
 import { Section, Specimen } from "./Specimen"
 
 /** The states a card can be drawn in, and "stale": open, but changed under the person. */
-const STATES: { label: string; state: CardState; stale?: boolean }[] = [
+const STATES: { label: string; state: CardState; stale?: boolean; draft?: boolean }[] = [
   { label: "open", state: "open" },
   { label: "pending", state: "pending" },
   { label: "submitted", state: "submitted" },
   { label: "canceled", state: "canceled" },
   { label: "expired", state: "expired" },
+  { label: "abandoned", state: "abandoned" },
   { label: "superseded", state: "superseded" },
   { label: "failed", state: "failed" },
   { label: "stale", state: "open", stale: true },
+  { label: "draft restored", state: "open", draft: true },
 ]
+
+/** What the owner had typed before a reload, as the page keeps it: each card reads its own
+ * names (a form its field keys, a prompt `text`, a choice `picked` and `other`). */
+const DRAFT = { title: "Research, from a draft", count: 3, text: "Kept across a reload", picked: ["below"], other: "" }
 
 const base = (s: (typeof STATES)[number]): AnswerableCardProps => ({
   state: s.state,
@@ -32,6 +38,8 @@ const base = (s: (typeof STATES)[number]): AnswerableCardProps => ({
   receipt: s.state === "submitted" ? "Approved" : undefined,
   expires: s.state === "open" ? "at 14:05" : undefined,
   onRespond: () => {},
+  draft: s.draft ? DRAFT : undefined,
+  onDraft: s.draft ? () => {} : undefined,
 })
 
 const FIELDS: CardFormField[] = [

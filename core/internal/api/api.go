@@ -391,11 +391,24 @@ func (s *server) resolveMark(w http.ResponseWriter, r *http.Request) {
 }
 
 // cards lists the open cards; with ?all=1 the closed ones as well.
+// cards lists the open cards; ?all=1 the recent closed ones too; ?late=1 the open ones and
+// the agent's questions that still take a late answer.
 func (s *server) cards(w http.ResponseWriter, r *http.Request) {
-	out, err := s.a.Cards().List(r.Context(), r.URL.Query().Get("all") != "")
+	q := r.URL.Query()
+	out, err := s.a.Cards().List(r.Context(), q.Get("all") != "")
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
+	}
+	if late, can := s.a.Cards().(interface {
+		LateOpen(ctx context.Context) ([]module.Card, error)
+	}); q.Get("late") != "" && q.Get("all") == "" && can {
+		more, err := late.LateOpen(r.Context())
+		if err != nil {
+			fail(w, http.StatusInternalServerError, err)
+			return
+		}
+		out = append(out, more...)
 	}
 	ok(w, out)
 }

@@ -194,7 +194,7 @@
     },
     "prompt-input": {
       "files": {
-        "web/src/components/ui/prompt-input.tsx": "ac74ec278a0cbbca26ce7ae33be503ee48d29e9fe4bc7885e10ed19de9734ff5"
+        "web/src/components/ui/prompt-input.tsx": "6774a4405845cc9bf6cc3f033de6da90818770c707b888f09aa69f05e6040fdb"
       }
     },
     "resizable": {

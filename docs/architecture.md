@@ -111,6 +111,7 @@ before the database opens: the listen address, logging, the database path.
 | `GET|PUT|DELETE /api/settings[/{key}]` | Live settings. |
 | `GET|POST /api/marks`, `…/{id}/replies`, `…/{id}/resolve` | Marks. |
 | `GET|POST /api/layouts`, `PUT|DELETE /api/layouts/{name}`, `POST …/load` | Saved layouts. |
+| `GET /api/cite`, `GET /api/cite/resolve?kind=&ids=`, `GET /api/cite/record?kind=&id=` | References: the kinds the modules resolve, a batch of previews, one record whole. |
 | `GET /api/tools`, `POST /api/tools/{name}` | Every agent tool, callable. |
 | `POST /mcp` | The same tools over the Model Context Protocol. |
 | `/api/agent/…` | The embedded agent. |

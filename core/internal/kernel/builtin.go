@@ -21,6 +21,7 @@ var coreSettings = []module.Setting{
 	{Key: "gap", Title: "Window gap", About: "Space between tiled windows, in pixels.", Type: module.SettingInt, Default: 10},
 	{Key: "agent_panel_width", Title: "Agent panel width", About: "Width of the agent panel, in pixels.", Type: module.SettingInt, Default: 420},
 	{Key: "confirm_close_dirty", Title: "Ask before closing unsaved work", Type: module.SettingBool, Default: true},
+	{Key: "agent_selector", Title: "Who picks the agent's context", About: "focus: the window in front picks the slot (and a slot you pin holds). classifier: the classifier may overrule the window in front when it is sure (p ≥ 0.7) the message is about another slot; a pin still wins. Check its record first at /api/agent/classify/replay.", Type: module.SettingEnum, Default: "focus", Options: []string{"focus", "classifier"}},
 	{Key: "agent_trace", Title: "Keep a context trace", About: "Record, in this app's database, what each message put in front of the agent and why, and what you did after it (a re-pin, a move to another window). It is what a classifier that picks the agent's context learns from. Read it at /api/agent/trace.", Type: module.SettingBool, Default: true},
 }
 

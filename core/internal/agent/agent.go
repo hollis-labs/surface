@@ -69,7 +69,8 @@ type Options struct {
 	Approver Approver
 	// Engine, when set, is used instead of libs agent/host (tests, and Nanite later).
 	Engine Engine
-	// Selector, when set, replaces the focus selector (the classifier, later).
+	// Selector, when set, replaces the default: the focus selector, overruled by the
+	// classifier when the setting surface.agent_selector is "classifier".
 	Selector slots.Selector
 	// Decider, when set, is the classifier's async tier instead of the one the config file
 	// names (tests).
@@ -156,7 +157,8 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	s.selector = o.Selector
 	if s.selector == nil {
 		s.pin = slots.NewFocusSelector()
-		s.selector = s.pin
+		// The focus selector, which the classifier overrules when surface.agent_selector says so.
+		s.selector = &classifiedSelector{focus: s.pin, cls: s.cls, mode: s.selectorMode}
 	}
 	s.engine = o.Engine
 	s.custom = o.Engine != nil

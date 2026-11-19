@@ -130,7 +130,15 @@ plugs it in.
 
 That classifier runs today **in shadow** (`core/internal/classifier`, on libs `core/util/classify`). Every traced
 turn is labelled on two facets, and the result is kept beside the turn (`classified`). Nothing reads it to decide
-anything yet.
+anything unless the live setting `surface.agent_selector` is `classifier`.
+
+With that setting, the classifier overrules the window in front for a message only when all of these hold:
+- the message has text;
+- the owner has not pinned a slot;
+- the slot facet answered for another slot with p ≥ 0.7.
+
+The focus slot then follows as a second slot, and the trace records `why: classified`. In every other case the
+focus selector's choice stands. The default is `focus`. Check the replay report before switching.
 - `act`: command, question, task, correction, approval, chat, or an abstention. The rules and examples are in
   `act.json`.
 - `slot`: the app's slots and `general`. Its priors come from the view and module in front and the mode, and its

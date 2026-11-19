@@ -30,6 +30,8 @@ var coreViews = []module.View{
 	{ID: "surface.layouts", Title: "Layouts", Icon: "layout-dashboard", Width: 520, Height: 560, Menu: true, Render: module.Component("surface/layouts")},
 	{ID: "surface.marks", Title: "Marks", Icon: "message-square-quote", Width: 480, Height: 600, Menu: true, Render: module.Component("surface/marks")},
 	{ID: "surface.cards", Title: "Cards", Icon: "gallery-vertical-end", Width: 480, Height: 640, Menu: true, Render: module.Component("surface/cards")},
+	// Why the agent gets the context it gets: now, and turn by turn (the context trace).
+	{ID: "surface.context", Title: "Context", Icon: "scan-eye", Width: 1000, Height: 720, Menu: true, Render: module.Component("surface/context")},
 	// Every registry component in its variants and states, for design work and screenshots.
 	{ID: "surface.gallery", Title: "Components", Icon: "swatch-book", Width: 960, Height: 760, Menu: true, Render: module.Component("surface/gallery")},
 }
@@ -241,7 +243,7 @@ func coreTools(a *App) []module.Tool {
 			}},
 		{Name: "desk_release", Level: module.LevelAct,
 			Description: "Say you are done with the transient windows you opened: the one named, or all of them. Each closes unless the owner kept it or has unsaved work in it, and the focus goes back to the owner's window.",
-			Input: schema(`{"type":"object","properties":{"window":{"type":"string","description":"One window; omit for all your transient windows."}}}`),
+			Input:       schema(`{"type":"object","properties":{"window":{"type":"string","description":"One window; omit for all your transient windows."}}}`),
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[idIn](raw)
 				if err != nil {

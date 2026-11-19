@@ -184,6 +184,12 @@ chosen is the guess, and a re-pin or a move soon after is the correction. It is 
 because it only grows with use. It stays on the owner's machine, keeps the newest 50,000 turns, and the live
 setting `surface.agent_trace` turns it off.
 
+The **Context** window (`surface.context`, in the apps menu) reads it. **Now** shows what a message sent this
+moment would carry: the window in front, the slot and why it was chosen, the tools brought to mind and the block
+itself (`GET /api/agent/context`). **History** lists the turns, each with its window, slots and why, tools, routed
+rule, reflexes, size, budget cuts and what followed; an owner's re-pin soon after a turn is flagged as a correction.
+It also turns the trace off and exports it.
+
 `GET /api/agent/trace?limit=` gives the newest turns with their signals.
 `GET /api/agent/trace/export` gives every turn as JSON lines.
 

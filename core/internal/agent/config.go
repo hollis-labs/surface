@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 // The key itself is never in this file: KeyFile names a file that holds it, read on every
 // request, so it can be rotated without a restart.
 type FileConfig struct {
+	// Tether attaches the page to an app-bound CLI seat instead of the embedded runner.
+	Tether TetherConfig `json:"tether,omitempty"`
+
 	// Model is the gateway's model name ("anthropic-opus").
 	Model string `json:"model"`
 	// GatewayURL is an Anthropic-compatible endpoint; the engine posts to <url>/v1/messages.
@@ -51,6 +55,28 @@ type FileConfig struct {
 	Path string `json:"-"`
 }
 
+// TetherConfig names the chat wire endpoint and the statically app-bound seat.
+// KeyFile stays on the server and is read per request; it is never sent to the page.
+type TetherConfig struct {
+	URL     string `json:"url"`
+	Seat    string `json:"seat"`
+	KeyFile string `json:"key_file,omitempty"`
+}
+
+func (c TetherConfig) validate() error {
+	if c.URL == "" && c.Seat == "" && c.KeyFile == "" {
+		return nil
+	}
+	u, err := url.Parse(c.URL)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("tether.url must be an HTTP(S) chat wire URL without credentials, query or fragment")
+	}
+	if strings.TrimSpace(c.Seat) == "" || strings.ContainsAny(c.Seat, "/\\?#") || c.Seat == "." || c.Seat == ".." {
+		return errors.New("tether.seat must name one seat")
+	}
+	return nil
+}
+
 // ClassifierConfig is the classifier's async tier: a model gateway asked about each message
 // after the turn, off its path. With no GatewayURL there is no async tier.
 type ClassifierConfig struct {
@@ -64,6 +90,9 @@ type ClassifierConfig struct {
 	// KeyFile holds the gateway's bearer key ("~/" is the home directory). The key needs
 	// the decide scope for DecideModel and the embed scope for EmbedModel.
 	KeyFile string `json:"key_file,omitempty"`
+	// Warden, instead of KeyFile: mint short-lived gateway tokens from a Warden parent
+	// credential (rotate-on-use). Set exactly one of KeyFile and Warden.
+	Warden *WardenConfig `json:"warden,omitempty"`
 	// DecideModel turns on the JEV judge: the gateway's decision route ("jev"). Pinned
 	// models keep results comparable.
 	DecideModel string `json:"decide_model,omitempty"`
@@ -73,6 +102,20 @@ type ClassifierConfig struct {
 	EmbedModel string `json:"embed_model,omitempty"`
 	// Purpose is what a decision gateway accounts the spend to; default surface_classify.
 	Purpose string `json:"purpose,omitempty"`
+}
+
+// WardenConfig names a Warden and the parent credential the classifier mints gateway
+// tokens from.
+type WardenConfig struct {
+	// URL is Warden's base URL.
+	URL string `json:"url"`
+	// CredentialFile holds the parent credential ("~/" is the home directory). It is
+	// rewritten on every mint; keep it 0600. Apps may share one file: mints take a lock.
+	CredentialFile string `json:"credential_file"`
+	// Audience is the tokens' audience ("llm-gateway").
+	Audience string `json:"audience"`
+	// Scopes narrows the tokens; empty asks for what the grant allows.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // Classifier gateway dialects.
@@ -124,8 +167,25 @@ func LoadConfig(app string) (FileConfig, error) {
 	if v := os.Getenv("SURFACE_AGENT_KEY_FILE"); v != "" {
 		c.KeyFile = v
 	}
+	if v := os.Getenv("SURFACE_TETHER_URL"); v != "" {
+		c.Tether.URL = v
+	}
+	if v := os.Getenv("SURFACE_TETHER_SEAT"); v != "" {
+		c.Tether.Seat = v
+	}
+	if v := os.Getenv("SURFACE_TETHER_KEY_FILE"); v != "" {
+		c.Tether.KeyFile = v
+	}
+	c.Tether.URL = strings.TrimRight(c.Tether.URL, "/")
+	c.Tether.KeyFile = expandHome(c.Tether.KeyFile)
+	if err := c.Tether.validate(); err != nil {
+		return c, err
+	}
 	c.KeyFile = expandHome(c.KeyFile)
 	c.Classifier.KeyFile = expandHome(c.Classifier.KeyFile)
+	if c.Classifier.Warden != nil {
+		c.Classifier.Warden.CredentialFile = expandHome(c.Classifier.Warden.CredentialFile)
+	}
 	return c, nil
 }
 

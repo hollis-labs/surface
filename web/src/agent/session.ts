@@ -65,7 +65,7 @@ export function createAgentSession(): AgentSession {
     .then((setup) => {
       if (setup?.wire === "conversation" && setup.agent) {
         conv = createConversationStore({
-          base: BASE,
+          base: setup.wire_base ?? BASE,
           agent: setup.agent,
           role,
           stream,

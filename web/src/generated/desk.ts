@@ -12,6 +12,7 @@ import m8 from "../../../modules/diagram/web/index"
 import m9 from "../../../modules/inbox/web/index"
 import m10 from "../../../modules/reader/web/index"
 import m11 from "../../../modules/assist/web/index"
+import m14 from "../../../modules/work/web/index"
 
 export const app = { name: "desk", title: "Surface Desk" }
 
@@ -28,4 +29,5 @@ export const modules: Record<string, ModuleWeb> = {
   "inbox": m9,
   "reader": m10,
   "assist": m11,
+  "work": m14,
 }

@@ -1,0 +1,1559 @@
+package work
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/url"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Store is the working copy of the Work items (the module's own store): a mirror
+// of the Caster items for quick views and reading when Caster is away, and the owner's notes
+// not yet sent. Nothing lives only here once it is in Caster.
+//
+// Writes go to Caster at once, each after reading the item again: Caster's put has no "only
+// if still at revision N", so a contended item (a parent's children, a view's layout, a
+// card's stage) is re-read and the change applied to what is there, and an edit begun on an
+// older revision does not overwrite the newer one; the owner's text is kept as a suggestion
+// on it instead.
+type Store struct {
+	db     *sql.DB
+	caster Caster
+
+	mu        sync.Mutex // one write or refresh at a time
+	refreshed map[string]time.Time
+	lastErr   map[string]string
+}
+
+// NewStore is the working copy in db (the module's store, migrations/0001_init.sql) over
+// caster. caster may be nil (no way to reach Tether): the copy is then read only and says why.
+func NewStore(db *sql.DB, caster Caster) *Store {
+	return &Store{db: db, caster: caster, refreshed: map[string]time.Time{}, lastErr: map[string]string{}}
+}
+
+// ErrNoCaster says there is no way to reach Caster configured, so nothing can be written.
+var ErrNoCaster = errors.New("Caster is not reachable: set work.tether_command (or work.tether_url) in Settings")
+
+// ErrNotFound says there is no such workspace or item.
+var ErrNotFound = errors.New("there is no such workspace or item")
+
+func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+// ---- Read-back ----
+
+// Refresh brings the copy of one namespace up to date with Caster: one listing, and a fetch
+// for each item whose revision moved. At most every 15 s per namespace unless forced.
+func (s *Store) Refresh(ctx context.Context, ns string, force bool) (int, error) {
+	if s.caster == nil {
+		return 0, ErrNoCaster
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !force && time.Since(s.refreshed[ns]) < 15*time.Second {
+		if e := s.lastErr[ns]; e != "" {
+			return 0, errors.New(e)
+		}
+		return 0, nil
+	}
+	n, err := s.refreshLocked(ctx, ns)
+	s.refreshed[ns] = time.Now()
+	s.lastErr[ns] = ""
+	if err != nil {
+		s.lastErr[ns] = err.Error()
+	}
+	return n, err
+}
+
+func (s *Store) refreshLocked(ctx context.Context, ns string) (int, error) {
+	heads, err := s.caster.List(ctx, ns)
+	if err != nil {
+		return 0, fmt.Errorf("Caster could not be listed: %w", err)
+	}
+	have := map[string]int{}
+	rows, err := s.db.QueryContext(ctx, `SELECT name, rev FROM items WHERE ns=?`, ns)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var name string
+		var rev int
+		if rows.Scan(&name, &rev) == nil {
+			have[name] = rev
+		}
+	}
+	_ = rows.Close()
+	changed := 0
+	for _, h := range heads {
+		if have[h.Name] == h.Rev || !wanted(ns, h.Name) {
+			continue
+		}
+		it, ok, err := s.caster.Get(ctx, ns, h.Name, 0)
+		if err != nil {
+			return changed, err
+		}
+		if !ok {
+			continue
+		}
+		if err := s.keep(ctx, it, h.Updated); err != nil {
+			return changed, err
+		}
+		changed++
+	}
+	return changed, nil
+}
+
+// wanted says whether a listed name is one the engine reads.
+func wanted(ns, name string) bool {
+	if ns == IndexNS {
+		return ValidSlug(name)
+	}
+	k, _ := ParseName(name)
+	return k != NameOther
+}
+
+// keep puts an item's revision in the copy (never an older one over a newer).
+func (s *Store) keep(ctx context.Context, it Item, updated string) error {
+	if updated == "" {
+		updated = now()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO items(ns, name, rev, title, content, updated, fetched_at) VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(ns, name) DO UPDATE SET rev=excluded.rev, title=excluded.title, content=excluded.content, updated=excluded.updated, fetched_at=excluded.fetched_at
+		WHERE excluded.rev >= items.rev`, it.NS, it.Name, it.Rev, it.Title, it.Content, updated, now())
+	return err
+}
+
+type row struct {
+	name, title, content, updated string
+	rev                           int
+}
+
+func (s *Store) rows(ctx context.Context, ns, prefix string) ([]row, error) {
+	rs, err := s.db.QueryContext(ctx, `SELECT name, rev, title, content, updated FROM items WHERE ns=? AND substr(name, 1, ?)=?`, ns, len(prefix), prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rs.Close() }()
+	var out []row
+	for rs.Next() {
+		var r row
+		if err := rs.Scan(&r.name, &r.rev, &r.title, &r.content, &r.updated); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rs.Err()
+}
+
+func (s *Store) copyOf(ctx context.Context, ns, name string) (row, bool) {
+	var r row
+	err := s.db.QueryRowContext(ctx, `SELECT name, rev, title, content, updated FROM items WHERE ns=? AND name=?`, ns, name).
+		Scan(&r.name, &r.rev, &r.title, &r.content, &r.updated)
+	return r, err == nil
+}
+
+// ---- Views ----
+
+// Workspace is one body of work, from its index item.
+type Workspace struct {
+	Archived bool     `json:"archived"`
+	Deleted  bool     `json:"deleted"`
+	Slug     string   `json:"slug"`
+	Title    string   `json:"title"`
+	App      string   `json:"app"`
+	Preset   string   `json:"preset"`
+	NS       string   `json:"ns"`
+	Owners   []string `json:"owners"`
+	Created  string   `json:"created,omitempty"`
+	Body     string   `json:"body"`
+	Items    int      `json:"items"`
+	Rev      int      `json:"rev"`
+	Updated  string   `json:"updated"`
+	Problem  string   `json:"problem,omitempty"`
+}
+
+func workspaceOf(r row) Workspace {
+	w := Workspace{Slug: r.name, Title: r.name, NS: NS(r.name), Owners: []string{}, Rev: r.rev, Updated: r.updated}
+	d, err := ParseDoc(r.content)
+	if err != nil {
+		w.Problem = err.Error()
+		return w
+	}
+	if t := strings.TrimSpace(d.Str("title")); t != "" {
+		w.Title = t
+	}
+	_ = d.Decode("archived", &w.Archived)
+	_ = d.Decode("deleted", &w.Deleted)
+	w.App, w.Preset, w.Created, w.Body = d.Str("app"), d.Str("preset"), d.Str("created"), d.Body
+	if ns := d.Str("ns"); ns != "" {
+		w.NS = ns
+	}
+	if o := d.Strings("owners"); o != nil {
+		w.Owners = o
+	}
+	return w
+}
+
+// Workspaces lists the workspaces (for one app when app is set), newest change first.
+func (s *Store) Workspaces(ctx context.Context, app string) ([]Workspace, error) {
+	all, err := s.rows(ctx, IndexNS, "")
+	if err != nil {
+		return nil, err
+	}
+	out := []Workspace{}
+	for _, r := range all {
+		if !ValidSlug(r.name) {
+			continue
+		}
+		w := workspaceOf(r)
+		if w.Deleted || (app != "" && w.App != app) {
+			continue
+		}
+		_ = s.db.QueryRowContext(ctx, `SELECT count(*) FROM items WHERE ns=? AND substr(name,1,2)='i.'`, w.NS).Scan(&w.Items)
+		out = append(out, w)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Updated > out[j].Updated })
+	return out, nil
+}
+
+// workspace reads a workspace's index from the copy.
+func (s *Store) workspace(ctx context.Context, ws string) (Workspace, bool) {
+	if !ValidSlug(ws) {
+		return Workspace{}, false
+	}
+	r, ok := s.copyOf(ctx, IndexNS, ws)
+	if !ok {
+		return Workspace{}, false
+	}
+	return workspaceOf(r), true
+}
+
+// NSOf is the namespace a workspace's items are in ("" when there is no such workspace).
+func (s *Store) NSOf(ctx context.Context, ws string) string {
+	w, ok := s.workspace(ctx, ws)
+	if !ok {
+		return ""
+	}
+	return w.NS
+}
+
+// Card is an item as the views show it.
+type Card struct {
+	ID        string         `json:"id"`
+	Kind      string         `json:"kind"`
+	Title     string         `json:"title"`
+	Stage     string         `json:"stage"`
+	Fields    map[string]any `json:"fields"`
+	Parent    string         `json:"parent,omitempty"`
+	Children  []string       `json:"children"`
+	Links     []Link         `json:"links"`
+	Material  []Material     `json:"material"`
+	Published []Published    `json:"published"`
+	Task      string         `json:"task,omitempty"`
+	Tags      []string       `json:"tags"`
+	Cut       bool           `json:"cut,omitempty"`
+	Signed    bool           `json:"signed,omitempty"`     // signed off
+	StaleSign bool           `json:"stale_sign,omitempty"` // signed off, and its text changed since
+	Excerpt   string         `json:"excerpt,omitempty"`
+	Words     int            `json:"words"`
+	Rev       int            `json:"rev"`
+	Updated   string         `json:"updated"`
+	Problem   string         `json:"problem,omitempty"`
+}
+
+// Detail is one item opened: its card, its sections and the owner's notes on it.
+type Detail struct {
+	Card
+	Ref      string            `json:"ref"`
+	Sections map[string]string `json:"sections"`
+	Order    []string          `json:"order"` // the sections shown: the kind's, then any other heading
+	Lead     string            `json:"lead,omitempty"`
+	Notes    []Note            `json:"notes"`
+	Rounds   []RoundView       `json:"rounds"`              // sent, newest first
+	SignOff  *SignedOff        `json:"sign_off,omitempty"`  // the item's sign-off, if any
+	Changed  bool              `json:"changed_since_round"` // revised since the last round was sent
+	Owners   []string          `json:"owners"`              // the workspace's: who rounds are mailed to
+}
+
+func cardOf(id string, r row, kinds map[string]Kind) (Card, *Doc) {
+	c := Card{ID: id, Title: id, Rev: r.rev, Updated: r.updated, Fields: map[string]any{}, Children: []string{},
+		Links: []Link{}, Material: []Material{}, Published: []Published{}, Tags: []string{}}
+	d, err := ParseDoc(r.content)
+	if err != nil {
+		c.Problem = err.Error()
+		return c, nil
+	}
+	if t := strings.TrimSpace(d.Str("title")); t != "" {
+		c.Title = t
+	}
+	c.Kind, c.Stage, c.Parent, c.Task, c.Cut = d.Str("kind"), d.Str("stage"), d.Str("parent"), d.Str("task"), d.Bool("cut")
+	_ = d.Decode("fields", &c.Fields)
+	_ = d.Decode("links", &c.Links)
+	_ = d.Decode("material", &c.Material)
+	_ = d.Decode("published", &c.Published)
+	if v := d.Strings("children"); v != nil {
+		c.Children = v
+	}
+	if v := d.Strings("tags"); v != nil {
+		c.Tags = v
+	}
+	// A key present but empty (null) decodes to nil; the views want empty lists.
+	if c.Fields == nil {
+		c.Fields = map[string]any{}
+	}
+	if c.Links == nil {
+		c.Links = []Link{}
+	}
+	if c.Material == nil {
+		c.Material = []Material{}
+	}
+	if c.Published == nil {
+		c.Published = []Published{}
+	}
+	if so, stale := signedOf(d); so != nil {
+		c.Signed, c.StaleSign = true, stale
+	}
+	if c.Stage == "" {
+		if k, ok := kinds[c.Kind]; ok && len(k.Stages) > 0 {
+			c.Stage = k.Stages[0]
+		}
+	}
+	b := ParseBody(d.Body)
+	for _, sec := range b.Sections {
+		c.Words += len(strings.Fields(sec.Text))
+		if c.Excerpt == "" {
+			if line := firstLine(sec.Text); line != "" {
+				c.Excerpt = line
+			}
+		}
+	}
+	if c.Excerpt == "" {
+		c.Excerpt = firstLine(b.Lead)
+	}
+	c.Words += len(strings.Fields(b.Lead))
+	return c, d
+}
+
+func firstLine(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			if len(l) > 160 {
+				l = l[:160] + "…"
+			}
+			return l
+		}
+	}
+	return ""
+}
+
+// Kinds is a workspace's kinds from the copy, by name.
+func (s *Store) Kinds(ctx context.Context, ns string) (map[string]Kind, []Kind) {
+	rs, _ := s.rows(ctx, ns, "kind.")
+	byName := map[string]Kind{}
+	list := []Kind{}
+	for _, r := range rs {
+		_, name := ParseName(r.name)
+		if name == "" {
+			continue
+		}
+		k := Kind{Kind: name, Label: name}
+		if err := yaml.Unmarshal([]byte(r.content), &k); err != nil {
+			k.Problem = err.Error()
+		}
+		k.Kind, k.Rev = name, r.rev
+		for _, p := range []*[]string{&k.Stages, &k.Sections, &k.Children} {
+			if *p == nil {
+				*p = []string{}
+			}
+		}
+		if k.Fields == nil {
+			k.Fields = []Field{}
+		}
+		byName[name] = k
+		list = append(list, k)
+	}
+	return byName, list
+}
+
+// Views is a workspace's saved views from the copy.
+func (s *Store) Views(ctx context.Context, ns string) []View {
+	rs, _ := s.rows(ctx, ns, "v.")
+	out := []View{}
+	for _, r := range rs {
+		_, id := ParseName(r.name)
+		if id == "" {
+			continue
+		}
+		v := View{}
+		if err := yaml.Unmarshal([]byte(r.content), &v); err != nil {
+			v.Problem = err.Error()
+		}
+		v.ID, v.Rev = id, r.rev
+		if v.Kinds == nil {
+			v.Kinds = []string{}
+		}
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Title < out[j].Title })
+	return out
+}
+
+// Space is a workspace opened: its index, kinds, items and views.
+type Space struct {
+	Default   string    `json:"default_view"`
+	Workspace Workspace `json:"workspace"`
+	Kinds     []Kind    `json:"kinds"`
+	Items     []Card    `json:"items"`
+	Views     []View    `json:"views"`
+}
+
+// Open is a workspace from the copy. ok is false when there is no such workspace.
+func (s *Store) Open(ctx context.Context, ws string) (Space, bool, error) {
+	w, ok := s.workspace(ctx, ws)
+	if !ok {
+		return Space{}, false, nil
+	}
+	kinds, list := s.Kinds(ctx, w.NS)
+	rs, err := s.rows(ctx, w.NS, "i.")
+	if err != nil {
+		return Space{}, false, err
+	}
+	items := make([]Card, 0, len(rs))
+	for _, r := range rs {
+		_, id := ParseName(r.name)
+		if id == "" {
+			continue
+		}
+		c, _ := cardOf(id, r, kinds)
+		items = append(items, c)
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Updated > items[j].Updated })
+	// Kinds in the preset's order (a kind made later goes after them, by name).
+	rank := map[string]int{}
+	if p, ok := Presets()[w.Preset]; ok {
+		for i, k := range p.Kinds {
+			rank[k.Kind] = i + 1
+		}
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		ri, rj := rank[list[i].Kind], rank[list[j].Kind]
+		if ri == 0 {
+			ri = 1 << 20
+		}
+		if rj == 0 {
+			rj = 1 << 20
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		return list[i].Kind < list[j].Kind
+	})
+	w.Items = len(items)
+	views := s.Views(ctx, w.NS)
+	// Views in the preset's order (the one a workspace opens on first); others after, by title.
+	if p, ok := Presets()[w.Preset]; ok {
+		at := func(v View) int {
+			for i, pv := range p.Views {
+				if pv.View == v.View && pv.Title == v.Title {
+					return i
+				}
+			}
+			return len(p.Views)
+		}
+		sort.SliceStable(views, func(i, j int) bool { return at(views[i]) < at(views[j]) })
+	}
+	return Space{Workspace: w, Kinds: list, Items: items, Views: views, Default: defaultView(w.Preset, views)}, true, nil
+}
+
+// defaultView is the view a workspace opens on: the one its preset lists first (by view and
+// title), else the first.
+func defaultView(preset string, views []View) string {
+	if p, ok := Presets()[preset]; ok && len(p.Views) > 0 {
+		for _, v := range views {
+			if v.View == p.Views[0].View && v.Title == p.Views[0].Title {
+				return v.ID
+			}
+		}
+	}
+	if len(views) > 0 {
+		return views[0].ID
+	}
+	return ""
+}
+
+// Detail is one item from the copy, with its sections and notes.
+func (s *Store) Detail(ctx context.Context, ws, id string) (Detail, bool, error) {
+	ns := s.NSOf(ctx, ws)
+	if ns == "" || !ValidID(id) {
+		return Detail{}, false, nil
+	}
+	r, ok := s.copyOf(ctx, ns, ItemName(id))
+	if !ok {
+		return Detail{}, false, nil
+	}
+	kinds, _ := s.Kinds(ctx, ns)
+	c, d := cardOf(id, r, kinds)
+	out := Detail{Card: c, Ref: Ref(ns, ItemName(id)), Sections: map[string]string{}, Order: []string{}, Notes: []Note{}}
+	if d != nil {
+		b := ParseBody(d.Body)
+		out.Lead = strings.TrimSpace(b.Lead)
+		seen := map[string]bool{}
+		for _, sec := range kinds[c.Kind].Sections {
+			out.Order = append(out.Order, sec)
+			out.Sections[sec] = b.Get(sec)
+			seen[norm(sec)] = true
+		}
+		for _, sec := range b.Sections {
+			if !seen[norm(sec.Heading)] {
+				seen[norm(sec.Heading)] = true
+				out.Order = append(out.Order, sec.Heading)
+				out.Sections[sec.Heading] = sec.Text
+			}
+		}
+	}
+	out.Notes, _ = s.Notes(ctx, ws, id)
+	out.Rounds, _ = s.rounds(ctx, ns, id)
+	if out.Rounds == nil {
+		out.Rounds = []RoundView{}
+	}
+	if len(out.Rounds) > 0 {
+		if last := out.Rounds[0]; last.Digest != "" && d != nil {
+			out.Changed = last.Digest != textDigest(d)
+		} else {
+			out.Changed = out.Rev > last.ItemRev
+		}
+	}
+	out.SignOff, _ = signedOf(d)
+	out.Owners = []string{}
+	if w, ok := s.workspace(ctx, ws); ok {
+		out.Owners = w.Owners
+	}
+	return out, true, nil
+}
+
+// ---- Writes ----
+
+// write puts an item and keeps the new revision in the copy.
+func (s *Store) write(ctx context.Context, ns, name, content, title string) (int, error) {
+	rev, err := s.caster.Put(ctx, ns, name, content, title)
+	if err != nil {
+		return 0, fmt.Errorf("Caster did not take the change: %w", err)
+	}
+	return rev, s.keep(ctx, Item{NS: ns, Name: name, Rev: rev, Title: title, Content: content}, now())
+}
+
+// fresh reads an item from Caster as it is now, keeping it in the copy too.
+func (s *Store) fresh(ctx context.Context, ns, name string) (Item, bool, error) {
+	it, ok, err := s.caster.Get(ctx, ns, name, 0)
+	if err != nil {
+		return Item{}, false, fmt.Errorf("Caster could not be read: %w", err)
+	}
+	if ok {
+		_ = s.keep(ctx, it, "")
+	}
+	return it, ok, nil
+}
+
+// space is a workspace's namespace, read from Caster when the copy does not have it yet.
+func (s *Store) space(ctx context.Context, ws string) (string, error) {
+	if ns := s.NSOf(ctx, ws); ns != "" {
+		return ns, nil
+	}
+	if !ValidSlug(ws) {
+		return "", ErrNotFound
+	}
+	it, ok, err := s.fresh(ctx, IndexNS, ws)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", ErrNotFound
+	}
+	return workspaceOf(row{name: ws, content: it.Content, rev: it.Rev}).NS, nil
+}
+
+// change re-reads an item and applies fn to it as it is now (the lock is held).
+func (s *Store) changeLocked(ctx context.Context, ns, id string, fn func(d *Doc) error) (int, error) {
+	it, ok, err := s.fresh(ctx, ns, ItemName(id))
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return 0, fmt.Errorf("item %s cannot be read: %w", id, err)
+	}
+	if err := fn(d); err != nil {
+		return 0, err
+	}
+	title := d.Str("title")
+	if title == "" {
+		title = id
+	}
+	return s.write(ctx, ns, ItemName(id), d.String(), title)
+}
+
+func (s *Store) change(ctx context.Context, ws, id string, fn func(d *Doc) error) (int, error) {
+	if s.caster == nil {
+		return 0, ErrNoCaster
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return 0, err
+	}
+	return s.changeLocked(ctx, ns, id, fn)
+}
+
+// NewWorkspace makes a workspace from a preset: its kinds and views in its own namespace,
+// then its index in "work" (the index is what makes it exist). Refused when it exists.
+func (s *Store) NewWorkspace(ctx context.Context, slug, title, preset, about string) (string, error) {
+	if s.caster == nil {
+		return "", ErrNoCaster
+	}
+	if !ValidSlug(slug) {
+		return "", errors.New("a workspace name takes lowercase letters, digits and '-'")
+	}
+	p, ok := Presets()[preset]
+	if !ok {
+		return "", fmt.Errorf("there is no preset %q", preset)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok, err := s.fresh(ctx, IndexNS, slug); err != nil {
+		return "", err
+	} else if ok {
+		return "", fmt.Errorf("there is already a workspace %s", slug)
+	}
+	ns := NS(slug)
+	for _, k := range p.Kinds {
+		if _, err := s.write(ctx, ns, KindName(k.Kind), k.YAML(), k.Label); err != nil {
+			return "", err
+		}
+	}
+	for _, v := range p.Views {
+		if _, err := s.write(ctx, ns, ViewName(NewID()), viewYAML(v), v.Title); err != nil {
+			return "", err
+		}
+	}
+	if strings.TrimSpace(title) == "" {
+		title = slug
+	}
+	d, _ := ParseDoc("")
+	for _, kv := range []struct {
+		k string
+		v any
+	}{{"work", "v1"}, {"workspace", slug}, {"title", title}, {"app", p.App}, {"preset", p.ID}, {"ns", ns},
+		{"owners", []string{}}, {"created", time.Now().UTC().Format(time.RFC3339)}} {
+		_ = d.Set(kv.k, kv.v)
+	}
+	d.Body = strings.TrimSpace(about) + "\n"
+	_, err := s.write(ctx, IndexNS, slug, d.String(), title)
+	return slug, err
+}
+
+func viewYAML(v View) string {
+	if v.Kinds == nil {
+		v.Kinds = []string{}
+	}
+	b, _ := yaml.Marshal(v)
+	return string(b)
+}
+
+// NewItem is what the owner asks to make.
+type NewItem struct {
+	Kind     string            `json:"kind"`
+	Title    string            `json:"title"`
+	Stage    string            `json:"stage"`
+	Parent   string            `json:"parent"`
+	Fields   map[string]any    `json:"fields"`
+	Tags     []string          `json:"tags"`
+	Links    []Link            `json:"links"`
+	Sections map[string]string `json:"sections"`
+}
+
+// MakeItem makes an item of a kind the workspace has, at the stage given (or the kind's
+// first), and puts it at the end of its parent's children when it has one.
+func (s *Store) MakeItem(ctx context.Context, ws string, in NewItem) (string, error) {
+	if err := (Edit{Links: &in.Links}).check(); err != nil {
+		return "", err
+	}
+	if s.caster == nil {
+		return "", ErrNoCaster
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return "", err
+	}
+	kinds, _ := s.Kinds(ctx, ns)
+	k, ok := kinds[in.Kind]
+	if !ok {
+		return "", fmt.Errorf("this workspace has no kind %q", in.Kind)
+	}
+	if in.Stage == "" && len(k.Stages) > 0 {
+		in.Stage = k.Stages[0]
+	}
+	if in.Stage != "" && !k.HasStage(in.Stage) {
+		return "", fmt.Errorf("a %s has no stage %q", k.Label, in.Stage)
+	}
+	if in.Parent != "" {
+		pr, ok := s.copyOf(ctx, ns, ItemName(in.Parent))
+		if !ok {
+			return "", fmt.Errorf("there is no item %s to put it in", in.Parent)
+		}
+		pc, _ := cardOf(in.Parent, pr, kinds)
+		if pk := kinds[pc.Kind]; len(pk.Children) > 0 && !contains(pk.Children, in.Kind) {
+			return "", fmt.Errorf("a %s does not hold a %s", pk.Label, k.Label)
+		}
+	}
+	id := ""
+	for range 8 {
+		c := NewID()
+		if _, taken := s.copyOf(ctx, ns, ItemName(c)); taken {
+			continue
+		}
+		if _, ok, err := s.fresh(ctx, ns, ItemName(c)); err != nil {
+			return "", err
+		} else if !ok {
+			id = c
+			break
+		}
+	}
+	if id == "" {
+		return "", errors.New("no free item id was found")
+	}
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		title = "New " + strings.ToLower(k.Label)
+	}
+	d, _ := ParseDoc("")
+	fields := map[string]any{}
+	for key, v := range in.Fields {
+		if _, ok := k.Field(key); ok && v != nil && v != "" {
+			fields[key] = v
+		}
+	}
+	for _, kv := range []struct {
+		k string
+		v any
+	}{{"work", "v1"}, {"id", id}, {"kind", in.Kind}, {"title", title}, {"stage", in.Stage}, {"fields", fields},
+		{"parent", in.Parent}, {"children", []string{}}, {"links", in.Links}, {"material", []Material{}},
+		{"published", []Published{}}, {"tags", in.Tags}} {
+		_ = d.Set(kv.k, kv.v)
+	}
+	var b Body
+	for _, sec := range k.Sections {
+		b.Put(sec, in.Sections[sec], k.Sections)
+	}
+	extraSections := make([]string, 0, len(in.Sections))
+	for sec := range in.Sections {
+		extraSections = append(extraSections, sec)
+	}
+	sort.Strings(extraSections)
+	for _, sec := range extraSections {
+		b.Put(sec, in.Sections[sec], k.Sections)
+	}
+	d.Body = b.String()
+	if _, err := s.write(ctx, ns, ItemName(id), d.String(), title); err != nil {
+		return "", err
+	}
+	if in.Parent != "" {
+		if _, err := s.changeLocked(ctx, ns, in.Parent, func(pd *Doc) error {
+			list := pd.Strings("children")
+			if contains(list, id) {
+				return nil
+			}
+			return pd.Set("children", append(list, id))
+		}); err != nil {
+			return id, fmt.Errorf("the item was made, but its parent's list was not changed: %w", err)
+		}
+	}
+	return id, nil
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// Move sets one value on an item as it is now: its stage (key "stage") or an enum or date
+// field (a board column, a calendar day). Nothing else of the item changes.
+func (s *Store) Move(ctx context.Context, ws, id, key, value string) (int, error) {
+	ns := s.NSOf(ctx, ws)
+	kinds, _ := s.Kinds(ctx, ns)
+	return s.change(ctx, ws, id, func(d *Doc) error {
+		k, ok := kinds[d.Str("kind")]
+		if !ok {
+			return fmt.Errorf("item %s is of a kind this workspace does not describe", id)
+		}
+		if key == "stage" {
+			if !k.HasStage(value) {
+				return fmt.Errorf("a %s has no stage %q", k.Label, value)
+			}
+			if value == StagePublished && d.Str("stage") != value {
+				if err := s.firstPublication(ctx, ns, d); err != nil {
+					return err
+				}
+			}
+			return d.Set("stage", value)
+		}
+		f, ok := k.Field(key)
+		if !ok {
+			return fmt.Errorf("a %s has no field %q", k.Label, key)
+		}
+		if value == "" {
+			return d.SetField(key, nil)
+		}
+		switch f.Type {
+		case "enum":
+			if !contains(f.Options, value) {
+				return fmt.Errorf("%q is not one of %s's options", value, f.Key)
+			}
+		case "date":
+			if _, err := time.Parse("2006-01-02", value); err != nil {
+				return fmt.Errorf("a date is YYYY-MM-DD")
+			}
+		default:
+			return fmt.Errorf("%s is not set by moving the card", f.Key)
+		}
+		return d.SetField(key, value)
+	})
+}
+
+// StagePublished is the stage that means it went out; reaching it starts the publication log.
+const StagePublished = "published"
+
+// firstPublication gives an item that reaches "published" with an empty log its first entry:
+// when (publish_on if it is set and not in the future, else today) and where (the channel's
+// title, when the item names one). The owner corrects it in the detail; a log that has
+// entries is never touched.
+func (s *Store) firstPublication(ctx context.Context, ns string, d *Doc) error {
+	var log []Published
+	_ = d.Decode("published", &log)
+	if len(log) > 0 {
+		return nil
+	}
+	fields := map[string]any{}
+	_ = d.Decode("fields", &fields)
+	today := time.Now().Format("2006-01-02")
+	at := today
+	if v, ok := fields["publish_on"].(string); ok && v <= today {
+		if _, err := time.Parse("2006-01-02", v); err == nil {
+			at = v
+		}
+	}
+	where := ""
+	if ch, ok := fields["channel"].(string); ok && ValidID(ch) {
+		// The channel's title from its own front matter (Caster's title for the name may be
+		// empty or quoted, as the writer put it).
+		if r, ok := s.copyOf(ctx, ns, ItemName(ch)); ok {
+			c, _ := cardOf(ch, r, nil)
+			where = c.Title
+		} else {
+			where = ch
+		}
+	}
+	return d.Set("published", []Published{{At: at, Where: where}})
+}
+
+// Place puts an item in the outline: under parent (an item id, or "" for the top), before
+// the sibling before (or at the end). Moving it to another parent takes it out of the old
+// parent's children, puts it in the new one's, and sets its parent: each applied to the
+// item as it is now. The top level's order is kept in the outline view's layout (order),
+// when a view is given. A parent must be of a kind that holds the item's kind, and an item
+// cannot go inside itself.
+func (s *Store) Place(ctx context.Context, ws, id, parent, before, view string) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	if !ValidID(id) || (parent != "" && !ValidID(parent)) || (before != "" && !ValidID(before)) || (view != "" && !ValidID(view)) {
+		return errors.New("that is not an item or a view id")
+	}
+	if parent == id || before == id {
+		return errors.New("an item cannot go inside or before itself")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return err
+	}
+	kinds, _ := s.Kinds(ctx, ns)
+	it, ok, err := s.fresh(ctx, ns, ItemName(id))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return fmt.Errorf("item %s cannot be read: %w", id, err)
+	}
+	kind, old := d.Str("kind"), d.Str("parent")
+	if parent != "" {
+		pit, ok, err := s.fresh(ctx, ns, ItemName(parent))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("there is no item %s to put it in", parent)
+		}
+		pd, err := ParseDoc(pit.Content)
+		if err != nil {
+			return fmt.Errorf("item %s cannot be read: %w", parent, err)
+		}
+		pk, ok := kinds[pd.Str("kind")]
+		if !ok || !contains(pk.Children, kind) {
+			label := pd.Str("kind")
+			if ok {
+				label = pk.Label
+			}
+			return fmt.Errorf("a %s does not hold a %s", strings.ToLower(label), kind)
+		}
+		// Not inside itself: walk up from the new parent through the copy.
+		for at, n := parent, 0; at != "" && n < 64; n++ {
+			if at == id {
+				return errors.New("an item cannot go inside itself")
+			}
+			r, ok := s.copyOf(ctx, ns, ItemName(at))
+			if !ok {
+				break
+			}
+			c, _ := cardOf(at, r, kinds)
+			at = c.Parent
+		}
+	}
+	place := func(list []string) []string {
+		out := make([]string, 0, len(list)+1)
+		put := false
+		for _, c := range list {
+			if c == id {
+				continue
+			}
+			if c == before && !put {
+				out = append(out, id)
+				put = true
+			}
+			out = append(out, c)
+		}
+		if !put {
+			out = append(out, id)
+		}
+		return out
+	}
+	without := func(list []string) []string {
+		out := make([]string, 0, len(list))
+		for _, c := range list {
+			if c != id {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+	if old != "" && old != parent {
+		_, err := s.changeLocked(ctx, ns, old, func(od *Doc) error { return od.Set("children", without(od.Strings("children"))) })
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("the old parent's list was not changed: %w", err)
+		}
+	}
+	if parent != "" {
+		if _, err := s.changeLocked(ctx, ns, parent, func(pd *Doc) error { return pd.Set("children", place(pd.Strings("children"))) }); err != nil {
+			return err
+		}
+	}
+	if old != parent {
+		if _, err := s.changeLocked(ctx, ns, id, func(d *Doc) error { return d.Set("parent", parent) }); err != nil {
+			return err
+		}
+	}
+	if parent == "" && view != "" {
+		vit, ok, err := s.fresh(ctx, ns, ViewName(view))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		vd, err := ParsePlain(vit.Content)
+		if err != nil {
+			return fmt.Errorf("the view cannot be read: %w", err)
+		}
+		layout := map[string]any{}
+		_ = vd.Decode("layout", &layout)
+		var order []string
+		if raw, ok := layout["order"].([]any); ok {
+			for _, x := range raw {
+				if v, ok := x.(string); ok && ValidID(v) {
+					order = append(order, v)
+				}
+			}
+		}
+		if before != "" && !contains(order, before) {
+			order = append(order, before)
+		}
+		layout["order"] = place(order)
+		if err := vd.Set("layout", layout); err != nil {
+			return err
+		}
+		title := vd.Str("title")
+		if title == "" {
+			title = vd.Str("view")
+		}
+		if _, err := s.write(ctx, ns, ViewName(view), vd.String(), title); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Cut takes an item out of the views (cut: true) and out of its parent's children; it stays
+// in Caster and can be restored.
+func (s *Store) Cut(ctx context.Context, ws, id string) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return err
+	}
+	parent := ""
+	if _, err = s.changeLocked(ctx, ns, id, func(d *Doc) error {
+		parent = d.Str("parent")
+		return d.Set("cut", true)
+	}); err != nil {
+		return err
+	}
+	if parent != "" {
+		_, err = s.changeLocked(ctx, ns, parent, func(d *Doc) error {
+			list := d.Strings("children")
+			next := []string{}
+			for _, c := range list {
+				if c != id {
+					next = append(next, c)
+				}
+			}
+			return d.Set("children", next)
+		})
+		if errors.Is(err, ErrNotFound) {
+			err = nil
+		}
+	}
+	return err
+}
+
+// Restore puts a cut item back, at the end of its parent's children.
+func (s *Store) Restore(ctx context.Context, ws, id string) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return err
+	}
+	parent := ""
+	if _, err = s.changeLocked(ctx, ns, id, func(d *Doc) error {
+		parent = d.Str("parent")
+		d.Del("cut")
+		return nil
+	}); err != nil {
+		return err
+	}
+	if parent != "" {
+		_, err = s.changeLocked(ctx, ns, parent, func(d *Doc) error {
+			list := d.Strings("children")
+			if contains(list, id) {
+				return nil
+			}
+			return d.Set("children", append(list, id))
+		})
+		if errors.Is(err, ErrNotFound) {
+			err = nil
+		}
+	}
+	return err
+}
+
+// Edit is the owner's change to an item, made on the revision BaseRev. Nil fields are left
+// alone; Fields sets the keys given (null takes one out).
+type Edit struct {
+	BaseRev  int               `json:"base_rev"`
+	Title    *string           `json:"title"`
+	Fields   map[string]any    `json:"fields"`
+	Sections map[string]string `json:"sections"`
+	Tags     *[]string         `json:"tags"`
+	// Stage, Material and Published replace the item's value when given.
+	Stage     *string      `json:"stage"`
+	Material  *[]Material  `json:"material"`
+	Published *[]Published `json:"published"`
+	// Links replaces the item's typed links (never "contains": that is parent and children).
+	Links *[]Link `json:"links"`
+}
+
+// Limits on what an edit may carry, so one item stays a readable size.
+const (
+	maxEntries = 200
+	maxRefLen  = 2048
+	maxNoteLen = 2000
+)
+
+// check says what is wrong with the material and the publication log of an edit, if anything.
+func (e Edit) check() error {
+	if e.Material != nil {
+		if len(*e.Material) > maxEntries {
+			return fmt.Errorf("an item holds at most %d pieces of material", maxEntries)
+		}
+		for i, m := range *e.Material {
+			ref := strings.TrimSpace(m.Ref)
+			if ref == "" || len(ref) > maxRefLen || strings.ContainsAny(ref, "\n\r") {
+				return fmt.Errorf("material %d: a reference is one line of at most %d characters", i+1, maxRefLen)
+			}
+			if len(m.Caption) > maxNoteLen {
+				return fmt.Errorf("material %d: the caption is too long", i+1)
+			}
+		}
+	}
+	if e.Links != nil {
+		if len(*e.Links) > maxEntries {
+			return fmt.Errorf("an item holds at most %d links", maxEntries)
+		}
+		for i, l := range *e.Links {
+			if !relRe.MatchString(l.Rel) || l.Rel == "contains" {
+				return fmt.Errorf("link %d: %q is not a relation an item can carry (contains is the outline)", i+1, l.Rel)
+			}
+			if !validLinkTarget(l.To) {
+				return fmt.Errorf("link %d: %q is not an item id or supported reference", i+1, l.To)
+			}
+		}
+	}
+	if e.Published != nil {
+		if len(*e.Published) > maxEntries {
+			return fmt.Errorf("the publication log holds at most %d entries", maxEntries)
+		}
+		for i, p := range *e.Published {
+			if !validWhen(strings.TrimSpace(p.At)) {
+				return fmt.Errorf("publication %d: when is a date (YYYY-MM-DD) or a time (RFC 3339)", i+1)
+			}
+			// Where may be empty: the entry the Published stage starts has none when the item
+			// names no channel. The app's form asks for it.
+			if len(p.Where) > maxRefLen {
+				return fmt.Errorf("publication %d: where is too long", i+1)
+			}
+			if u := strings.TrimSpace(p.URL); u != "" && (len(u) > maxRefLen || (!strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://"))) {
+				return fmt.Errorf("publication %d: the address is an http(s) URL", i+1)
+			}
+			if len(p.Note) > maxNoteLen {
+				return fmt.Errorf("publication %d: the note is too long", i+1)
+			}
+		}
+	}
+	return nil
+}
+
+// relRe: a relation's name (the shared ones are Relations; a kind set may add its own).
+var relRe = regexp.MustCompile(`^[a-z][a-z-]{0,39}$`)
+
+func validWhen(s string) bool {
+	if _, err := time.Parse("2006-01-02", s); err == nil {
+		return true
+	}
+	_, err := time.Parse(time.RFC3339, s)
+	return err == nil
+}
+
+// Conflict says the item moved on in Caster after the owner began the edit. Nothing was
+// overwritten; the owner's changed sections were kept as suggestions on the newer revision
+// (and any other change as a comment).
+type Conflict struct {
+	Rev         int
+	Suggestions int
+}
+
+func (c *Conflict) Error() string {
+	return fmt.Sprintf("this item was changed in Caster meanwhile (now revision %d); your text was kept as %d suggestion(s) on it, not written over it", c.Rev, c.Suggestions)
+}
+
+// EditItem writes the owner's edit as a new revision, unless the item moved on since
+// BaseRev (then *Conflict).
+func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error) {
+	if s.caster == nil {
+		return 0, ErrNoCaster
+	}
+	for sec := range e.Sections {
+		if strings.TrimSpace(sec) == "" || strings.ContainsAny(sec, "\n#") {
+			return 0, fmt.Errorf("%q is not a section heading", sec)
+		}
+	}
+	if err := e.check(); err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return 0, err
+	}
+	name := ItemName(id)
+	it, ok, err := s.fresh(ctx, ns, name)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return 0, fmt.Errorf("the item cannot be read: %w", err)
+	}
+	kinds, _ := s.Kinds(ctx, ns)
+	k := kinds[d.Str("kind")]
+	for key := range e.Fields {
+		if _, ok := k.Field(key); !ok && k.Kind != "" {
+			return 0, fmt.Errorf("a %s has no field %q", k.Label, key)
+		}
+	}
+	if e.Stage != nil && k.Kind != "" && !k.HasStage(*e.Stage) {
+		return 0, fmt.Errorf("a %s has no stage %q", k.Label, *e.Stage)
+	}
+	if it.Rev != e.BaseRev {
+		// Keep the owner's words as suggestions against the newer text; never overwrite it.
+		base, _, _ := s.caster.Get(ctx, ns, name, e.BaseRev)
+		baseBody := Body{}
+		if bd, err := ParseDoc(base.Content); err == nil {
+			baseBody = ParseBody(bd.Body)
+		}
+		nowBody := ParseBody(d.Body)
+		n := 0
+		for sec, text := range e.Sections {
+			if strings.TrimSpace(text) == strings.TrimSpace(baseBody.Get(sec)) {
+				continue // not changed by the owner
+			}
+			if err := s.addNote(ctx, Note{WS: ws, Item: id, ItemRev: it.Rev, Kind: "suggestion", Section: sec,
+				Quote: nowBody.Get(sec), Replace: text,
+				Text: fmt.Sprintf("My edit to %s, made on revision %d, which changed meanwhile.", sec, e.BaseRev)}); err != nil {
+				return 0, err
+			}
+			n++
+		}
+		var other []string
+		if e.Title != nil {
+			other = append(other, fmt.Sprintf("title: %s", *e.Title))
+		}
+		for key, v := range e.Fields {
+			other = append(other, fmt.Sprintf("%s: %v", key, v))
+		}
+		if e.Tags != nil {
+			other = append(other, "tags: "+strings.Join(*e.Tags, ", "))
+		}
+		if e.Stage != nil {
+			other = append(other, "stage: "+*e.Stage)
+		}
+		if e.Material != nil {
+			refs := make([]string, 0, len(*e.Material))
+			for _, m := range *e.Material {
+				refs = append(refs, m.Ref)
+			}
+			other = append(other, "material: "+strings.Join(refs, ", "))
+		}
+		if e.Links != nil {
+			ls := make([]string, 0, len(*e.Links))
+			for _, l := range *e.Links {
+				ls = append(ls, l.Rel+" "+l.To)
+			}
+			other = append(other, "links: "+strings.Join(ls, ", "))
+		}
+		if e.Published != nil {
+			ps := make([]string, 0, len(*e.Published))
+			for _, p := range *e.Published {
+				ps = append(ps, strings.TrimSpace(p.At+" "+p.Where+" "+p.URL))
+			}
+			other = append(other, "published: "+strings.Join(ps, "; "))
+		}
+		if len(other) > 0 {
+			sort.Strings(other)
+			if err := s.addNote(ctx, Note{WS: ws, Item: id, ItemRev: it.Rev, Kind: "comment",
+				Text: fmt.Sprintf("My change made on revision %d, not written: %s", e.BaseRev, strings.Join(other, "; "))}); err != nil {
+				return 0, err
+			}
+			n++
+		}
+		return 0, &Conflict{Rev: it.Rev, Suggestions: n}
+	}
+	if e.Title != nil && strings.TrimSpace(*e.Title) != "" {
+		_ = d.Set("title", strings.TrimSpace(*e.Title))
+	}
+	for key, v := range e.Fields {
+		if sv, ok := v.(string); ok && strings.TrimSpace(sv) == "" {
+			v = nil
+		}
+		if err := d.SetField(key, v); err != nil {
+			return 0, err
+		}
+	}
+	if e.Tags != nil {
+		tags := []string{}
+		for _, t := range *e.Tags {
+			if t = strings.TrimSpace(t); t != "" && !contains(tags, t) {
+				tags = append(tags, t)
+			}
+		}
+		_ = d.Set("tags", tags)
+	}
+	if e.Stage != nil && *e.Stage != "" {
+		_ = d.Set("stage", *e.Stage)
+	}
+	if e.Material != nil {
+		list := []Material{}
+		for _, m := range *e.Material {
+			list = append(list, Material{Ref: strings.TrimSpace(m.Ref), Caption: strings.TrimSpace(m.Caption)})
+		}
+		_ = d.Set("material", list)
+	}
+	if e.Links != nil {
+		list := []Link{}
+		seen := map[Link]bool{}
+		for _, l := range *e.Links {
+			if l.To != id && !seen[l] {
+				seen[l] = true
+				list = append(list, l)
+			}
+		}
+		_ = d.Set("links", list)
+	}
+	if e.Published != nil {
+		list := []Published{}
+		for _, p := range *e.Published {
+			list = append(list, Published{At: strings.TrimSpace(p.At), Where: strings.TrimSpace(p.Where),
+				URL: strings.TrimSpace(p.URL), Note: strings.TrimSpace(p.Note)})
+		}
+		_ = d.Set("published", list)
+	}
+	if len(e.Sections) > 0 {
+		b := ParseBody(d.Body)
+		keys := make([]string, 0, len(e.Sections))
+		for sec := range e.Sections {
+			keys = append(keys, sec)
+		}
+		sort.Strings(keys)
+		for _, sec := range keys {
+			b.Put(sec, e.Sections[sec], k.Sections)
+		}
+		d.Body = b.String()
+	}
+	title := d.Str("title")
+	if title == "" {
+		title = id
+	}
+	return s.write(ctx, ns, name, d.String(), title)
+}
+
+// SaveView changes a view as it is now: the keys given (view, title, kinds, group_by,
+// date_field, root, rel, filter, layout); other keys stay as they are.
+func (s *Store) SaveView(ctx context.Context, ws, id string, set map[string]any) (int, error) {
+	if s.caster == nil {
+		return 0, ErrNoCaster
+	}
+	allowed := map[string]bool{"view": true, "title": true, "kinds": true, "group_by": true, "date_field": true,
+		"root": true, "rel": true, "filter": true, "layout": true}
+	for k := range set {
+		if !allowed[k] {
+			return 0, fmt.Errorf("a view has no key %q", k)
+		}
+	}
+	if v, ok := set["view"].(string); ok && !contains(ViewKinds, v) {
+		return 0, fmt.Errorf("there is no view %q", v)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return 0, err
+	}
+	if id == "" {
+		id = NewID()
+	}
+	if !ValidID(id) {
+		return 0, errors.New("that is not a view id")
+	}
+	d, _ := ParsePlain("")
+	if it, ok, err := s.fresh(ctx, ns, ViewName(id)); err != nil {
+		return 0, err
+	} else if ok {
+		if d, err = ParsePlain(it.Content); err != nil {
+			return 0, fmt.Errorf("the view cannot be read: %w", err)
+		}
+	} else if _, has := set["view"]; !has {
+		return 0, errors.New("a new view says which view it is")
+	}
+	keys := make([]string, 0, len(set))
+	for k := range set {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if set[k] == nil {
+			d.Del(k)
+			continue
+		}
+		if err := d.Set(k, set[k]); err != nil {
+			return 0, err
+		}
+	}
+	title := d.Str("title")
+	if title == "" {
+		title = d.Str("view")
+	}
+	return s.write(ctx, ns, ViewName(id), d.String(), title)
+}
+
+// Log is an item's history.
+func (s *Store) Log(ctx context.Context, ws, name string) ([]Revision, error) {
+	if s.caster == nil {
+		return nil, ErrNoCaster
+	}
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	return s.caster.Log(ctx, ns, name)
+}
+
+// At is an item at a revision.
+func (s *Store) At(ctx context.Context, ws, name string, rev int) (Item, bool, error) {
+	if s.caster == nil {
+		return Item{}, false, ErrNoCaster
+	}
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return Item{}, false, err
+	}
+	return s.caster.Get(ctx, ns, name, rev)
+}
+
+// ---- Notes ----
+
+// Note is one piece of the owner's feedback on an item, not yet sent.
+type Note struct {
+	ID        string `json:"id"`
+	WS        string `json:"ws"`
+	Item      string `json:"item"`
+	ItemRev   int    `json:"item_rev,omitempty"`
+	Kind      string `json:"kind"`
+	Section   string `json:"section,omitempty"`
+	Quote     string `json:"quote,omitempty"`
+	Replace   string `json:"replace,omitempty"`
+	Text      string `json:"text,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (s *Store) addNote(ctx context.Context, n Note) error {
+	if n.ID == "" {
+		n.ID = "n" + NewID()
+	}
+	if n.CreatedAt == "" {
+		n.CreatedAt = now()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO notes(id, ws, item, item_rev, kind, section, quote, replace, text, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		n.ID, n.WS, n.Item, n.ItemRev, n.Kind, n.Section, n.Quote, n.Replace, n.Text, n.CreatedAt)
+	return err
+}
+
+// Notes are the owner's notes on an item, not yet sent.
+func (s *Store) Notes(ctx context.Context, ws, item string) ([]Note, error) {
+	rs, err := s.db.QueryContext(ctx, `SELECT id, ws, item, item_rev, kind, section, quote, replace, text, created_at FROM notes WHERE ws=? AND item=? AND round=0 ORDER BY created_at`, ws, item)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rs.Close() }()
+	out := []Note{}
+	for rs.Next() {
+		var n Note
+		if err := rs.Scan(&n.ID, &n.WS, &n.Item, &n.ItemRev, &n.Kind, &n.Section, &n.Quote, &n.Replace, &n.Text, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rs.Err()
+}
+
+// DropNote takes a note out.
+func (s *Store) DropNote(ctx context.Context, ws, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE ws=? AND id=? AND round=0`, ws, id)
+	return err
+}
+
+// validLinkTarget accepts local item IDs and references to other data homes.
+func validLinkTarget(ref string) bool {
+	if ValidID(ref) {
+		return true
+	}
+	if len(ref) > maxRefLen || strings.ContainsAny(ref, " \t\r\n") {
+		return false
+	}
+	u, err := url.Parse(ref)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "torque", "tesseract", "caster", "https", "http":
+		return true
+	}
+	return false
+}
+
+// UpdateWorkspace retains the index and Caster history even when removed from the list.
+func (s *Store) UpdateWorkspace(ctx context.Context, ws string, title *string, archived, deleted *bool) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	if !ValidSlug(ws) {
+		return ErrNotFound
+	}
+	if title != nil && strings.TrimSpace(*title) == "" {
+		return errors.New("a workspace title cannot be empty")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok, err := s.fresh(ctx, IndexNS, ws)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return err
+	}
+	if title != nil {
+		_ = d.Set("title", strings.TrimSpace(*title))
+	}
+	if archived != nil {
+		_ = d.Set("archived", *archived)
+	}
+	if deleted != nil {
+		_ = d.Set("deleted", *deleted)
+	}
+	_, err = s.write(ctx, IndexNS, ws, d.String(), d.Str("title"))
+	return err
+}

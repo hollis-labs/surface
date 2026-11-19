@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
+import { Markdown } from "@/components/ui/markdown"
 import { Textarea } from "@/components/ui/textarea"
 import type { WorkClient, WorkDetail, WorkRound } from "./api"
 import { Pick, Sec } from "./parts"
@@ -30,7 +31,7 @@ function NoteBody({ quote, replace, kind, text }: { quote?: string; replace?: st
     <>
       {quote && <div className="work-text text-destructive text-xs">− {quote}</div>}
       {kind === "suggestion" && <div className="work-text text-success text-xs">+ {replace}</div>}
-      {text && <div className="work-text text-sm">{text}</div>}
+      {text && <Markdown className="wrap-anywhere">{text}</Markdown>}
     </>
   )
 }
@@ -367,7 +368,11 @@ function RoundBox({ r, open }: { r: WorkRound; open: boolean }) {
               </Badge>
             </div>
             <NoteBody {...n} />
-            {n.reply && <div className="work-text text-muted-foreground text-xs">↳ {n.reply}</div>}
+            {n.reply && (
+              <div className="flex gap-1 text-muted-foreground text-xs">
+                ↳ <Markdown className="min-w-0 flex-1 text-xs wrap-anywhere">{n.reply}</Markdown>
+              </div>
+            )}
           </div>
         ))}
       </CollapsibleContent>

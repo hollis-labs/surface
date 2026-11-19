@@ -9,10 +9,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { WorkCard, WorkKind } from "./api"
 import { ago, DRAG_TYPE } from "./util"
+
+/** A card's excerpt is one line of its body: drawn as inline Markdown, its links as plain text (the card is the click). */
+const excerptParts: NonNullable<Parameters<typeof Markdown>[0]["components"]> = {
+  p: ({ node: _n, ...p }) => <span {...p} />,
+  a: ({ node: _n, href: _h, ...p }) => <span {...p} />,
+}
 
 /** Kind icon names the presets use that lucide has since renamed. */
 const ICON_ALIAS: Record<string, string> = { "alert-triangle": "triangle-alert", "check-circle-2": "circle-check" }
@@ -175,7 +182,11 @@ export function ItemCard({
         (card.problem ? (
           <span className="text-warning text-xs">{card.problem}</span>
         ) : (
-          card.excerpt && <span className="line-clamp-2 text-muted-foreground text-xs">{card.excerpt}</span>
+          card.excerpt && (
+            <Markdown className="line-clamp-2 text-muted-foreground text-xs" components={excerptParts}>
+              {card.excerpt}
+            </Markdown>
+          )
         ))}
       {!compact && (
         <span className="text-muted-foreground text-xs">

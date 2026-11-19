@@ -11,6 +11,7 @@ import { type PointerEvent as RPointerEvent, useEffect, useMemo, useRef, useStat
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Markdown } from "@/components/ui/markdown"
 import { Textarea } from "@/components/ui/textarea"
 import type { ViewArgs, WorkCanvasNote, WorkCard, WorkLayoutPatch, WorkPos, WorkStack, WorkView } from "./api"
 import { Chip } from "./calendar"
@@ -364,12 +365,12 @@ export function Canvas({ w, ws, space, view, picked, pick, changed, setError }: 
                     />
                   ) : (
                     <div
-                      className={`work-text min-h-12 p-2 text-sm ${n.text ? "" : "text-muted-foreground"}`}
+                      className={`min-h-12 p-2 text-sm wrap-anywhere ${n.text ? "" : "text-muted-foreground"}`}
                       onPointerDown={(e) => e.stopPropagation()}
                       onDoubleClick={() => setEditNote(n.id)}
                       title="Double-click to write"
                     >
-                      {n.text || "Double-click to write"}
+                      {n.text ? <Markdown>{n.text}</Markdown> : "Double-click to write"}
                     </div>
                   )}
                 </div>

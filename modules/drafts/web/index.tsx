@@ -1,5 +1,6 @@
 /**
- * Drafts: documents the owner and the agent work on together. Review shows the text by line:
+ * Drafts: documents the owner and the agent work on together. Read shows the draft as it reads
+ * (Markdown rendered; code coloured as its language). Review shows the text by line:
  * select a passage and mark it. Edit changes the text; every save is a revision. Compare shows
  * any revision against the latest. The marks on the draft are listed beside the text (under
  * it when the window is narrow).
@@ -17,6 +18,7 @@ import {
   type ViewProps,
 } from "@hollis-labs/surface-page/sdk"
 import {
+  BookOpen,
   Check,
   FilePlus2,
   FileText,
@@ -36,6 +38,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
 import { Kbd } from "@/components/ui/kbd"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TextEditor } from "@/components/ui/text-editor"
 import { Textarea } from "@/components/ui/textarea"
@@ -61,8 +64,9 @@ interface DiffLine {
   op: " " | "+" | "-"
   text: string
 }
-type Mode = "review" | "edit" | "compare"
+type Mode = "read" | "review" | "edit" | "compare"
 const MODES: { mode: Mode; label: string; icon: LucideIcon }[] = [
+  { mode: "read", label: "Read", icon: BookOpen },
   { mode: "review", label: "Review", icon: ScanText },
   { mode: "edit", label: "Edit", icon: Pencil },
   { mode: "compare", label: "Compare", icon: GitCompare },
@@ -79,6 +83,14 @@ function Tip({ label, children }: { label: ReactNode; children: ReactElement }) 
 }
 
 const hint = "px-2.5 text-xs text-muted-foreground"
+
+/** A draft as it reads: Markdown (and plain text) as is; anything else as a block of code in its language. */
+function readable(body: string, lang: string): string {
+  if (!lang || lang === "markdown" || lang === "md" || lang === "text") return body
+  const longest = Math.max(0, ...(body.match(/`+/g) ?? []).map((r) => r.length))
+  const fence = "`".repeat(Math.max(3, longest + 1))
+  return `${fence}${lang}\n${body.replace(/\n$/, "")}\n${fence}`
+}
 
 function when(iso: string) {
   const d = new Date(iso)
@@ -170,7 +182,7 @@ function DraftList({ win, desk, api }: ViewProps) {
 
 function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [mode, setMode] = useState<Mode>((win.state?.mode as Mode) || "review")
+  const [mode, setMode] = useState<Mode>((win.state?.mode as Mode) || "read")
   const [text, setText] = useState("")
   const [title, setTitle] = useState("")
   const [dirty, setDirty] = useState(false)
@@ -183,7 +195,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
   const ref = `drafts:${id}`
   const marks = useMarks(ref)
   const body = useRef<HTMLDivElement>(null)
-  const modesAnchor = useAnchor(win, "modes", "Review, Edit and Compare")
+  const modesAnchor = useAnchor(win, "modes", "Read, Review, Edit and Compare")
   const textAnchor = useAnchor(win, "text", "The draft's text")
   const marksAnchor = useAnchor(win, "marks", "The marks on the draft")
 
@@ -385,6 +397,11 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
       )}
       <div className="flex min-h-0 flex-1 @max-2xl:flex-col">
         <div ref={textAnchor} className="min-h-0 min-w-0 flex-1 overflow-auto">
+          {mode === "read" && (
+            <article className="mx-auto max-w-3xl px-5 pt-3 pb-8">
+              <Markdown size="document">{readable(draft.body ?? "", draft.lang)}</Markdown>
+            </article>
+          )}
           {mode === "review" && (
             <div ref={body} className="py-2 font-mono text-xs leading-5" onMouseUp={onSelect} onKeyUp={onSelect}>
               {lines.map((l, i) => (
@@ -405,6 +422,7 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
           {mode === "edit" && (
             <TextEditor
               value={text}
+              markdown={draft.lang === "markdown" || draft.lang === "text"}
               aria-label="Text"
               spellCheck={draft.lang === "markdown" || draft.lang === "text"}
               onChange={(e) => {
@@ -551,11 +569,13 @@ function MarkCard({ mark }: { mark: Mark }) {
     >
       {mark.quote && <div className="mb-1 line-clamp-2 text-muted-foreground italic">“{mark.quote}”</div>}
       <div>
-        <span className="font-semibold">{mark.author}</span>: {mark.body}
+        <span className="font-semibold">{mark.author}</span>
+        <Markdown className="text-xs">{mark.body}</Markdown>
       </div>
       {mark.replies?.map((r) => (
         <div key={`${r.created}-${r.author}-${r.body.slice(0, 16)}`} className="mt-1 border-l-2 border-border pl-2">
-          <span className="font-semibold">{r.author}</span>: {r.body}
+          <span className="font-semibold">{r.author}</span>
+          <Markdown className="text-xs">{r.body}</Markdown>
         </div>
       ))}
       {mark.status === "open" && (

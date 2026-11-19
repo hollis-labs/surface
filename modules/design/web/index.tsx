@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -660,7 +661,7 @@ function Notes({
                 {a.section ?? "general"}
                 {a.component ? ` / ${a.component}` : ""}
               </ItemDescription>
-              <ItemTitle className="font-normal">{m.body}</ItemTitle>
+              <Markdown className="w-full">{m.body}</Markdown>
             </ItemContent>
             <ItemActions>
               <Tip label="Drop this note">
@@ -774,7 +775,7 @@ function Replies({ job }: { job: Job }) {
             {when(r.sent || r.received)}
             {set(r).length > 0 ? ` · set ${set(r).join(", ")}` : ""}
           </span>
-          <p className="line-clamp-6 whitespace-pre-wrap">{r.body}</p>
+          <Markdown className="line-clamp-6 text-xs">{r.body}</Markdown>
           {r.note && <p className="whitespace-pre-wrap text-muted-foreground">{r.note}</p>}
           {r.ignored && <p className="whitespace-pre-wrap text-muted-foreground">Not taken: {r.ignored}</p>}
         </div>

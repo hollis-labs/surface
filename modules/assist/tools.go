@@ -323,13 +323,64 @@ func (m *mod) tools() []module.Tool {
 				_ = json.Unmarshal(in, &a)
 				return map[string]bool{"ok": true}, m.st.dropRule(ctx, a.ID)
 			}},
-		{Name: "assist_activity", Level: module.LevelRead,
-			Description: "What was done in the owner's name, newest first: receipts, replies, sends, settled mail, the owner's answers on cards, rules.",
-			Input:       raw(`{"type":"object","properties":{"limit":{"type":"integer"}}}`),
-			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
-				var a struct{ Limit int }
+		{Name: "friction_log", Level: module.LevelAct,
+			Describe: func(in json.RawMessage) string {
+				var a struct{ What, Severity string }
 				_ = json.Unmarshal(in, &a)
-				return m.st.recent(ctx, 0, a.Limit)
+				return "Log friction (" + a.Severity + "): " + clip(a.What, 120)
+			},
+			Description: "Write down process friction while it is fresh: something in how the work is done that got in the way (a step with no defined way to do it, a tool that was missing or answered oddly, a rule that did not fit, a seat that could not be reached, the same question needed twice). One entry per thing. It only records it, in the owner's Done for you list, for the two of you to go over later; nothing is sent. Minor: log it and go on. A dead end, an error you cannot get past, something you have no access to, or friction that changes the outcome: log it as major and also tell the owner now.",
+			Input: raw(`{"type":"object","required":["what","severity"],"properties":{"what":{"type":"string","description":"What got in the way, in a line or two, with the specifics (the tool, the seat, the message)."},` +
+				`"doing":{"type":"string","description":"What you were doing for the owner at the time."},"severity":{"type":"string","enum":["minor","major"]},"idea":{"type":"string","description":"How it might be handled from now on, if you have one."}}}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				var a struct{ What, Doing, Severity, Idea string }
+				_ = json.Unmarshal(in, &a)
+				what := strings.TrimSpace(a.What)
+				if what == "" {
+					return nil, errors.New("say what got in the way")
+				}
+				if a.Severity != "major" {
+					a.Severity = "minor"
+				}
+				detail := map[string]any{"body": clip(what, 2000), "severity": a.Severity}
+				if d := strings.TrimSpace(a.Doing); d != "" {
+					detail["about"] = clip(d, 400)
+				}
+				if i := strings.TrimSpace(a.Idea); i != "" {
+					detail["idea"] = clip(i, 1000)
+				}
+				if err := m.st.record(ctx, Entry{Kind: "friction", Summary: fmt.Sprintf("Friction (%s): %s", a.Severity, clip(what, 140)), Detail: detail}); err != nil {
+					return nil, err
+				}
+				m.h.Events().Publish("assist.activity", map[string]string{"kind": "friction"})
+				if a.Severity == "major" {
+					return "logged. It is major: tell the owner now, plainly, and ask how they want it handled.", nil
+				}
+				return "logged for later", nil
+			}},
+		{Name: "assist_activity", Level: module.LevelRead,
+			Description: "What was done in the owner's name, newest first: receipts, replies, sends, settled mail, the owner's answers on cards, rules, and friction logged (kind \"friction\" for that alone).",
+			Input:       raw(`{"type":"object","properties":{"limit":{"type":"integer"},"kind":{"type":"string"}}}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				var a struct {
+					Limit int
+					Kind  string
+				}
+				_ = json.Unmarshal(in, &a)
+				list, err := m.st.recent(ctx, 0, 200)
+				if err != nil || a.Kind == "" {
+					if a.Limit > 0 && len(list) > a.Limit {
+						list = list[:a.Limit]
+					}
+					return list, err
+				}
+				out := []Entry{}
+				for _, e := range list {
+					if e.Kind == a.Kind && (a.Limit <= 0 || len(out) < a.Limit) {
+						out = append(out, e)
+					}
+				}
+				return out, nil
 			}},
 	}
 }

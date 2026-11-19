@@ -54,32 +54,10 @@ func initParams(client string) map[string]any {
 // ToolText reads a tools/call result: its text content, or the error it reports. When the
 // gateway cut a large result short, the answer is two text blocks: the result (as much of it as
 // was kept) and a {"gateway_truncated": ...} note. The note is set aside, so the text is still the
-// tool's own JSON; ask for less (a smaller limit) to get it whole.
+// tool's own JSON; ask for less (a smaller limit) to get it whole, or use CallAll.
 func ToolText(raw json.RawMessage) (string, error) {
-	var r struct {
-		IsError bool `json:"isError"`
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return "", fmt.Errorf("tether: unreadable tool result: %w", err)
-	}
-	var blocks []string
-	for _, c := range r.Content {
-		if c.Type != "text" {
-			continue
-		}
-		if strings.HasPrefix(strings.TrimSpace(c.Text), `{"gateway_truncated"`) {
-			continue
-		}
-		blocks = append(blocks, c.Text)
-	}
-	if r.IsError {
-		return "", &RefusedError{Detail: strings.Join(blocks, "")}
-	}
-	return strings.Join(blocks, ""), nil
+	text, _, err := blocks(raw)
+	return text, err
 }
 
 // ErrRefused is a tool's own failure. Its text is not passed on: what Tether says may carry
@@ -251,6 +229,15 @@ func (c *HTTP) open(ctx context.Context) (session, token string, err error) {
 }
 
 func (c *HTTP) Call(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return c.run(ctx, tool, args, false)
+}
+
+// CallAll is Call that reads the whole of a result the gateway cut short (see CallAll).
+func (c *HTTP) CallAll(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return c.run(ctx, tool, args, true)
+}
+
+func (c *HTTP) run(ctx context.Context, tool string, args map[string]any, all bool) (string, error) {
 	if err := c.Allowed.check(c.Module, tool); err != nil {
 		return "", err
 	}
@@ -258,14 +245,17 @@ func (c *HTTP) Call(ctx context.Context, tool string, args map[string]any) (stri
 	if err != nil {
 		return "", err
 	}
-	res, _, err := c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "tools/call", Params: map[string]any{"name": tool, "arguments": args}})
-	if err != nil {
-		return "", err
+	call := func(tool string, args map[string]any) (json.RawMessage, error) {
+		res, _, err := c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "tools/call", Params: map[string]any{"name": tool, "arguments": args}})
+		if err != nil {
+			return nil, err
+		}
+		if res.Error != nil {
+			return nil, rpcRefused(res.Error)
+		}
+		return res.Result, nil
 	}
-	if res.Error != nil {
-		return "", rpcRefused(res.Error)
-	}
-	return ToolText(res.Result)
+	return finish(tool, args, call, all)
 }
 
 // List lists the allowed tools the endpoint has.
@@ -305,16 +295,25 @@ type Stdio struct {
 }
 
 func (c *Stdio) Call(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return c.run(ctx, tool, args, false)
+}
+
+// CallAll is Call that reads the whole of a result the gateway cut short (see CallAll).
+func (c *Stdio) CallAll(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return c.run(ctx, tool, args, true)
+}
+
+func (c *Stdio) run(ctx context.Context, tool string, args map[string]any, all bool) (string, error) {
 	if err := c.Allowed.check(c.Module, tool); err != nil {
 		return "", err
 	}
 	var text string
 	err := c.session(ctx, func(request func(method string, params any) (json.RawMessage, error)) error {
-		res, err := request("tools/call", map[string]any{"name": tool, "arguments": args})
-		if err != nil {
-			return err
+		call := func(tool string, args map[string]any) (json.RawMessage, error) {
+			return request("tools/call", map[string]any{"name": tool, "arguments": args})
 		}
-		text, err = ToolText(res)
+		var err error
+		text, err = finish(tool, args, call, all)
 		return err
 	})
 	return text, err
@@ -416,6 +415,113 @@ func (c *Stdio) session(ctx context.Context, use func(request func(method string
 		}
 		return r.Result, nil
 	})
+}
+
+// ---- Results the gateway cut short ----
+
+// ResultNext is the gateway's tool that hands out the rest of a result it cut. Its cursor is
+// good only in the session that got the first part, so CallAll asks for the rest in the same
+// session. It reads only what an allowed call already returned, so it is not in Allowed.
+const ResultNext = "tether_result_next"
+
+// maxPages bounds how many continuations one CallAll reads.
+const maxPages = 64
+
+// AllCaller is a Caller that can read the whole of a result the gateway cut short.
+type AllCaller interface {
+	CallAll(ctx context.Context, tool string, args map[string]any) (string, error)
+}
+
+// CallAll calls a tool and, when the gateway cut its answer short (a long list), reads the
+// rest in the same session and returns the tool's JSON whole. A Caller that cannot (a test's
+// stand-in) is simply called.
+func CallAll(ctx context.Context, c Caller, tool string, args map[string]any) (string, error) {
+	if a, ok := c.(AllCaller); ok {
+		return a.CallAll(ctx, tool, args)
+	}
+	return c.Call(ctx, tool, args)
+}
+
+// truncation is the gateway's note on a result it cut: which list (path) and where the rest
+// starts.
+type truncation struct {
+	Path string `json:"path"`
+	Next string `json:"next_cursor"`
+}
+
+// blocks reads a tools/call result into its text and the gateway's note, if any.
+func blocks(raw json.RawMessage) (string, *truncation, error) {
+	var r struct {
+		IsError bool `json:"isError"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return "", nil, fmt.Errorf("tether: unreadable tool result: %w", err)
+	}
+	var out []string
+	var note *truncation
+	for _, c := range r.Content {
+		if c.Type != "text" {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(c.Text), `{"gateway_truncated"`) {
+			var n struct {
+				G *truncation `json:"gateway_truncated"`
+			}
+			if json.Unmarshal([]byte(c.Text), &n) == nil && n.G != nil {
+				note = n.G
+			}
+			continue
+		}
+		out = append(out, c.Text)
+	}
+	if r.IsError {
+		return "", nil, &RefusedError{Detail: strings.Join(out, "")}
+	}
+	return strings.Join(out, ""), note, nil
+}
+
+// finish makes the call and, for CallAll, reads the rest of a cut list into the first part.
+func finish(tool string, args map[string]any, call func(string, map[string]any) (json.RawMessage, error), all bool) (string, error) {
+	raw, err := call(tool, args)
+	if err != nil {
+		return "", err
+	}
+	text, note, err := blocks(raw)
+	if err != nil || !all || note == nil || note.Path == "" || note.Next == "" {
+		return text, err
+	}
+	var whole map[string]json.RawMessage
+	if err = json.Unmarshal([]byte(text), &whole); err != nil {
+		return "", fmt.Errorf("tether: %s: the cut result is unreadable", tool)
+	}
+	path := note.Path
+	var list []json.RawMessage
+	if err = json.Unmarshal(whole[path], &list); err != nil {
+		return "", fmt.Errorf("tether: %s: the cut list is unreadable", tool)
+	}
+	for page := 0; note != nil && note.Next != "" && page < maxPages; page++ {
+		raw, nerr := call(ResultNext, map[string]any{"cursor": note.Next})
+		if nerr != nil {
+			return "", fmt.Errorf("tether: %s: the rest of the result: %w", tool, nerr)
+		}
+		var more string
+		if more, note, err = blocks(raw); err != nil {
+			return "", err
+		}
+		var obj map[string]json.RawMessage
+		var rest []json.RawMessage
+		if json.Unmarshal([]byte(more), &obj) != nil || json.Unmarshal(obj[path], &rest) != nil {
+			return "", fmt.Errorf("tether: %s: the rest of the result is unreadable", tool)
+		}
+		list = append(list, rest...)
+	}
+	whole[path], _ = json.Marshal(list)
+	out, err := json.Marshal(whole)
+	return string(out), err
 }
 
 // Config is how a module reaches Tether: an MCP URL (with a token file) or a stdio command.

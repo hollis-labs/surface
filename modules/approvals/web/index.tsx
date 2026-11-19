@@ -8,7 +8,7 @@
  * event, the desk's report or a log. The card's answer is only "declined"; on a send the
  * producer reports the secret received, and Gatecrasher closes the card.
  */
-import type { CardProps, ModuleWeb } from "@hollis-labs/surface-page/sdk"
+import { ApiError, type CardProps, type ModuleWeb } from "@hollis-labs/surface-page/sdk"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -48,21 +48,35 @@ function SecretCard({ card, respond, api }: CardProps) {
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
   const [problem, setProblem] = useState("")
+  const [attempt, setTry] = useState(0)
+  const [late, setLate] = useState(false)
   const open = !card.status
+
+  // No confirmation a while after a send: the owner may send again.
+  useEffect(() => {
+    if (!sent) return
+    const t = setTimeout(() => setLate(true), 30_000)
+    return () => clearTimeout(t)
+  }, [sent])
 
   // Where the form posts comes from this module, which keeps it from Gatecrasher, and only
   // for a card the module showed: never from the card's payload, which others can edit.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt re-runs the fetch after the server did not answer
   useEffect(() => {
     if (!open) return
     let live = true
     api
       .get<Form>(`form/${encodeURIComponent(card.id)}`)
       .then((f) => live && setForm(f))
-      .catch(() => live && setRefused(true))
+      .catch((e: unknown) => {
+        if (!live) return
+        if (e instanceof ApiError && e.status === 404) setRefused(true)
+        else setTimeout(() => live && setTry((n) => n + 1), 3000) // the server did not answer: ask again
+      })
     return () => {
       live = false
     }
-  }, [api, card.id, open])
+  }, [api, card.id, open, attempt])
 
   const provide = async () => {
     if (!form || !value || busy) return
@@ -111,6 +125,18 @@ function SecretCard({ card, respond, api }: CardProps) {
           <p className="text-muted-foreground">
             Sent to <span className="font-mono">{form.origin}</span>. Waiting for it to confirm; this card closes when
             it does.
+            {late && (
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => {
+                  setSent(false)
+                  setLate(false)
+                }}
+              >
+                No confirmation yet: send again
+              </Button>
+            )}
           </p>
         ) : (
           <>

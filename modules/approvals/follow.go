@@ -82,6 +82,7 @@ func (m *mod) stream(ctx context.Context, g *gate) error {
 		return fmt.Errorf("approvals: the event stream answered %s", res.Status)
 	}
 	m.setState(nil)
+	m.reshow(sctx, g)
 
 	lines := make(chan string)
 	go func() {

@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The classifier's centroid judges and emerging labels.**
+  - With `classifier.embed_model` set, centroid judges on `act` and `affect` vote at the async tier, through the
+    gateway's embeddings.
+  - `GET /api/agent/classify/emerging` clusters the turns a facet abstained on, after collapsing near-copies: what
+    the owner keeps asking that has no label yet.
 - **The classifier's async tier, tone, and hint feedback.**
   - A decision gateway (JEV) named in the agent config file (`classifier.decide_url`) is asked about every
     facet after the turn, off its path. Its result is kept beside the turn (`classified_async`, with the

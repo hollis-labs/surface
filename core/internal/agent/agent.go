@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/agent/host"
+	"github.com/hollis-labs/libs/core/util/classify"
 	"github.com/hollis-labs/libs/core/util/decide"
 
 	"github.com/hollis-labs/surface/core/internal/classifier"
@@ -73,6 +74,8 @@ type Options struct {
 	// Decider, when set, is the classifier's async tier instead of the one the config file
 	// names (tests).
 	Decider decide.Decider
+	// Embedder, when set, is the classifier's embedder instead of the gateway's (tests).
+	Embedder classify.Embedder
 }
 
 // Service is the embedded agent.
@@ -114,7 +117,7 @@ type Service struct {
 	asyncWG     sync.WaitGroup
 	// trained is closed when the classifier has learned the trace kept before start.
 	trained chan struct{}
-	lastAsm     string // the slot and top of mind last published
+	lastAsm string // the slot and top of mind last published
 }
 
 // New builds the agent service from the kernel. A missing agent config is not an error:
@@ -141,7 +144,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if s.cls, err = classifier.New(); err != nil {
 		return nil, fmt.Errorf("agent: classifier: %w", err)
 	}
-	s.setupAsync(cfg, o.Decider)
+	s.setupAsync(cfg, o.Decider, o.Embedder)
 	s.trained = make(chan struct{})
 	go s.trainClassifier(ctx, time.Now().UTC())
 	if s.reflexes, err = reflex.Open(ctx, k.DB(), doer{s}, func(msg string, args ...any) { log.Warn(msg, args...) }); err != nil {

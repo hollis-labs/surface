@@ -62,6 +62,50 @@ type Classifier struct {
 	slotID  string // the slot set the engine was built for
 	decider decide.Decider
 	dopts   classify.DecisionOptions
+	// centroids are the async tier's embedding judges, one per facet with examples.
+	centroids []*classify.Centroid
+	emb       classify.Embedder
+}
+
+// SetEmbedder adds centroid judges on the act and affect facets at classify.Async, over e.
+// They vote nothing until FitCentroids has embedded the facets' examples.
+func (c *Classifier) SetEmbedder(e classify.Embedder) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.emb, c.eng, c.centroids = e, nil, nil
+	if e == nil {
+		return
+	}
+	for _, f := range []string{Act, Affect} {
+		c.centroids = append(c.centroids, classify.NewCentroid("centroid:"+f, f, e, classify.CentroidOptions{Phase: classify.Async}))
+	}
+}
+
+// Embedder is the embedder set, or nil.
+func (c *Classifier) Embedder() classify.Embedder {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.emb
+}
+
+// FitCentroids embeds each centroid facet's examples (a network call through the embedder).
+func (c *Classifier) FitCentroids(ctx context.Context, all []kernel.BoundSlot) error {
+	eng, err := c.engine(all)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	cs := slices.Clone(c.centroids)
+	c.mu.Unlock()
+	for i, f := range []string{Act, Affect} {
+		if i >= len(cs) {
+			break
+		}
+		if err := cs[i].Fit(ctx, eng.Pack().Examples(f)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetDecider turns on the async tier: d is asked about every facet at classify.Async.
@@ -137,6 +181,9 @@ func (c *Classifier) engine(all []kernel.BoundSlot) (*classify.Engine, error) {
 	comp, err := classify.Compile(classify.Layer(c.base, layer))
 	if err != nil {
 		return nil, fmt.Errorf("classifier: %w", err)
+	}
+	for _, cj := range c.centroids {
+		extra = append(extra, cj)
 	}
 	if c.decider != nil {
 		dj, derr := classify.NewDecision("decide", c.decider, comp, c.dopts)

@@ -68,6 +68,10 @@ interface WindowInfo {
   icon?: React.ReactNode
   /** Holds unsaved work: shown as a dot before the title. */
   dirty?: boolean
+  /** Drawn after the title: a small mark (who opened it, that it waits). */
+  badge?: React.ReactNode
+  /** Buttons for this window, drawn before its close button. */
+  actions?: React.ReactNode
 }
 
 interface WindowManagerProps {
@@ -78,7 +82,7 @@ interface WindowManagerProps {
   /** The owner rearranged the desk or moved the focus. While the promise it returns is
    * pending, a `tree` coming down is held back, so an answer to an older change never
    * undoes a newer one. */
-  onArrange: (tree: WindowTree, focus: string | undefined) => void | Promise<unknown>
+  onArrange: (tree: WindowTree, focus: string | undefined, grabbed?: string) => void | Promise<unknown>
   /** The owner asked to close a window. The window stays until `tree` drops it. */
   onClose: (id: string) => void
   /** Draws a window's body. */
@@ -212,7 +216,7 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
   const held = React.useRef({ pointer: false, pending: 0 })
   // A change made while the pointer is down (a float being dragged reports every step) is
   // reported once, when the pointer lifts.
-  const unsent = React.useRef<{ model: Model; moved: string | undefined } | null>(null)
+  const unsent = React.useRef<{ model: Model; moved: string | undefined; grabbed: string | undefined } | null>(null)
   const live = React.useRef({ focus, onArrange, onClose, windows })
   live.current = { focus, onArrange, onClose, windows }
 
@@ -232,10 +236,10 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
   const model = modelRef.current
 
   const report = React.useCallback(
-    (m: Model, moved: string | undefined) => {
+    (m: Model, moved: string | undefined, grabbed: string | undefined) => {
       const next = fromFlex(m.toJson())
       const nextFocus = moved && locate(next, moved) ? moved : focusOf(m, live.current.focus)
-      const answer = live.current.onArrange(next, nextFocus)
+      const answer = live.current.onArrange(next, nextFocus, grabbed && locate(next, grabbed) ? grabbed : undefined)
       if (answer && typeof (answer as Promise<unknown>).then === "function") {
         held.current.pending++
         void (answer as Promise<unknown>)
@@ -264,7 +268,7 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
       let moved: string | undefined
       if (action.type === Actions.SELECT_TAB) moved = d.tabNode as string
       else if (action.type === Actions.MOVE_NODE) moved = d.fromNode as string
-      else if (action.type === Actions.POPOUT_TAB) moved = d.nodeId as string
+      else if (action.type === Actions.POPOUT_TAB) moved = (d.node ?? d.nodeId) as string // flexlayout names it node
       else if (action.type === Actions.SET_ACTIVE_TABSET || action.type === Actions.MAXIMIZE_TOGGLE) {
         const node = m.getNodeById((d.tabsetNode ?? d.node) as string)
         if (node instanceof TabSetNode) moved = node.getSelectedNode()?.getId()
@@ -277,8 +281,18 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
         moved = first(float?.root)
       }
       if (moved && !live.current.windows.some((w) => w.id === moved)) moved = undefined
-      if (held.current.pointer) unsent.current = { model: m, moved: moved ?? unsent.current?.moved }
-      else report(m, moved)
+      // The window the owner took hold of and moved, floated or maximized (not one they only
+      // brought in front, nor the ones that shifted to make room): it becomes theirs.
+      const grabbed =
+        action.type === Actions.MOVE_NODE ||
+        action.type === Actions.POPOUT_TAB ||
+        action.type === Actions.MAXIMIZE_TOGGLE ||
+        action.type === Actions.MOVE_FLOAT
+          ? moved
+          : undefined
+      if (held.current.pointer)
+        unsent.current = { model: m, moved: moved ?? unsent.current?.moved, grabbed: grabbed ?? unsent.current?.grabbed }
+      else report(m, moved, grabbed)
     },
     [report],
   )
@@ -290,7 +304,7 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
       held.current.pointer = false
       const late = unsent.current
       unsent.current = null
-      if (late) report(late.model, late.moved)
+      if (late) report(late.model, late.moved, late.grabbed)
       redraw()
     }
     const events = ["pointerup", "pointercancel", "dragend", "drop", "blur"] as const
@@ -325,10 +339,12 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
           const w = info.get(node.getId())
           values.leading = w?.icon
           values.content = (
-            <span data-slot="window-title" className="truncate">
-              {w?.dirty ? `● ${w.title}` : (w?.title ?? node.getName())}
+            <span data-slot="window-title" className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate">{w?.dirty ? `● ${w.title}` : (w?.title ?? node.getName())}</span>
+              {w?.badge}
             </span>
           )
+          if (w?.actions) values.buttons.push(<React.Fragment key="actions">{w.actions}</React.Fragment>)
           values.buttons.push(
             <Button
               key="close"

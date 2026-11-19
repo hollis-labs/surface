@@ -20,3 +20,4 @@ modules:
   - tether
   - work
   - frag
+  - approvals

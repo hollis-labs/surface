@@ -55,6 +55,7 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [x] Design module and review window (design jobs, branch preview against base, marks, rounds to the Design team, approval bound to a commit)
 - [x] Basalisk ports: terminal, files, viewer, diagram, inbox, reader
 - [x] Builder (Interaction Builder, in Studio)
+- [x] **Approvals** (`approvals`, CW-20261119-0041): Gatecrasher's approvals as cards. The module follows Gatecrasher's event stream as the owner (`approvals.url`, `approvals.key_file`), resuming from the last seq handled. Each pending approval is shown as a card: a grant on the core's approval card (one change per scope, so the owner can narrow; a critical one asks for the phrase), a choice on a choice card, a question on a prompt card. The owner's answer is sent to Gatecrasher's decide, and the card goes when the approval closes anywhere. A secret request is the module's own card (`gatecrasher.secret`), whose form posts the value from the page straight to the producer's intake; it never reaches the server, its database, its log, the bus or the agent (a canary test checks this)
 - [ ] Remaining Basalisk ports: Frag, Planner, Contexts, Done for you, Story, Writer, Content
 - [ ] Reader's Fragments Engine half
 - [ ] Move Design onto `module/tetherlink`

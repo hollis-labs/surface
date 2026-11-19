@@ -367,3 +367,48 @@ func TestNotConfigured(t *testing.T) {
 		t.Fatalf("%d %s", code, body)
 	}
 }
+
+// What another writes in Caster (the team's answer to a round) reaches a window that has
+// the workspace open, as work.changed, by the server's read-back; a workspace no window has
+// open is not read.
+func TestReadBackSaysWhatOthersChanged(t *testing.T) {
+	f := seeded()
+	m := &mod{caller: f}
+	h := moduletest.Start(t, m)
+	ctx := context.Background()
+	if _, err := m.st.Refresh(ctx, IndexNS, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.st.Refresh(ctx, "w-portfolio", true); err != nil {
+		t.Fatal(err)
+	}
+	m.readBack(ctx)
+	if n := countTopic(h, "work.changed"); n != 0 {
+		t.Fatalf("no window open, yet %d changes said", n)
+	}
+	if _, err := h.DeskState.Open(ctx, viewID, module.OpenOptions{Args: map[string]any{"workspace": "portfolio"}}); err != nil {
+		t.Fatal(err)
+	}
+	m.readBack(ctx)
+	if n := countTopic(h, "work.changed"); n != 0 {
+		t.Fatalf("nothing moved, yet %d changes said", n)
+	}
+	f.seed("w-portfolio", "r.task0001.1", "---\nwork: v1\nround: 1\nitem: task0001\nnotes: [{id: n1, state: done, reply: fixed}]\n---\n")
+	m.st.mu.Lock()
+	delete(m.st.refreshed, "w-portfolio") // past the 15 s throttle
+	m.st.mu.Unlock()
+	m.readBack(ctx)
+	if n := countTopic(h, "work.changed"); n != 1 {
+		t.Fatalf("the team's answer was not said: %d", n)
+	}
+}
+
+func countTopic(h *moduletest.Host, topic string) int {
+	n := 0
+	for _, t := range h.Bus.Topics() {
+		if t == topic {
+			n++
+		}
+	}
+	return n
+}

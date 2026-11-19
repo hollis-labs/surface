@@ -29,6 +29,9 @@ each.
 
 ## Reading it
 
+- The agent's answer (subject `agent`) is marked seen by the page when it waits while the agent panel is open and
+  the page has the focus: as it finishes in front of the owner, or when they open the panel or come back afterwards.
+
 - The page: the bar's badge counts the items (highlighted while one needs an answer); a click or cmd+. brings the first
   one in front (its window; the Cards window, or the agent panel for the agent's own card). A notice about the window
   already in front does not pop up.
@@ -38,8 +41,6 @@ each.
 
 ## Not there yet
 
-- **The panel.** The page marks the subject `agent` seen (`POST /api/attend/seen`) when the panel is visible and
-  the window has focus as an answer finishes, or when the owner opens the panel afterwards.
 
 ## The agent's runs on the bus
 

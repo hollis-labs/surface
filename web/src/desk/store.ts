@@ -23,6 +23,10 @@ export interface DeskWin {
   reason?: string
   retention?: string
   kept?: boolean
+  /** The owner has unsent input in it (the page reports it). */
+  composing?: boolean
+  /** A delegate's change to what it shows, waiting until the owner is done (rule 7). */
+  held?: { args: Record<string, unknown>; title?: string; by: string; at: string }
 }
 
 /** A window a delegate opened that the owner has not made theirs (docs/desk-rules.md, rule 4). */

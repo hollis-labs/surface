@@ -50,6 +50,7 @@ Writing a demo therefore also writes a tutorial and a test.
 | Tools | `script_save` (write), `script_list`, `script_get`, `script_run {name, mode}`, `script_stop`, `script_delete` (confirm) |
 | HTTP | `GET /api/scripts`, `GET /api/scripts/{name}`, `POST /api/scripts/{name}/run {mode}`, `POST /api/scripts/stop` |
 | CLI | `./bin/desk call script_run '{"name":"tour","mode":"test"}'` prints the report |
+| Page | A demo's `script.step` draws a labelled agent cursor gliding to what the step points at, and scales the desk toward it when `zoom` is set (`web/src/desk/GhostCursor.tsx`). |
 | Events | `script.started {script, mode, steps}`, `script.step {script, index, of, say, point, zoom, hold_ms}` (demo), `script.done` (the report) |
 
 Test mode puts the desk back by capturing it before and arranging it after. Run it against a disposable data
@@ -73,9 +74,6 @@ when each step showed, for captions or edits.
 
 ## Not there yet
 
-- **The ghost cursor and camera zoom.** The page should draw a labelled agent cursor gliding to each step's
-  target, and scale the desk toward it when `zoom` is set. The server already says what and when in
-  `script.step`.
 - **Guide mode points only at what is open when the guide starts.** ADE guides resolve their targets at start,
   so the first step's `do` runs first. A later step that points at a window its own `do` opens should use
   `await` instead.

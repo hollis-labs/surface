@@ -5,6 +5,36 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.2.0] - 2026-11-19
+
+- **Modules ported from Basalisk**, in Desk and Studio:
+  - **Terminal**: local login shells in PTYs that outlive their windows. Studio also gains Files. (#26)
+  - **Viewer**: look at a picture, a video, a recording, a PDF or an HTML mock, and mark what you mean on it.
+    (#28)
+  - **Diagram**: drawings kept as revisions, with agent tools. (#29)
+  - **Inbox**: the owner's Tether mail, read without consuming it, with `module/tetherlink`. (#30)
+  - **Reader**: RSS and Atom feeds. (#31)
+- **The page side of the desk rules**:
+  - the grabbed window's id on a drag, Keep, the attention badge and jump key (#35);
+  - the Context window, an inspector on the context trace (#37);
+  - unsent input reported, held changes with Apply and Drop, the agent's answer marked seen, and the demo's ghost
+    cursor (#40).
+- **The chat package binds to the conversation wire**, and the panel follows. The agent is served on the wire with
+  the scripted runner.
+- **Theme and chrome**:
+  - palettes, with every token derived from them and Blade Runner as the default (#23);
+  - window borders that do not move on focus, a status bar and a theme picker (#24);
+  - no scrollbars drawn in any Surface app (#21).
+- **The Design module**:
+  - live design review: the gallery on its own page (#9);
+  - follow a job from the Designer's replies and its Torque task (#10);
+  - approvals bound to the reviewed commit;
+  - a draft-only review window and a details dialog (#20);
+  - close a job from the window (#22);
+  - Approve stays in reach in a narrow window (#25).
+- Fixed: closing Attend while events arrive no longer sends on a closed channel (#41). Docs: the ADE framework
+  feature list and the ADE audit synthesis (#42).
+
 - **The classifier can pick the slot.** The live setting `surface.agent_selector`: `focus` (the default) or
   `classifier`. With `classifier` set, a sure answer (p ≥ 0.7) for another slot overrules the window in front; a pin
   still wins, and the trace says `classified`.

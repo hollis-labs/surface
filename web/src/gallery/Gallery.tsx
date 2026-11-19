@@ -130,7 +130,7 @@ export function GalleryTabs({
           className="@container flex h-full min-h-0 flex-col"
         >
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <TabsList variant="line" className="flex-wrap">
+            <TabsList variant="line" className="min-w-0 flex-wrap group-data-horizontal/tabs:h-auto">
               {tabs.map((s) => (
                 <TabsTrigger key={s.id} value={s.id} data-gallery-tab={s.id}>
                   {s.title}

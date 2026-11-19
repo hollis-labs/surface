@@ -63,6 +63,10 @@ func New(t testing.TB, m module.Module) *Host {
 		commands: map[string]func(context.Context, map[string]any) (any, error){}}
 	h.Settings = &Config{defs: map[string]module.Setting{}, values: map[string]any{}, bus: h.Bus, scope: man.ID}
 	for _, s := range man.Settings {
+		if err := checkDefault(s); err != nil {
+			// The app refuses to start on this (core/internal/config): fail here instead.
+			t.Fatalf("moduletest: setting %s.%s default: %v", man.ID, s.Key, err)
+		}
 		h.Settings.defs[s.Key] = s
 	}
 	if man.Store != nil {
@@ -383,4 +387,36 @@ func (m *Marks) Resolve(_ context.Context, id string) error {
 		}
 	}
 	return fmt.Errorf("no mark %q", id)
+}
+
+// checkDefault is the app's rule for a setting's default (core/internal/config.Store.Declare):
+// it must be a value of the setting's type, so a text setting needs Default: "".
+func checkDefault(st module.Setting) error {
+	v := st.Default
+	switch st.Type {
+	case module.SettingBool:
+		if _, ok := v.(bool); !ok {
+			return fmt.Errorf("want true or false, not %#v", v)
+		}
+	case module.SettingInt:
+		switch n := v.(type) {
+		case int, int64:
+		case float64:
+			if n != float64(int(n)) {
+				return fmt.Errorf("want a whole number, not %v", n)
+			}
+		default:
+			return fmt.Errorf("want a whole number, not %#v", v)
+		}
+	case module.SettingEnum:
+		str, _ := v.(string)
+		if !slices.Contains(st.Options, str) {
+			return fmt.Errorf("%#v is not one of the options", v)
+		}
+	case module.SettingString, "":
+		if _, ok := v.(string); !ok {
+			return fmt.Errorf("want text (Default: \"\"), not %#v", v)
+		}
+	}
+	return nil
 }

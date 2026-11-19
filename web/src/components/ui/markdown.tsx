@@ -43,7 +43,18 @@ const components: Components = {
   th: ({ node: _n, className, ...p }) => <th className={cn("border border-border bg-muted px-2 py-1 text-left font-medium", className)} {...p} />,
   td: ({ node: _n, className, ...p }) => <td className={cn("border border-border px-2 py-1", className)} {...p} />,
   hr: ({ node: _n, className, ...p }) => <hr className={cn("my-4 border-border", className)} {...p} />,
+  // An image is a link to it, not a request for it: a remote image loads from its sender's
+  // server the moment the text is shown (a read receipt, the reader's address). images opts in.
+  img: ({ node: _n, src, alt }) => (
+    <a className="text-primary underline underline-offset-2" href={typeof src === "string" ? src : undefined} target="_blank" rel="noreferrer noopener">
+      image: {alt || "untitled"}
+    </a>
+  ),
 }
+
+/** With images: drawn, for text whose images are known to be safe to fetch. The key is removed,
+ * not set to undefined: react-markdown takes a present key as the component. */
+const { img: _img, ...withImages } = components
 
 const fenceRe = /^\s*(```|~~~)/
 
@@ -83,9 +94,9 @@ function closeOpen(block: string): string {
   return out
 }
 
-const Block = React.memo(function Block({ text }: { text: string }) {
+const Block = React.memo(function Block({ text, images }: { text: string; images: boolean }) {
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={components}>
+    <ReactMarkdown remarkPlugins={plugins} components={images ? withImages : components}>
       {text}
     </ReactMarkdown>
   )
@@ -94,14 +105,20 @@ const Block = React.memo(function Block({ text }: { text: string }) {
 function Markdown({
   children,
   streaming = false,
+  images = false,
   className,
   ...props
-}: Omit<React.ComponentProps<"div">, "children"> & { children: string; streaming?: boolean }) {
+}: Omit<React.ComponentProps<"div">, "children"> & {
+  children: string
+  streaming?: boolean
+  /** Draw images (fetching them). Off: each image is a link, so showing text never fetches. */
+  images?: boolean
+}) {
   const blocks = React.useMemo(() => splitBlocks(children), [children])
   return (
     <div data-slot="markdown" className={cn("min-w-0 text-sm break-words", className)} {...props}>
       {blocks.map((b, i) => (
-        <Block key={i} text={streaming && i === blocks.length - 1 ? closeOpen(b) : b} />
+        <Block key={i} images={images} text={streaming && i === blocks.length - 1 ? closeOpen(b) : b} />
       ))}
     </div>
   )

@@ -15,3 +15,4 @@ modules:
   - terminal
   - viewer
   - diagram
+  - inbox

@@ -174,7 +174,8 @@
     },
     "markdown": {
       "files": {
-        "web/src/components/ui/markdown.tsx": "d0f982908d75207299d6167c35f264852e78bab9ba83973c97de7136ceb3905b"
+        "web/src/components/ui/markdown.tsx": "97f2ac066b4290a1236ceebee79e79c76331eadf79e19930ff4770cb5c8cf685",
+        "web/src/components/ui/markdown.css": "f39f80c493a1689aa374703fd5126c1ead8ef6555684c1f7d1525b58ef040d54"
       }
     },
     "message": {
@@ -254,7 +255,7 @@
     },
     "text-editor": {
       "files": {
-        "web/src/components/ui/text-editor.tsx": "c2955bb25d22cb22598c6c0d10768b7a398dc608ea1043472703cfdef7a9e4ff"
+        "web/src/components/ui/text-editor.tsx": "91d9000d6d25f067da872de59b1314e1a084f98923544c505394e8546d8c5fa3"
       }
     },
     "textarea": {

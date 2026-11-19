@@ -89,6 +89,8 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 			_ = w.nanite.Close()
 		}
 	}
+	// Its runs announce themselves on the bus, as the host engine's do.
+	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded}
 	w.svc, err = chat.NewService(chat.Config{
 		Runner:  run,
 		Log:     st,

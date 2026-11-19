@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The agent's runs announce themselves**, whichever engine runs them: `agent.run.started` and `agent.run.ended`
+  (`finished`, `canceled` or `failed`, with a reason). Attention follows them. The subject `agent` is `working` while
+  the agent runs, then `unseen` until the owner has read the answer, or `failed`. The context trace keeps each end
+  as a `run_end` signal (`docs/attention.md`).
+
 - **Attention: one list of what waits for the owner** (`docs/attention.md`). There are three states: `needs_you`
   (an open card that asks something), `failed` (an error card) and `unseen` (a window a delegate opened while the
   owner was elsewhere, or a question that expired unanswered). Items are derived from the bus, and only the

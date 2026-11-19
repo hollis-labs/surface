@@ -136,7 +136,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	s.engine = o.Engine
 	s.custom = o.Engine != nil
 	if s.engine == nil {
-		if s.engine, err = newHostEngine(ctx, cfg, systemPrompt(k.AppName(), cfg.System), k.DB()); err != nil {
+		if s.engine, err = newHostEngine(ctx, cfg, systemPrompt(k.AppName(), cfg.System), k.DB(), s.watch()); err != nil {
 			return nil, fmt.Errorf("agent: engine: %w", err)
 		}
 	}

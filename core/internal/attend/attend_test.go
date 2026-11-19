@@ -134,3 +134,39 @@ func TestItemsFollowTheBusSurviveARestartAndGoWithTheirWindow(t *testing.T) {
 		t.Errorf("an item outlived its window: %v", states(third))
 	}
 }
+
+func TestTheAgentsRunIsWorkingThenUnreadOrFailed(t *testing.T) {
+	wins := []module.Window{}
+	s, _ := open(t, filepath.Join(t.TempDir(), "a.db"), &wins)
+	ctx := context.Background()
+	owner := module.WithActor(ctx, module.ActorOwner)
+
+	s.on(ctx, ev("agent.run.started", map[string]any{"run_id": "r1"}))
+	if got := states(s)[AgentSubject]; got != Working {
+		t.Fatalf("while running: %q", got)
+	}
+	// Looking does not finish it.
+	if err := s.Seen(owner, AgentSubject); err != nil || states(s)[AgentSubject] != Working {
+		t.Fatalf("seen while working: %v %v", err, states(s))
+	}
+	s.on(ctx, ev("agent.run.ended", map[string]any{"run_id": "r1", "status": "finished"}))
+	if got := states(s)[AgentSubject]; got != Unseen {
+		t.Fatalf("after it answered: %q", got)
+	}
+	if err := s.Seen(owner, AgentSubject); err != nil || len(s.List()) != 0 {
+		t.Fatalf("after the owner read it: %v %v", err, states(s))
+	}
+
+	s.on(ctx, ev("agent.run.started", map[string]any{"run_id": "r2"}))
+	s.on(ctx, ev("agent.run.ended", map[string]any{"run_id": "r2", "status": "failed", "reason": "the gateway answered 529"}))
+	l := s.List()
+	if len(l) != 1 || l[0].State != Failed || l[0].Reason != "the run failed: the gateway answered 529" {
+		t.Fatalf("after a failure: %+v", l)
+	}
+
+	s.on(ctx, ev("agent.run.started", map[string]any{"run_id": "r3"}))
+	s.on(ctx, ev("agent.run.ended", map[string]any{"run_id": "r3", "status": "canceled"}))
+	if len(s.List()) != 0 {
+		t.Errorf("a canceled run left %v", states(s))
+	}
+}

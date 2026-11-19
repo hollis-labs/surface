@@ -25,7 +25,7 @@ func TestLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng, err := newHostEngine(context.Background(), cfg, systemPrompt("Surface test", ""), s.k.DB())
+	eng, err := newHostEngine(context.Background(), cfg, systemPrompt("Surface test", ""), s.k.DB(), runWatch{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -377,7 +377,7 @@ func mustRule(js string) (r router.Rule) {
 // and a turn says where to write one.
 func TestHostEngineWithoutConfig(t *testing.T) {
 	s, _, _, _ := setup(t, Options{Engine: nil})
-	eng, err := newHostEngine(context.Background(), FileConfig{}, systemPrompt("t", ""), s.k.DB())
+	eng, err := newHostEngine(context.Background(), FileConfig{}, systemPrompt("t", ""), s.k.DB(), runWatch{})
 	if err != nil {
 		t.Fatal(err)
 	}

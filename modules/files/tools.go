@@ -53,7 +53,7 @@ func (t target) label() string {
 }
 
 const (
-	placeProp = `"place":{"type":"string","description":"A place id from files_places. Left out: the place of the Files window in front."}`
+	placeProp = `"place":{"type":"string","description":"A place id from files_places; \"remote:<id>\" is a folder on another host, reached over ssh. Left out: the place of the Files window in front."}`
 	pathHelp  = `Relative to the place, with forward slashes (\"notes/todo.md\"); \"\" is the place's root.`
 )
 
@@ -61,10 +61,10 @@ func (m *mod) tools() []module.Tool {
 	raw := func(s string) json.RawMessage { return json.RawMessage(s) }
 	return []module.Tool{
 		{Name: "files_places", Level: module.LevelRead,
-			Description: "List the owner's places: the named root folders on this machine that the files tools can reach. Every other files tool takes a place id from here and a path relative to that place. Call it first when you do not know the place.",
+			Description: "List the owner's places: the named root folders the files tools can reach. Most are on this machine; those with remote: true (id \"remote:<id>\", with a host) are folders on another host, reached over ssh, and every files tool works on them the same way. Every other files tool takes a place id from here and a path relative to that place. Call it first when you do not know the place.",
 			Input:       raw(`{"type":"object","properties":{}}`),
 			Run: func(ctx context.Context, _ module.Host, _ json.RawMessage) (any, error) {
-				return m.st.list(ctx)
+				return m.places(ctx)
 			}},
 		{Name: "files_list", Level: module.LevelRead,
 			Description: "List a folder: names, sizes and modification times, folders first. With no place and no path it lists the folder in the Files window in front, which is what the owner means by \"this folder\". Dotfiles are left out unless the owner's show-hidden setting is on or hidden is true. Entries marked locked look like credentials and cannot be read.",
@@ -81,15 +81,11 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				l, err := m.at(ctx, place, rel, true)
+				rel, entries, err := m.listing(ctx, place, rel, a.Hidden || h.Config().Bool("show_hidden"))
 				if err != nil {
 					return nil, err
 				}
-				entries, err := list(l, a.Hidden || h.Config().Bool("show_hidden"))
-				if err != nil {
-					return nil, err
-				}
-				out := map[string]any{"place": place, "path": l.Rel, "count": len(entries), "entries": entries}
+				out := map[string]any{"place": place, "path": rel, "count": len(entries), "entries": entries}
 				if len(entries) > listCap {
 					out["entries"], out["truncated"] = entries[:listCap], true
 				}
@@ -114,14 +110,10 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				l, err := m.at(ctx, place, rel, true)
-				if err != nil {
-					return nil, err
-				}
 				if a.Limit <= 0 || a.Limit > readDefaultLines {
 					a.Limit = readDefaultLines
 				}
-				t, err := readText(l, a.Offset, a.Limit, previewLimit(h))
+				rel, t, err := m.read(ctx, place, rel, a.Offset, a.Limit, previewLimit(h))
 				if err != nil {
 					return nil, err
 				}
@@ -129,10 +121,10 @@ func (m *mod) tools() []module.Tool {
 					Place string `json:"place"`
 					Path  string `json:"path"`
 					Text
-				}{place, l.Rel, t}, nil
+				}{place, rel, t}, nil
 			}},
 		{Name: "files_grep", Level: module.LevelRead,
-			Description: fmt.Sprintf("Search the text of the files under a folder (or in one file) and return the matching lines with their file and line number. query is plain text matched without regard to case, or a regular expression (RE2 syntax, case sensitive unless it starts with (?i)) when regexp is true. Use glob to keep to some files (\"*.md\"). The search is bounded: %d folders deep, %d files, %d matches unless limit says otherwise; it skips binary files, files over 1 MB, symbolic links, credentials, and folders like .git and node_modules. truncated: true means a bound was reached, so narrow the folder or the query.", grepMaxDepth, grepMaxFiles, grepMaxMatches),
+			Description: fmt.Sprintf("Search the text of the files under a folder (or in one file) and return the matching lines with their file and line number. query is plain text matched without regard to case, or a regular expression (RE2 syntax, case sensitive unless it starts with (?i)) when regexp is true. Use glob to keep to some files (\"*.md\"). The search is bounded: %d folders deep, %d files, %d matches unless limit says otherwise; it skips binary files, files over 1 MB, symbolic links, credentials, and folders like .git and node_modules. truncated: true means a bound was reached, so narrow the folder or the query. In a remote place the host's own find and grep do the search, and a regular expression runs as POSIX extended (no \\d; use [0-9]).", grepMaxDepth, grepMaxFiles, grepMaxMatches),
 			Input:       raw(`{"type":"object","required":["query"],"properties":{"query":{"type":"string"},"regexp":{"type":"boolean","description":"Treat query as a regular expression."},` + placeProp + `,"path":{"type":"string","description":"The folder to search under, or one file. ` + pathHelp + ` Left out with place: the folder in front."},"glob":{"type":"string","description":"A file name pattern, like *.md."},"max_depth":{"type":"integer","minimum":1,"description":"How many folders deep to go."},"limit":{"type":"integer","minimum":1,"maximum":500,"description":"The most matches to return."}}}`),
 			Run: func(ctx context.Context, h module.Host, in json.RawMessage) (any, error) {
 				var a struct {
@@ -150,11 +142,19 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
+				q := grepQuery{Query: a.Query, Regexp: a.Regexp, Glob: a.Glob, MaxDepth: a.MaxDepth, MaxMatches: a.Limit}
+				if isRemote(place) {
+					r, rerr := m.remote(place)
+					if rerr != nil {
+						return nil, rerr
+					}
+					return r.grep(ctx, rel, q)
+				}
 				l, err := m.at(ctx, place, rel, true)
 				if err != nil {
 					return nil, err
 				}
-				return grep(ctx, l, grepQuery{Query: a.Query, Regexp: a.Regexp, Glob: a.Glob, MaxDepth: a.MaxDepth, MaxMatches: a.Limit})
+				return grep(ctx, l, q)
 			}},
 		{Name: "files_write", Level: module.LevelWrite,
 			Description: "Create a text file, or replace the whole content of one. text is the complete new content: to change part of a file, read it first and write it back whole. Missing parent folders are created. Set create_only to fail when the file already exists. It will not replace a folder, a binary file or a file that looks like a credential.",
@@ -208,7 +208,7 @@ func (m *mod) tools() []module.Tool {
 				return m.mkdir(ctx, h, place, rel)
 			}},
 		{Name: "files_move", Level: module.LevelConfirm,
-			Description: "Rename or move a file or folder inside one place. to is the full new path, including the name (to move a.md into docs, to is \"docs/a.md\"); its folder must exist. It never replaces anything: a taken destination fails, so pick another name. It cannot move between places.",
+			Description: "Rename or move a file or folder inside one place. to is the full new path, including the name (to move a.md into docs, to is \"docs/a.md\"); its folder must exist. It never replaces anything: a taken destination fails, so pick another name. It cannot move between places, so not between this machine and a remote host.",
 			Input:       raw(`{"type":"object","required":["from","to"],"properties":{` + placeProp + `,"from":{"type":"string","description":"What to move. ` + pathHelp + `"},"to":{"type":"string","description":"Its new path, including the name."}}}`),
 			Describe: func(in json.RawMessage) string {
 				var a struct{ Place, From, To string }

@@ -19,8 +19,13 @@ type Place struct {
 	// ID is a short slug made from the name ("home", "work-notes").
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Path is the absolute path of the root directory.
+	// Path is the absolute path of the root directory; for a remote place, the folder on
+	// its host as configured.
 	Path string `json:"path"`
+	// Host is a remote place's ssh host; Remote marks one. A remote place's id starts
+	// with "remote:" and it comes from the files.remotes setting, not the store.
+	Host   string `json:"host,omitempty"`
+	Remote bool   `json:"remote,omitempty"`
 }
 
 var (

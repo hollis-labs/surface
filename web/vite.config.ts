@@ -44,6 +44,7 @@ export default defineConfig({
   build: { outDir, emptyOutDir: true, chunkSizeWarningLimit: 4000 },
   server: {
     fs: { allow: [resolve(root, "..")] },
-    proxy: { "/api": api, "/mcp": api },
+    // ws: the Terminal's socket is under /api too.
+    proxy: { "/api": { target: api, ws: true }, "/mcp": api },
   },
 })

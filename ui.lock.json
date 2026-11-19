@@ -247,6 +247,11 @@
         "web/src/components/ui/tabs.tsx": "958b817b256cffae986d046168b70dd0153d542b4c521ee8bbdda349010011ef"
       }
     },
+    "terminal": {
+      "files": {
+        "web/src/components/ui/terminal.tsx": "7cd2d9584511fba61fc610da153dae04219c711652a0854f6a4aecef21ea1586"
+      }
+    },
     "text-editor": {
       "files": {
         "web/src/components/ui/text-editor.tsx": "c2955bb25d22cb22598c6c0d10768b7a398dc608ea1043472703cfdef7a9e4ff"

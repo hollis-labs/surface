@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -101,9 +103,16 @@ func read(r *http.Request, v any) error {
 }
 
 // guard keeps the app to its own page: a browser on another site cannot drive it. Requests
-// with no Origin (a CLI, an agent) pass; a page must be the app's own.
+// with no Origin (a CLI, an agent) pass; a page must be the app's own. And the app answers only
+// to a name that cannot be rebound (allowedHost): a page whose own name is made to point at this
+// machine (DNS rebinding) passes an origin check, since its origin and host agree.
 func guard(next http.Handler) http.Handler {
+	extra := allowedHostsFromEnv()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowedHost(r.Host, extra) {
+			fail(w, http.StatusMisdirectedRequest, fmt.Errorf("host %q is not this app's: reach it at 127.0.0.1 or localhost, or add the name to SURFACE_ALLOWED_HOSTS", r.Host))
+			return
+		}
 		if o := r.Header.Get("Origin"); o != "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !sameHost(o, r.Host) && !devOrigin(o) {
 				fail(w, http.StatusForbidden, errors.New("cross-origin request refused"))
@@ -112,6 +121,35 @@ func guard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// allowedHost says whether a request's Host names this machine in a way a web page cannot
+// redirect: an IP address (rebinding needs a name), localhost or a name under .localhost, or a
+// name the operator listed (SURFACE_ALLOWED_HOSTS, comma separated). An empty Host (HTTP/1.0, a
+// test) passes.
+func allowedHost(hostport string, extra map[string]bool) bool {
+	if hostport == "" {
+		return true
+	}
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+	if net.ParseIP(host) != nil || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	return extra[host]
+}
+
+func allowedHostsFromEnv() map[string]bool {
+	out := map[string]bool{}
+	for _, h := range strings.Split(os.Getenv("SURFACE_ALLOWED_HOSTS"), ",") {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			out[h] = true
+		}
+	}
+	return out
 }
 
 func sameHost(origin, host string) bool {

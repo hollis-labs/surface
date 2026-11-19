@@ -161,6 +161,32 @@ whenever the slot is active, so the agent can pick the work up again later. `con
 the slots when called with none. The panel shows the active slot, the top-of-mind tools and the block itself,
 updated live: the service publishes `agent.context` whenever the desk changes it.
 
+### The context trace
+
+Every message leaves a record in the core database (`context_turns`, `core/internal/slots/trace.go`):
+- the text;
+- the window in front and the open views;
+- the mode and layout;
+- the slots chosen and why;
+- the top-of-mind tools;
+- the routed rule and the reflexes that fired, and whether one halted the turn;
+- the block's size;
+- what a budget cut (`<slot>:clipped`, `:trimmed`, `:dropped`).
+
+Beside each record are **signals** (`context_signals`): what happened in the 15 minutes after the turn. Each
+signal names its actor, so the owner's corrections can be told apart from the agent's own moves.
+- `pin`: a slot pinned with `context_switch`, with the slot it replaced;
+- `unpin`;
+- `focus`: the owner moving to a window. The agent's moves are not kept.
+
+This is what a classifier-driven `Selector` learns from: the situation and message are the input, the slot
+chosen is the guess, and a re-pin or a move soon after is the correction. It is kept from the first message
+because it only grows with use. It stays on the owner's machine, keeps the newest 50,000 turns, and the live
+setting `surface.agent_trace` turns it off.
+
+`GET /api/agent/trace?limit=` gives the newest turns with their signals.
+`GET /api/agent/trace/export` gives every turn as JSON lines.
+
 ## The router
 
 The owner's message is first put to a set of rules (`libs core/util/router`). Each rule is a list of conditions over
@@ -271,6 +297,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `GET /api/agent/context` | the assembly the next message would carry |
 | `GET /api/agent/setup` | `{ready, model, config_path}` |
 | `GET /api/agent/slots`, `POST /api/agent/slots/pin` | every slot with its note; pin a slot (`""` unpins) |
+| `GET /api/agent/trace`, `GET /api/agent/trace/export` | the context trace: the newest turns with their signals; every turn as JSON lines |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

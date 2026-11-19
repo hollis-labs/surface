@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -63,6 +64,7 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		}
 		reply(w, 200, map[string]any{"ready": false, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName()), "reason": reason})
 	})
+	s.traceRoutes(mux)
 	mux.HandleFunc("GET "+Prefix+"/slots", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.slotList(r.Context())) })
 	mux.HandleFunc("POST "+Prefix+"/slots/pin", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -74,6 +76,7 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		raw, _ := json.Marshal(map[string]string{"slot": in.Slot})
 		if in.Slot == "" && s.pin != nil {
 			s.pin.Pin("", "")
+			s.signal(r.Context(), "unpin", nil)
 		} else if _, err := s.callOwn(r, "context_switch", raw); err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -146,9 +149,13 @@ func (s *Service) Mount(mux *http.ServeMux) {
 }
 
 func (s *Service) callOwn(r *http.Request, name string, input json.RawMessage) (any, error) {
+	return s.callOwnCtx(r.Context(), name, input)
+}
+
+func (s *Service) callOwnCtx(ctx context.Context, name string, input json.RawMessage) (any, error) {
 	for _, t := range s.ownTools() {
 		if t.Name == name {
-			return t.Call(r.Context(), input)
+			return t.Call(ctx, input)
 		}
 	}
 	return nil, errors.New("no such tool")

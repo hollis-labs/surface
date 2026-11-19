@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The context trace.** Every message records what it put in front of the agent and why: the window in front,
+  the slots and why they were chosen, the routed rule, the fired reflexes, and what the budget cut. Beside it,
+  the trace keeps what followed: a re-pin, an unpin, the owner moving to another window. This is the training
+  set for a classifier that picks slots. `GET /api/agent/trace` and `/trace/export` (JSON lines) serve it, and
+  the setting `surface.agent_trace` turns it off (`docs/agent.md`). `slots.Assembly.Trimmed` names the cuts.
+  `desk.focus` now says who moved the focus (`by`) and to which view.
+
 - **The desk knows who opened each window, and gives the focus back to the owner** (`docs/desk-rules.md`).
   Each window records `opened_by`, `opener`, `reason`, `retention` and `kept`. When the window in front
   closes, the focus returns to the newest window the owner had there, not to wherever the agent last

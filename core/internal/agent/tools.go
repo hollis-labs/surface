@@ -59,7 +59,9 @@ func (s *Service) ownTools() []kernel.BoundTool {
 				if w, ok := s.k.Desk().Focused(ctx); ok {
 					view = w.View
 				}
+				before := s.Preview(ctx).Slot
 				s.pin.Pin(a.Slot, view)
+				s.signal(ctx, "pin", map[string]string{"slot": a.Slot, "from": before, "view": view})
 				asm := s.Preview(ctx)
 				s.k.Events().Publish("agent.context", asm)
 				return asm.Block, nil

@@ -268,7 +268,13 @@ func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
 		if d.pub != nil {
 			d.pub.Publish("desk.changed", snap)
 			if !quiet {
-				d.pub.Publish("desk.focus", map[string]any{"window": snap.Focus})
+				focus := map[string]any{"window": snap.Focus, "by": string(a.Actor)}
+				for _, w := range snap.Wins {
+					if w.ID == snap.Focus {
+						focus["view"] = w.View
+					}
+				}
+				d.pub.Publish("desk.focus", focus)
 			}
 			if a.Type == "open" {
 				d.pub.Publish("desk.opened", map[string]any{"window": win.ID, "view": win.View, "opened_by": win.OpenedBy, "focused": snap.Focus == win.ID})

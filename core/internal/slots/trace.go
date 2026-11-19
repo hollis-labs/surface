@@ -49,6 +49,8 @@ type TraceTurn struct {
 	Halted     bool     `json:"halted,omitempty"`
 	BlockChars int      `json:"block_chars"`
 	Trimmed    []string `json:"trimmed"`
+	// Classified is what the classifier made of the turn (a classify.Result), when it ran.
+	Classified json.RawMessage `json:"classified,omitempty"`
 	// Signals are what followed the turn, oldest first.
 	Signals []TraceSignal `json:"signals,omitempty"`
 }
@@ -136,6 +138,14 @@ func (t *Trace) SetRun(ctx context.Context, id int64, runID string) {
 	_, _ = t.db.ExecContext(context.WithoutCancel(ctx), `UPDATE context_turns SET run_id=? WHERE id=?`, runID, id)
 }
 
+// SetClassified keeps what the classifier made of a recorded turn.
+func (t *Trace) SetClassified(ctx context.Context, id int64, result json.RawMessage) {
+	_, _ = t.db.ExecContext(context.WithoutCancel(ctx), `UPDATE context_turns SET classified=? WHERE id=?`, string(result), id)
+}
+
+// Each calls fn for every turn, oldest first, each with its signals.
+func (t *Trace) Each(ctx context.Context, fn func(TraceTurn) error) error { return t.each(ctx, 0, fn) }
+
 // Signal keeps something that followed the newest turn. It is dropped when no turn was
 // recorded in the last signalWindow: with nothing to follow, it says nothing about a choice.
 func (t *Trace) Signal(ctx context.Context, kind, actor string, detail any) {
@@ -173,7 +183,7 @@ func (t *Trace) Export(ctx context.Context, w io.Writer) error {
 }
 
 const traceColumns = `SELECT id, at, run_id, text, view, module, mode, layout, open_views, slot, slots, why,
-	top_of_mind, routed, fired, halted, block_chars, trimmed FROM context_turns`
+	top_of_mind, routed, fired, halted, block_chars, trimmed, classified FROM context_turns`
 
 // each calls fn for turns with their signals: the newest limit of them, newest first, or
 // with limit 0 every turn, oldest first.
@@ -191,9 +201,9 @@ func (t *Trace) each(ctx context.Context, limit int, fn func(TraceTurn) error) e
 	var turns []TraceTurn
 	for rows.Next() {
 		var tt TraceTurn
-		var open, sl, top, fired, trimmed string
+		var open, sl, top, fired, trimmed, classified string
 		if err := rows.Scan(&tt.ID, &tt.At, &tt.RunID, &tt.Text, &tt.View, &tt.Module, &tt.Mode, &tt.Layout, &open, &tt.Slot, &sl,
-			&tt.Why, &top, &tt.Routed, &fired, &tt.Halted, &tt.BlockChars, &trimmed); err != nil {
+			&tt.Why, &top, &tt.Routed, &fired, &tt.Halted, &tt.BlockChars, &trimmed, &classified); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -202,6 +212,9 @@ func (t *Trace) each(ctx context.Context, limit int, fn func(TraceTurn) error) e
 			to  *[]string
 		}{{open, &tt.OpenViews}, {sl, &tt.Slots}, {top, &tt.TopOfMind}, {fired, &tt.Fired}, {trimmed, &tt.Trimmed}} {
 			_ = json.Unmarshal([]byte(p.raw), p.to)
+		}
+		if classified != "" {
+			tt.Classified = json.RawMessage(classified)
 		}
 		turns = append(turns, tt)
 	}

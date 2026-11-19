@@ -50,7 +50,14 @@ export function Desktop({ modules }: DesktopProps) {
   const manifest = app()
   const [palette, setPalette] = useState(false)
   const [menu, setMenu] = useState(false)
-  const [agentOpen, setAgentOpen] = useState(() => localStorage.getItem("surface.agent.open") !== "0")
+  const [agentOpen, setAgentOpen] = useState(() => {
+    // Sidebars start hidden; the agent panel opens when the person opens it, and stays as they left it.
+    try {
+      return localStorage.getItem("surface.agent.open") === "1"
+    } catch {
+      return false
+    }
+  })
   const [up, setUp] = useState(isConnected())
   const gap = (useSetting<number>("surface.gap") ?? 10) as number
   const theme = (useSetting<string>("surface.theme") ?? "dark") as string

@@ -9,7 +9,7 @@
     },
     "app-frame": {
       "files": {
-        "web/src/components/ui/app-frame.tsx": "fba70b7f3c8e491abc0a64be6f6ded34e79da722d4e05e4f06339aa8beaf1078"
+        "web/src/components/ui/app-frame.tsx": "00739a023e416a8dc345133404c16992cfdf1808630b6ae9a259ce9da3433cf1"
       }
     },
     "attention-layer": {

@@ -15,6 +15,7 @@ import {
 import { type ReactElement, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
@@ -101,7 +102,7 @@ interface Probe {
 }
 
 /** The gallery's sections, as the standalone page names them in its hash. */
-const SECTIONS = ["controls", "display", "overlays", "chat", "cards", "genui", "ade", "windows"]
+const SECTIONS = ["draft", "controls", "display", "overlays", "chat", "cards", "genui", "ade", "windows"]
 
 const STATUS_VARIANT: Record<Status, "default" | "secondary" | "outline" | "destructive"> = {
   requested: "outline",
@@ -208,11 +209,13 @@ function Jobs({ desk, api, win }: ViewProps) {
 
 // ---- One job: the review pane -----------------------------------------------------------------
 
-/** The URL the frame loads: the preview page with the theme and the section. */
-function frameURL(base: string, theme: string, section: string) {
+/** The URL the frame loads: the preview page with the theme, the job (whose draft the Draft tab
+ * shows) and the section. */
+function frameURL(base: string, theme: string, section: string, job: string) {
   try {
     const u = new URL(base)
     u.searchParams.set("theme", theme)
+    u.searchParams.set("job", job)
     u.hash = section
     return u.toString()
   } catch {
@@ -228,11 +231,13 @@ function JobPane({ win, desk, api }: ViewProps) {
   const [theme, setTheme] = useState<"dark" | "light">(
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   )
-  const [section, setSection] = useState(typeof win.args.section === "string" ? win.args.section : "controls")
+  const [section, setSection] = useState(typeof win.args.section === "string" ? win.args.section : "draft")
   const [probe, setProbe] = useState<Probe | null>(null)
   const [reloads, setReloads] = useState(0)
   const [busy, setBusy] = useState("")
   const [outcome, setOutcome] = useState("")
+  const [details, setDetails] = useState(false)
+  const [note, setNote] = useState<NoteDraft>({ body: "", component: "" })
   const frame = useRef<HTMLIFrameElement>(null)
   const marks = useMarks(id ? `design:${id}` : undefined)
 
@@ -302,7 +307,7 @@ function JobPane({ win, desk, api }: ViewProps) {
     desk.report(win.id, { showing, section, theme })
   }, [desk, win.id, showing, section, theme])
 
-  const src = useMemo(() => (target ? frameURL(target, theme, section) : ""), [target, theme, section])
+  const src = useMemo(() => (target ? frameURL(target, theme, section, id) : ""), [target, theme, section, id])
 
   const run = (label: string, p: Promise<unknown>, done: (r: unknown) => string) => {
     setBusy(label)
@@ -316,6 +321,23 @@ function JobPane({ win, desk, api }: ViewProps) {
   if (!job) return <p className="p-4 text-sm text-muted-foreground">{error || "Reading the job…"}</p>
 
   const open = marks.filter((m) => m.status === "open")
+  const settledJob = ["approved", "merged", "closed"].includes(job.status)
+  const canSend = busy === "" && open.length > 0 && !settledJob
+  const canApprove = busy === "" && !!job.head_sha && !!job.pr_url && !settledJob
+  const sendNotes = () =>
+    run("feedback", api.post(`jobs/${job.id}/feedback`, {}), (r) => {
+      const o = (r as { outbox: { sent: boolean; problem?: string } }).outbox
+      return o.sent ? "Sent as the next round." : `Not sent: ${o.problem}. Ask the agent for the text.`
+    })
+  const approve = () => run("approve", api.post(`jobs/${job.id}/approve`), () => "Approve it on the card.")
+  const approveHint =
+    (job.approved_head
+      ? `Approved: ${job.approved_pr?.replace(/^https:\/\/github\.com\//, "") ?? ""} at ${job.approved_head.slice(0, 7)}${job.head_differs ? `; a new commit ${job.latest_head?.slice(0, 7)} came after the approval` : ""}`
+      : job.head_sha
+        ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
+        : "Nothing to approve until the Designer names a head and a pull request") +
+    (job.update_received ? " · an update came back without a preview" : "") +
+    (job.approval_owed ? " · waiting for GitHub to show this commit; you are asked to approve on your own" : "")
 
   return (
     <div className="@container flex h-full min-h-0 flex-col">
@@ -372,8 +394,36 @@ function JobPane({ win, desk, api }: ViewProps) {
               <Icon name="refresh-cw" />
             </Button>
           </Tip>
+          <Separator orientation="vertical" className="h-5" />
+          <Tip label={open.length ? `Send ${open.length} open note(s) as the next round` : "No open notes to send"}>
+            {/* The span takes the pointer when the button is disabled, so the tooltip still says why. */}
+            <span className="inline-flex">
+              <Button size="sm" variant="outline" disabled={!canSend} onClick={sendNotes}>
+                Send notes{open.length ? ` (${open.length})` : ""}
+              </Button>
+            </span>
+          </Tip>
+          <Tip label={approveHint}>
+            <span className="inline-flex">
+              <Button size="sm" disabled={!canApprove} onClick={approve}>
+                Approve…
+              </Button>
+            </span>
+          </Tip>
+          <Button size="sm" variant="ghost" onClick={() => setDetails(true)}>
+            <Icon name="panel-right" />
+            Details{note.body.trim() ? " (note unsent)" : ""}
+          </Button>
         </div>
       </header>
+      {(outcome || job.merge_warning || job.approval_owed || job.update_received) && (
+        <div className="flex flex-col gap-0.5 border-b px-3 py-1 text-xs text-muted-foreground">
+          {job.merge_warning && <p className="font-medium text-destructive">{job.merge_warning}</p>}
+          {job.approval_owed && <p>Waiting for GitHub to show this commit; you are asked to approve on your own.</p>}
+          {job.update_received && <p>An update came back without a preview.</p>}
+          {outcome && <p>{outcome}</p>}
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1 bg-muted/30">
@@ -400,68 +450,41 @@ function JobPane({ win, desk, api }: ViewProps) {
             </Empty>
           )}
         </div>
+      </div>
 
-        <aside className="flex w-80 shrink-0 flex-col overflow-auto border-l @max-2xl:w-64">
-          <Previews job={job} api={api} onSaved={() => load()} />
-          <Separator />
-          <Notes jobId={job.id} section={section} marks={open} resolved={marks.length - open.length} />
-          <div className="flex flex-col gap-2 px-3 pb-3">
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1"
-                disabled={busy !== "" || open.length === 0 || ["approved", "merged", "closed"].includes(job.status)}
-                onClick={() =>
-                  run("feedback", api.post(`jobs/${job.id}/feedback`, {}), (r) => {
-                    const o = (r as { outbox: { sent: boolean; problem?: string } }).outbox
-                    return o.sent ? "Sent as the next round." : `Not sent: ${o.problem}. Ask the agent for the text.`
-                  })
-                }
-              >
-                Send notes
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1"
-                disabled={
-                  busy !== "" ||
-                  !job.head_sha ||
-                  !job.pr_url ||
-                  job.status === "approved" ||
-                  job.status === "merged" ||
-                  job.status === "closed"
-                }
-                onClick={() => run("approve", api.post(`jobs/${job.id}/approve`), () => "Approve it on the card.")}
-              >
-                Approve…
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {job.approved_head
-                ? `Approved: ${job.approved_pr?.replace(/^https:\/\/github\.com\//, "") ?? ""} at ${job.approved_head.slice(0, 7)}${job.head_differs ? `; a new commit ${job.latest_head?.slice(0, 7)} came after the approval` : ""}`
-                : job.head_sha
-                  ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
-                  : "Nothing to approve until the Designer names a head and a pull request"}
-              {job.update_received ? " · an update came back without a preview" : ""}
-              {job.approval_owed
-                ? " · waiting for GitHub to show this commit; you are asked to approve on your own"
-                : ""}
-            </p>
-            {job.status === "closed" && job.closed_reason && (
-              <p className="text-xs text-muted-foreground">Closed: {job.closed_reason}</p>
-            )}
-            {job.merge_warning && <p className="text-xs font-medium text-destructive">{job.merge_warning}</p>}
-            {outcome && <p className="text-xs text-muted-foreground">{outcome}</p>}
+      <Dialog open={details} onOpenChange={setDetails}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{job.title}</DialogTitle>
+            <DialogDescription>
+              {job.branch}
+              {job.progress.head ? ` @ ${job.progress.head.slice(0, 7)}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <p>{approveHint}</p>
+            {job.status === "closed" && job.closed_reason && <p>Closed: {job.closed_reason}</p>}
+            {job.merge_warning && <p className="font-medium text-destructive">{job.merge_warning}</p>}
           </div>
+          <Separator />
+          <Notes
+            jobId={job.id}
+            section={section}
+            marks={open}
+            resolved={marks.length - open.length}
+            draft={note}
+            onDraft={setNote}
+          />
           <Separator />
           <Changes job={job} />
           <Separator />
           <Rounds job={job} />
           <Separator />
           <Replies job={job} />
-        </aside>
-      </div>
+          <Separator />
+          <Previews job={job} api={api} onSaved={() => load()} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -526,28 +549,36 @@ function Previews({ job, api, onSaved }: { job: Job; api: ViewProps["api"]; onSa
 }
 
 /** Notes for the next round: marks on the job, pointing at a section (and a component). */
+/** A note being written: kept by the window, so closing Details does not lose it. */
+interface NoteDraft {
+  body: string
+  component: string
+}
+
 function Notes({
   jobId,
   section,
   marks,
   resolved,
+  draft,
+  onDraft,
 }: {
   jobId: string
   section: string
   marks: Mark[]
   resolved: number
+  draft: NoteDraft
+  onDraft: (d: NoteDraft) => void
 }) {
-  const [body, setBody] = useState("")
-  const [component, setComponent] = useState("")
+  const { body, component } = draft
+  const setBody = (b: string) => onDraft({ body: b, component })
+  const setComponent = (c: string) => onDraft({ body, component: c })
   const add = () => {
     const b = body.trim()
     if (!b) return
     const anchor: { section: string; component?: string } = { section }
     if (component.trim()) anchor.component = component.trim()
-    void addMark({ ref: `design:${jobId}`, body: b, anchor }).then(() => {
-      setBody("")
-      setComponent("")
-    })
+    void addMark({ ref: `design:${jobId}`, body: b, anchor }).then(() => onDraft({ body: "", component: "" }))
   }
   return (
     <Section

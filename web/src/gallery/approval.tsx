@@ -43,6 +43,7 @@ export function Approval() {
   return (
     <>
       <Section
+        draft="d_d065599e"
         title="Approval card: risk at a glance"
         about="Proposal for job d_d065599e. Risk shows in the left edge, the icon and the badge. High risk is the only red, and its Approve leads to a second confirm."
       >
@@ -75,6 +76,7 @@ export function Approval() {
         </Wide>
       </Section>
       <Section
+        draft="d_d065599e"
         title="Approval card: before and after"
         about="Short values sit on one line. Long ones stack as before and after blocks, clipped until opened."
       >
@@ -102,6 +104,7 @@ export function Approval() {
         </Wide>
       </Section>
       <Section
+        draft="d_d065599e"
         title="Approval card: several changes"
         about="With perChange, each change is approved or declined on its own. The button says how many are approved, and each change is answered as its own decision."
       >
@@ -128,6 +131,7 @@ export function Approval() {
         </Wide>
       </Section>
       <Section
+        draft="d_d065599e"
         title="Approval card: states"
         about="Waiting shows when it expires. Once closed, the edge and colour go quiet and the foot says what happened."
       >
@@ -192,6 +196,7 @@ export function Approval() {
         </Wide>
       </Section>
       <Section
+        draft="d_d065599e"
         title="Approval card: next to the other cards"
         about="In a column of cards, the approval is the one with an edge and a decision. Notices, progress and plans stay flat."
       >

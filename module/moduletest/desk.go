@@ -119,6 +119,16 @@ func (d *Desk) SetState(id string, state map[string]any) {
 	}
 }
 
+// SetWorking is the page reporting that the owner has unsaved changes (dirty) or unsent
+// input (composing) in a window.
+func (d *Desk) SetWorking(id string, dirty, composing bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if i, err := d.find(id); err == nil {
+		d.wins[i].Dirty, d.wins[i].Composing = dirty, composing
+	}
+}
+
 func (d *Desk) Windows(context.Context) []module.Window {
 	d.mu.Lock()
 	defer d.mu.Unlock()

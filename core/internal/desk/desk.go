@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hollis-labs/surface/module"
 )
@@ -39,6 +40,19 @@ type Win struct {
 	Reason    string `json:"reason,omitempty"`
 	Retention string `json:"retention,omitempty"`
 	Kept      bool   `json:"kept,omitempty"`
+	// Composing is set while the owner has unsent input in the window (the page says so).
+	// Held is a delegate's change to what the window shows, kept until the owner is done
+	// (rule 7).
+	Composing bool  `json:"composing,omitempty"`
+	Held      *Held `json:"held,omitempty"`
+}
+
+// Held is a change a delegate asked for while the owner was working in the window.
+type Held struct {
+	Args  map[string]any `json:"args"`
+	Title string         `json:"title,omitempty"`
+	By    string         `json:"by"`
+	At    string         `json:"at"`
 }
 
 // State is the whole desk.
@@ -64,7 +78,9 @@ type State struct {
 	// Owned is the windows the owner has put in front, newest last: the trail without the
 	// agent's comings and goings. A closed window gives the focus back to the newest of these.
 	Owned []string `json:"owned,omitempty"`
-	Seq   int      `json:"seq"`
+	// PanelComposing is set while the owner has unsent input in the agent panel.
+	PanelComposing bool `json:"panel_composing,omitempty"`
+	Seq            int  `json:"seq"`
 	// Rev counts changes, so a page can tell a newer state from an older one.
 	Rev int `json:"rev"`
 }
@@ -94,6 +110,9 @@ type Action struct {
 	Focus string `json:"focus,omitempty"`
 	// Force closes a window that holds unsaved work.
 	Force bool `json:"force,omitempty"`
+	// composing: whether the owner has unsent input. held: "apply" or "drop".
+	Composing bool   `json:"composing,omitempty"`
+	Do        string `json:"do,omitempty"`
 	// open: what the window is for, and "transient" or "deliverable".
 	Reason    string `json:"reason,omitempty"`
 	Retention string `json:"retention,omitempty"`
@@ -120,9 +139,13 @@ var ErrDirty = errors.New("the window holds unsaved work")
 // close the owner's window.
 var ErrNotYours = errors.New("the window is the owner's: ask them to close it")
 
+// ErrHeld is returned, after the fact, when a delegate's change to what a window shows was
+// held because the owner is working in it (rule 7). The change is kept, not lost.
+var ErrHeld = errors.New("held: the owner is typing or has unsaved changes in that window, so the change waits and applies when they are done; do not ask again")
+
 // ErrOwnerBusy is returned when a delegate tries to take the focus from a window holding the
-// owner's unsaved work.
-var ErrOwnerBusy = errors.New("the owner is working in the window in front (unsaved changes): open in the background, or ask")
+// owner's unsaved work or unsent input.
+var ErrOwnerBusy = errors.New("the owner is working where the focus is (unsaved changes or unsent input): open in the background, or ask")
 
 // Desk is the window manager.
 type Desk struct {
@@ -134,6 +157,8 @@ type Desk struct {
 
 	mu sync.Mutex
 	st State
+	// held is set by reduce when it held a delegate's change, so Apply can say so.
+	held bool
 }
 
 // Open loads the desk as it was when the app last ran, dropping windows whose view is gone.
@@ -157,6 +182,7 @@ func Open(ctx context.Context, db *sql.DB, pub Publisher, views []ViewInfo) (*De
 			for _, w := range saved.Wins {
 				if _, ok := d.views[w.View]; ok {
 					w.Dirty = false
+					w.Composing = false
 					if w.Args == nil {
 						w.Args = map[string]any{}
 					}
@@ -164,6 +190,7 @@ func Open(ctx context.Context, db *sql.DB, pub Publisher, views []ViewInfo) (*De
 				}
 			}
 			saved.Wins = wins
+			saved.PanelComposing = false
 			if saved.Layout != "float" {
 				saved.Layout = "tile"
 			}
@@ -180,6 +207,10 @@ func Open(ctx context.Context, db *sql.DB, pub Publisher, views []ViewInfo) (*De
 			// A desk kept by an older build has no tree; a tree can also name windows that
 			// are gone. Either way the windows are tiled into a sound one.
 			d.st.Tree.normalize(d.ids(), d.st.Ratio, d.name)
+			// Nobody is typing at start: what was held is applied now.
+			for i := range d.st.Wins {
+				d.applyHeld(i)
+			}
 		}
 	}
 	return d, nil
@@ -252,11 +283,13 @@ func (d *Desk) find(id string) int {
 func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
 	a.Actor = module.ActorOf(ctx)
 	d.mu.Lock()
+	d.held = false
 	win, changed, quiet, err := d.reduce(a)
 	if err != nil {
 		d.mu.Unlock()
 		return Win{}, err
 	}
+	held := d.held
 	var snap State
 	if changed {
 		d.st.Rev++
@@ -276,10 +309,16 @@ func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
 				}
 				d.pub.Publish("desk.focus", focus)
 			}
-			if a.Type == "open" {
+			if held {
+				d.pub.Publish("desk.held", map[string]any{"window": win.ID, "by": string(a.Actor)})
+			}
+			if a.Type == "open" && !held {
 				d.pub.Publish("desk.opened", map[string]any{"window": win.ID, "view": win.View, "opened_by": win.OpenedBy, "focused": snap.Focus == win.ID})
 			}
 		}
+	}
+	if held {
+		return win, ErrHeld
 	}
 	return win, nil
 }
@@ -320,6 +359,11 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 				continue
 			}
 			if !v.Multi || (key != "" && w.Key == key) {
+				if a.Args != nil && a.Actor.Delegate() && d.busy(i) {
+					// The owner is working in it: what it shows waits for them (rule 7).
+					d.hold(i, a)
+					return st.Wins[i], true, true, nil
+				}
 				if a.Args != nil {
 					st.Wins[i].Args = a.Args
 				}
@@ -450,7 +494,58 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if a.Args == nil {
 			a.Args = map[string]any{}
 		}
+		if a.Actor.Delegate() && d.busy(i) {
+			d.hold(i, a)
+			return st.Wins[i], true, true, nil
+		}
 		st.Wins[i].Args = a.Args
+		return st.Wins[i], true, true, nil
+	case "composing":
+		// The owner has unsent input in a window, or in the agent panel when there is no id.
+		if a.Actor.Delegate() {
+			return win, false, false, errors.New("desk: only the owner composes")
+		}
+		if a.ID == "" {
+			if st.PanelComposing == a.Composing {
+				return win, false, true, nil
+			}
+			st.PanelComposing = a.Composing
+			return win, true, true, nil
+		}
+		i, err := need()
+		if err != nil {
+			return win, false, false, err
+		}
+		if st.Wins[i].Composing == a.Composing {
+			return st.Wins[i], false, true, nil
+		}
+		st.Wins[i].Composing = a.Composing
+		d.applyHeld(i)
+		return st.Wins[i], true, true, nil
+	case "held":
+		// The owner decides about a held change now: apply it, or drop it.
+		i, err := need()
+		if err != nil {
+			return win, false, false, err
+		}
+		if a.Actor.Delegate() {
+			return st.Wins[i], false, false, errors.New("desk: only the owner decides about a held change")
+		}
+		if st.Wins[i].Held == nil {
+			return st.Wins[i], false, true, nil
+		}
+		switch a.Do {
+		case "apply":
+			h := st.Wins[i].Held
+			st.Wins[i].Args, st.Wins[i].Held = h.Args, nil
+			if h.Title != "" {
+				st.Wins[i].Title = h.Title
+			}
+		case "drop":
+			st.Wins[i].Held = nil
+		default:
+			return st.Wins[i], false, false, errors.New(`desk: held needs do: "apply" or "drop"`)
+		}
 		return st.Wins[i], true, true, nil
 	case "state":
 		i, err := need()
@@ -472,6 +567,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if a.Dirty && !a.Actor.Delegate() {
 			st.Wins[i].Kept = true
 		}
+		d.applyHeld(i)
 		return st.Wins[i], true, true, nil
 	case "rect":
 		// Float a window at a rectangle, or move the float it is in.
@@ -692,10 +788,37 @@ func (d *Desk) background(a Action) bool {
 	return a.Background || (a.Actor.Delegate() && d.ownerBusy())
 }
 
-// ownerBusy reports that the window in front holds the owner's unsaved work.
+// ownerBusy reports that the owner is working where the focus is: unsaved work or unsent
+// input in the window in front, or unsent input in the agent panel.
 func (d *Desk) ownerBusy() bool {
+	if d.st.PanelComposing {
+		return true
+	}
 	i := d.find(d.st.Focus)
-	return i >= 0 && d.st.Wins[i].Dirty
+	return i >= 0 && d.busy(i)
+}
+
+// busy reports that the owner has unsaved work or unsent input in a window.
+func (d *Desk) busy(i int) bool { return d.st.Wins[i].Dirty || d.st.Wins[i].Composing }
+
+// hold keeps a delegate's change to a window until the owner is done with it. A newer one
+// replaces an older one: what applies is the latest the delegate asked for.
+func (d *Desk) hold(i int, a Action) {
+	d.st.Wins[i].Held = &Held{Args: a.Args, Title: a.Title, By: string(a.Actor), At: time.Now().UTC().Format(time.RFC3339)}
+	d.held = true
+}
+
+// applyHeld applies a held change once the owner is no longer working in the window.
+func (d *Desk) applyHeld(i int) {
+	w := &d.st.Wins[i]
+	if w.Held == nil || w.Dirty || w.Composing {
+		return
+	}
+	w.Args = w.Held.Args
+	if w.Held.Title != "" {
+		w.Title = w.Held.Title
+	}
+	w.Held = nil
 }
 
 // ownersWindow is the owner's window in front, or the newest one they had there: what a new

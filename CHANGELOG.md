@@ -9,6 +9,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   (`finished`, `canceled` or `failed`, with a reason). Attention follows them. The subject `agent` is `working` while
   the agent runs, then `unseen` until the owner has read the answer, or `failed`. The context trace keeps each end
   as a `run_end` signal (`docs/attention.md`).
+- **Draft-aware delivery** (desk rule 7). The page reports unsent input with the `composing` action, for a window or
+  for the agent panel. A delegate's change to what a window shows, while the owner is composing or has unsaved work
+  there, is **held** on the window. It applies when they are done, and the owner can apply or drop it at once (the
+  `held` action, the `desk.held` event, an attention item). Unsent input in the panel keeps the focus where it is.
+  Drafts and Notes refuse a delegate's edit to a document the owner is working in. `module.Window` gains `Dirty`,
+  `Composing` and `Held`, and `moduletest` gains `ToolAs` and `DeskState.SetWorking`.
 
 - **Attention: one list of what waits for the owner** (`docs/attention.md`). There are three states: `needs_you`
   (an open card that asks something), `failed` (an error card) and `unseen` (a window a delegate opened while the

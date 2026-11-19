@@ -135,6 +135,9 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
+				if m.ownerWorking(ctx, p) {
+					return nil, errOwnerWorking
+				}
 				n, err := m.st.edit(p, a.Find, a.Replace, a.Rev)
 				if err != nil {
 					return nil, err
@@ -162,6 +165,9 @@ func (m *mod) tools() []module.Tool {
 				}](r)
 				if err != nil {
 					return nil, err
+				}
+				if a.Replace && m.ownerWorking(ctx, a.Path) {
+					return nil, errOwnerWorking
 				}
 				n, err := m.st.write(a.Path, a.Text, a.Rev, !a.Replace)
 				if err != nil {

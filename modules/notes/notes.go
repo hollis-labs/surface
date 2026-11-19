@@ -137,6 +137,25 @@ func current(w module.Window) string {
 	return p
 }
 
+// errOwnerWorking refuses a delegate's write to a note the owner has unsaved changes or
+// unsent input in: their text would be overwritten (docs/desk-rules.md, rule 7).
+var errOwnerWorking = errors.New("the owner is editing this note right now (unsaved changes in its window): wait until they save, or ask them; do not retry at once")
+
+// ownerWorking reports that a delegate is acting while the owner works in a window showing
+// the note at path (with or without its .md).
+func (m *mod) ownerWorking(ctx context.Context, path string) bool {
+	if !module.ActorOf(ctx).Delegate() {
+		return false
+	}
+	want := strings.TrimSuffix(strings.TrimPrefix(path, "/"), ".md")
+	for _, w := range m.h.Desk().Windows(ctx) {
+		if w.View == "notes" && strings.TrimSuffix(strings.TrimPrefix(current(w), "/"), ".md") == want && (w.Dirty || w.Composing) {
+			return true
+		}
+	}
+	return false
+}
+
 // front is the note in the focused Notes window, or "".
 func (m *mod) front(ctx context.Context) string {
 	if w, ok := m.h.Desk().Focused(ctx); ok && w.View == "notes" {

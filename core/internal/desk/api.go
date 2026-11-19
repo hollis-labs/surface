@@ -15,7 +15,8 @@ import (
 
 func (w Win) public(focus string) module.Window {
 	return module.Window{ID: w.ID, View: w.View, Module: w.Module, Title: w.Title, Key: w.Key, Args: w.Args, State: w.State, Focused: w.ID == focus,
-		OpenedBy: w.OpenedBy, Opener: w.Opener, Reason: w.Reason, Retention: w.Retention, Kept: w.Kept}
+		OpenedBy: w.OpenedBy, Opener: w.Opener, Reason: w.Reason, Retention: w.Retention, Kept: w.Kept,
+		Dirty: w.Dirty, Composing: w.Composing, Held: w.Held != nil}
 }
 
 // Open opens a window of a view, or brings the matching one forward.

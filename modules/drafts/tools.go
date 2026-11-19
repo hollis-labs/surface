@@ -129,6 +129,9 @@ func (m *mod) tools() []module.Tool {
 				if a.ExpectRev != 0 && a.ExpectRev != d.Rev {
 					return nil, errStale
 				}
+				if m.ownerWorking(ctx, id) {
+					return nil, errOwnerWorking
+				}
 				switch n := strings.Count(d.Body, a.Find); {
 				case a.Find == "":
 					return nil, errors.New("find is empty")

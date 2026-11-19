@@ -146,6 +146,24 @@ func windowDraft(w module.Window) string {
 	return id
 }
 
+// errOwnerWorking refuses a delegate's edit to a draft the owner has unsaved changes or
+// unsent input in: their text would be overwritten (docs/desk-rules.md, rule 7).
+var errOwnerWorking = errors.New("the owner is editing this draft right now (unsaved changes in its window): wait until they save, or ask them; do not retry at once")
+
+// ownerWorking reports that a delegate is acting while the owner works in a window showing
+// the draft.
+func (m *mod) ownerWorking(ctx context.Context, id string) bool {
+	if !module.ActorOf(ctx).Delegate() {
+		return false
+	}
+	for _, w := range m.h.Desk().Windows(ctx) {
+		if w.View == "drafts" && windowDraft(w) == id && (w.Dirty || w.Composing) {
+			return true
+		}
+	}
+	return false
+}
+
 // focused is the draft in the window in front, else the one in the frontmost Drafts window.
 func (m *mod) focused(ctx context.Context) string {
 	if w, ok := m.h.Desk().Focused(ctx); ok && w.View == "drafts" {

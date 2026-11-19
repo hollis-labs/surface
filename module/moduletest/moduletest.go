@@ -127,12 +127,22 @@ func (h *Host) Manifest() module.Manifest { return h.man }
 
 // Tool calls one of the module's tools by name with a JSON input.
 func (h *Host) Tool(name, input string) (any, error) {
+	return h.ToolAs("", name, input)
+}
+
+// ToolAs calls a tool as an actor would: the agent, a reflex, an outside client, the owner.
+// "" is no one in particular, as Tool.
+func (h *Host) ToolAs(actor module.Actor, name, input string) (any, error) {
+	ctx := context.Background()
+	if actor != "" {
+		ctx = module.WithActor(ctx, actor)
+	}
 	for _, t := range h.man.Tools {
 		if t.Name == name {
 			if input == "" {
 				input = "{}"
 			}
-			return t.Run(context.Background(), h, json.RawMessage(input))
+			return t.Run(ctx, h, json.RawMessage(input))
 		}
 	}
 	h.t.Fatalf("moduletest: no tool %q", name)

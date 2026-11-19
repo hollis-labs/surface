@@ -17,7 +17,8 @@ import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Item, ItemContent, ItemTitle } from "@/components/ui/item"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -424,7 +425,7 @@ function Artifact({ place, path, win, desk }: { place: string; path: string } & 
                       {a?.t !== undefined && <Badge variant="outline">{clock(a.t)}</Badge>}
                       {m.author === "agent" && <Badge variant="secondary">agent</Badge>}
                     </ItemTitle>
-                    <ItemDescription className="line-clamp-none whitespace-pre-wrap">{m.body}</ItemDescription>
+                    <Markdown className="text-muted-foreground">{m.body}</Markdown>
                   </ItemContent>
                   <Button
                     size="icon-xs"

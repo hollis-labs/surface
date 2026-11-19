@@ -204,7 +204,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	sit := s.k.Situation(ctx)
 	sit.Input = text
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	extra := slots.Extra{Instructions: s.layoutInstructions(ctx, sit)}
+	extra := s.extra(ctx, sit)
 	var routed *router.Route
 	askFirst := ""
 	if !auto {
@@ -239,7 +239,9 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	}
 	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
 	if out.Halt != "" {
-		s.record(ctx, sit, slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra), routed, out.Fired, true)
+		if errandOf(turn.Meta) == "" {
+			s.record(ctx, sit, slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra), routed, out.Fired, true)
+		}
 		// A reflex answered instead of the agent. On this wire that is a turn like any other,
 		// so every attached page sees the message and the answer.
 		s.k.Events().Publish("agent.halted", map[string]any{"text": text, "message": out.Halt, "fired": out.Fired})
@@ -248,8 +250,11 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	extra.Reminders = out.Reminders
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
-	if traced := s.record(ctx, sit, asm, routed, out.Fired, false); traced != 0 && turn.RunID != "" {
-		s.trace.SetRun(ctx, traced, turn.RunID)
+	// A module's errand is not the owner speaking: it stays out of the trace.
+	if errandOf(turn.Meta) == "" {
+		if traced := s.record(ctx, sit, asm, routed, out.Fired, false); traced != 0 && turn.RunID != "" {
+			s.trace.SetRun(ctx, traced, turn.RunID)
+		}
 	}
 	// The runner places the context as text in one slot for this turn: the block alone, with
 	// the config's extra standing instructions (if any) in front. The panel reads the

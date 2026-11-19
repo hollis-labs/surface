@@ -177,6 +177,7 @@ func setup(t *testing.T, o Options) (*Service, *fakeKernel, *fakeEngine, *[]stri
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
+	<-s.trained // the start-up training reads the trace; let it finish before the test writes
 	return s, k, fe, calls
 }
 

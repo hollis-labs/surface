@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/agent/host"
+	"github.com/hollis-labs/libs/core/util/decide"
 
 	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/kernel"
@@ -69,6 +70,9 @@ type Options struct {
 	Engine Engine
 	// Selector, when set, replaces the focus selector (the classifier, later).
 	Selector slots.Selector
+	// Decider, when set, is the classifier's async tier instead of the one the config file
+	// names (tests).
+	Decider decide.Decider
 }
 
 // Service is the embedded agent.
@@ -103,7 +107,14 @@ type Service struct {
 	lastFocus string // the window last seen in front, for focus reflexes
 	lastText  string // the newest traced turn's text, for a correction that follows it
 	lastAt    time.Time
-	lastAsm   string // the slot and top of mind last published
+
+	// async runs the classifier's async tier off the turn's path; Close stops it.
+	asyncCtx    context.Context
+	asyncCancel context.CancelFunc
+	asyncWG     sync.WaitGroup
+	// trained is closed when the classifier has learned the trace kept before start.
+	trained chan struct{}
+	lastAsm     string // the slot and top of mind last published
 }
 
 // New builds the agent service from the kernel. A missing agent config is not an error:
@@ -130,7 +141,9 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if s.cls, err = classifier.New(); err != nil {
 		return nil, fmt.Errorf("agent: classifier: %w", err)
 	}
-	go s.trainClassifier(ctx)
+	s.setupAsync(cfg, o.Decider)
+	s.trained = make(chan struct{})
+	go s.trainClassifier(ctx, time.Now().UTC())
 	if s.reflexes, err = reflex.Open(ctx, k.DB(), doer{s}, func(msg string, args ...any) { log.Warn(msg, args...) }); err != nil {
 		return nil, fmt.Errorf("agent: reflexes: %w", err)
 	}
@@ -192,6 +205,10 @@ func (s *Service) Close(context.Context) error {
 	s.closeMu.Do(func() {
 		s.stop()
 		<-s.done
+		if s.asyncCancel != nil {
+			s.asyncCancel()
+			s.asyncWG.Wait()
+		}
 		if s.wire != nil {
 			s.wire.close(context.Background())
 		}

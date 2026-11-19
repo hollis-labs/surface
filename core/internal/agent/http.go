@@ -10,6 +10,7 @@ import (
 	"github.com/hollis-labs/surface/core/internal/reflex"
 	"github.com/hollis-labs/surface/core/internal/router"
 	"github.com/hollis-labs/surface/core/internal/slots"
+	"github.com/hollis-labs/surface/module"
 )
 
 // Mount serves the agent under /api/agent/: the agent-host/1 wire (engine), with the turn
@@ -29,6 +30,7 @@ import (
 //	GET    /api/agent/reflexes             PUT/DELETE /api/agent/reflexes/{name}
 //	GET    /api/agent/rules                PUT/DELETE /api/agent/rules/{id}
 //	POST   /api/agent/classify             {text} → the classifier's result for a draft (classify.Result); records nothing
+//	POST   /api/agent/classify/feedback    {text, facet, label, accepted}: the owner's answer to a hint (an accepted slot pins it)
 //	GET    /api/agent/classify/replay      a fresh classifier replayed over the trace, against the selector
 //
 // The app is loopback-only and single-user: every request is the owner's.
@@ -84,6 +86,47 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			return
 		}
 		reply(w, 200, res)
+	})
+	// The owner's answer to a hint on a draft. An accepted slot hint also pins the slot, as
+	// the owner's choice for the message they are about to send (not a correction of the
+	// last one, so it is no pin signal).
+	mux.HandleFunc("POST "+Prefix+"/classify/feedback", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Text     string `json:"text"`
+			Facet    string `json:"facet"`
+			Label    string `json:"label"`
+			Accepted bool   `json:"accepted"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		if in.Facet == "" || in.Label == "" {
+			fail(w, 400, "facet and label are required")
+			return
+		}
+		if in.Facet == classifier.Slot && in.Accepted {
+			if _, ok := slots.Named(s.k.Slots(), in.Label); !ok {
+				fail(w, 400, "no slot "+in.Label)
+				return
+			}
+		}
+		f := slots.Feedback{Text: in.Text, Facet: in.Facet, Label: in.Label, Accepted: in.Accepted, Actor: string(module.ActorOwner)}
+		if s.trace != nil && s.traceOn() {
+			if err := s.trace.AddFeedback(r.Context(), f); err != nil {
+				fail(w, 500, err.Error())
+				return
+			}
+		}
+		s.learnFeedback(f)
+		if in.Facet == classifier.Slot && in.Accepted && s.pin != nil {
+			view := ""
+			if win, ok := s.k.Desk().Focused(r.Context()); ok {
+				view = win.View
+			}
+			s.pin.Pin(in.Label, view)
+			s.k.Events().Publish("agent.context", s.Preview(r.Context()))
+		}
+		reply(w, 200, s.Preview(r.Context()))
 	})
 	// How a fresh classifier would have done on the whole trace, against the focus selector.
 	mux.HandleFunc("GET "+Prefix+"/classify/replay", func(w http.ResponseWriter, r *http.Request) {

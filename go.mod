@@ -6,9 +6,9 @@ require (
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/host v0.1.0
-	github.com/hollis-labs/libs/core/util v0.8.0
+	github.com/hollis-labs/libs/core/util v0.9.0
 	github.com/hollis-labs/nanite v0.0.0-20261118194837-7a61c736d81e
-	github.com/hollis-labs/substrate v0.1.1-0.20261119081948-cc561ab2a0bc
+	github.com/hollis-labs/substrate v0.1.1-0.20261119083303-c3e7d0c425b6
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0
 	gopkg.in/yaml.v3 v3.0.1

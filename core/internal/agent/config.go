@@ -43,8 +43,25 @@ type FileConfig struct {
 	// the app's tools.
 	Builtins []string `json:"builtins,omitempty"`
 
+	// Classifier configures the classifier's async tier: a decision gateway (JEV) asked
+	// about each message after the turn. Without DecideURL there is no async tier.
+	Classifier ClassifierConfig `json:"classifier,omitempty"`
+
 	// Path is the file this was read from ("" when there was none).
 	Path string `json:"-"`
+}
+
+// ClassifierConfig is the classifier's async tier.
+type ClassifierConfig struct {
+	// DecideURL is a decision gateway: the classifier posts to <url>/ai/decide. Also
+	// unix:///path.sock.
+	DecideURL string `json:"decide_url,omitempty"`
+	// KeyFile holds the gateway's bearer key. "~/" is the home directory. Optional.
+	KeyFile string `json:"key_file,omitempty"`
+	// Model is the model hint; pin one (jev-1.13.0) to keep results comparable.
+	Model string `json:"model,omitempty"`
+	// Purpose is what the gateway accounts the spend to; default surface_classify.
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // ConfigPath is where the agent config of app is read from.
@@ -90,10 +107,16 @@ func LoadConfig(app string) (FileConfig, error) {
 	if v := os.Getenv("SURFACE_AGENT_KEY_FILE"); v != "" {
 		c.KeyFile = v
 	}
-	if rest, ok := strings.CutPrefix(c.KeyFile, "~/"); ok {
+	c.KeyFile = expandHome(c.KeyFile)
+	c.Classifier.KeyFile = expandHome(c.Classifier.KeyFile)
+	return c, nil
+}
+
+func expandHome(p string) string {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
 		if home, err := os.UserHomeDir(); err == nil {
-			c.KeyFile = filepath.Join(home, rest)
+			return filepath.Join(home, rest)
 		}
 	}
-	return c, nil
+	return p
 }

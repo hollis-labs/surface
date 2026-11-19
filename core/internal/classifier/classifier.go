@@ -11,6 +11,10 @@
 // The judges are libs core/util/classify's: the pack's rules and priors (act.json, and slot
 // rules made from each slot's views, modes and name), and a naive Bayes model per facet.
 // All of them run in microseconds, so the same call serves a keystroke and a submit.
+//
+// It also labels tone (the affect facet: neutral, frustrated, urgent, positive) with libs'
+// lexicon judge. With a decider set (JEV through a decision gateway), ClassifyAsync adds a
+// model's answer to every facet; that is the async tier, run after the turn, off the path.
 package classifier
 
 import (
@@ -23,6 +27,7 @@ import (
 	"sync"
 
 	"github.com/hollis-labs/libs/core/util/classify"
+	"github.com/hollis-labs/libs/core/util/decide"
 
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/slots"
@@ -34,8 +39,9 @@ var actPack []byte
 
 // The facets.
 const (
-	Act  = "act"
-	Slot = "slot"
+	Act    = "act"
+	Slot   = "slot"
+	Affect = "affect"
 )
 
 // Weights of what the trace says about a turn's slot. The slot the selector gave is the
@@ -51,9 +57,26 @@ type Classifier struct {
 	act  *classify.Bayes
 	slot *classify.Bayes
 
-	mu     sync.Mutex
-	eng    *classify.Engine
-	slotID string // the slot set the engine was built for
+	mu      sync.Mutex
+	eng     *classify.Engine
+	slotID  string // the slot set the engine was built for
+	decider decide.Decider
+	dopts   classify.DecisionOptions
+}
+
+// SetDecider turns on the async tier: d is asked about every facet at classify.Async.
+// A nil d turns it off.
+func (c *Classifier) SetDecider(d decide.Decider, o classify.DecisionOptions) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.decider, c.dopts, c.eng = d, o, nil
+}
+
+// HasAsync reports whether a decider is set.
+func (c *Classifier) HasAsync() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.decider != nil
 }
 
 // New returns a classifier with the built-in act pack and empty models seeded from its
@@ -83,6 +106,16 @@ func (c *Classifier) Classify(ctx context.Context, sit module.Situation, all []k
 	return eng.Classify(ctx, classify.Input{ID: id, Text: text, Context: Context(sit), Phase: classify.Submit}), nil
 }
 
+// ClassifyAsync is Classify with the async tier: the decider's answer joins the rest. It
+// makes a network call; run it off the turn's path.
+func (c *Classifier) ClassifyAsync(ctx context.Context, sit module.Situation, all []kernel.BoundSlot, id, text string) (classify.Result, error) {
+	eng, err := c.engine(all)
+	if err != nil {
+		return classify.Result{}, err
+	}
+	return eng.Classify(ctx, classify.Input{ID: id, Text: text, Context: Context(sit), Phase: classify.Async}), nil
+}
+
 // engine is built once per slot set: the act pack with a slot facet over the slots.
 func (c *Classifier) engine(all []kernel.BoundSlot) (*classify.Engine, error) {
 	names := make([]string, 0, len(all))
@@ -95,15 +128,22 @@ func (c *Classifier) engine(all []kernel.BoundSlot) (*classify.Engine, error) {
 	if c.eng != nil && c.slotID == id {
 		return c.eng, nil
 	}
-	pack := c.base
-	extra := []classify.Judge{c.act}
+	layer := classify.Pack{Facets: []classify.FacetSpec{classify.AffectFacet()}}
+	extra := []classify.Judge{c.act, classify.NewAffect("affect", Affect)}
 	if sf, ok := SlotFacet(all); ok {
-		pack = classify.Layer(c.base, classify.Pack{Facets: []classify.FacetSpec{sf}})
+		layer.Facets = append(layer.Facets, sf)
 		extra = append(extra, c.slot)
 	}
-	comp, err := classify.Compile(pack)
+	comp, err := classify.Compile(classify.Layer(c.base, layer))
 	if err != nil {
 		return nil, fmt.Errorf("classifier: %w", err)
+	}
+	if c.decider != nil {
+		dj, derr := classify.NewDecision("decide", c.decider, comp, c.dopts)
+		if derr != nil {
+			return nil, fmt.Errorf("classifier: %w", derr)
+		}
+		extra = append(extra, dj)
 	}
 	eng, err := classify.NewEngine(comp, extra...)
 	if err != nil {
@@ -217,6 +257,16 @@ func (c *Classifier) Correct(text, slot string) {
 		c.slot.Learn(text, slot, weightCorrected)
 	}
 }
+
+// LearnAct adds an owner's confirmation of a message's act.
+func (c *Classifier) LearnAct(text, act string) {
+	if strings.TrimSpace(text) != "" && act != "" {
+		c.act.Learn(text, act, weightCorrected)
+	}
+}
+
+// ActDocs is how much the act model has learned.
+func (c *Classifier) ActDocs() float64 { return c.act.Docs() }
 
 // SlotDocs is how much the slot model has learned.
 func (c *Classifier) SlotDocs() float64 { return c.slot.Docs() }

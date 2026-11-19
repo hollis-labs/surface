@@ -13,6 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Ade } from "./ade"
 import { Cards } from "./cards"
 import { Chat } from "./chat"
+import { Cite } from "./cite"
 import { Controls } from "./controls"
 import { Display } from "./display"
 import { Genui } from "./genui"
@@ -28,6 +29,7 @@ export const SECTIONS = [
   { id: "display", title: "Display", draw: Display },
   { id: "overlays", title: "Overlays", draw: Overlays },
   { id: "chat", title: "Chat", draw: Chat },
+  { id: "cite", title: "Cite", draw: Cite },
   { id: "cards", title: "Cards", draw: Cards },
   { id: "genui", title: "GenUI", draw: Genui },
   { id: "ade", title: "ADE", draw: Ade },

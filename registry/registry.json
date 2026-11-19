@@ -354,6 +354,41 @@
       ]
     },
     {
+      "name": "cite-card",
+      "type": "registry:ui",
+      "title": "Cite Card",
+      "description": "What a reference stands for: its kind, title, status, a short preview, a few fields and actions. One card for every kind of reference; the hover card of a cite chip, or a record's header.",
+      "dependencies": [
+        "cn@0.5.2"
+      ],
+      "registryDependencies": [
+        "@surface/badge",
+        "@surface/skeleton"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/cite-card.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "cite-chip",
+      "type": "registry:ui",
+      "title": "Cite Chip",
+      "description": "A reference inline in text (a task id, a path, a link): an icon and a short label, drawn in the state it is given (loading, found, not found, error).",
+      "dependencies": [
+        "class-variance-authority@0.7.1",
+        "cn@0.5.2"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/cite-chip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "collapsible",
       "type": "registry:ui",
       "title": "Collapsible",
@@ -531,6 +566,22 @@
       "files": [
         {
           "path": "registry/ui/guide-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "hover-card",
+      "type": "registry:ui",
+      "title": "Hover Card",
+      "description": "A card of more about something, shown while the pointer rests on it or it has the focus (Base UI's Preview Card).",
+      "dependencies": [
+        "@base-ui/react@1.9.0",
+        "cn@0.5.2"
+      ],
+      "files": [
+        {
+          "path": "registry/ui/hover-card.tsx",
           "type": "registry:ui"
         }
       ]

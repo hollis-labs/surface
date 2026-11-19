@@ -97,6 +97,16 @@
         "web/src/components/ui/checkbox.tsx": "51b82e5ca459ea7792d8f24ac924f13aeaa2b2cd338560d2b4291e38b648c12e"
       }
     },
+    "cite-card": {
+      "files": {
+        "web/src/components/ui/cite-card.tsx": "8cc01244bcade3a948a520ce64b840e9c2ec2f704ed3538038c83a5ab2d479a0"
+      }
+    },
+    "cite-chip": {
+      "files": {
+        "web/src/components/ui/cite-chip.tsx": "dd678fa4951ffee5737daa52a5e1e637413388f840efc4d6d42999849539e824"
+      }
+    },
     "collapsible": {
       "files": {
         "web/src/components/ui/collapsible.tsx": "3de60b605e64c835588cecc189fbcf907eb602b0158f970d614b067e868b491e"
@@ -145,6 +155,11 @@
     "guide-bar": {
       "files": {
         "web/src/components/ui/guide-bar.tsx": "a4397722e725c64f143a7b55579a533144cf183b49fe271102216ac8eddf8da0"
+      }
+    },
+    "hover-card": {
+      "files": {
+        "web/src/components/ui/hover-card.tsx": "467504538bda69483fd582016db4c72391669841282ddea1e2d6d3013dc4e6f9"
       }
     },
     "input": {

@@ -9,6 +9,7 @@ import { MarkdownExtensions } from "@/components/ui/markdown"
 import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
 import { initCite } from "./cite/store.ts"
+import { CiteFloat } from "./cite/terminal.tsx"
 import { citeMarkdownExtensions } from "./cite/ui.tsx"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
@@ -72,6 +73,7 @@ export function Page({ modules, core }: PageProps) {
     <MarkdownExtensions value={citeMarkdownExtensions}>
       <Desktop modules={{ ...modules, surface: { ...coreWeb, views: { ...coreWeb.views, ...core } } }} />
       <CardHost />
+      <CiteFloat />
     </MarkdownExtensions>
   )
 }

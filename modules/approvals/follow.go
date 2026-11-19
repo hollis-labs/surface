@@ -47,9 +47,12 @@ func (m *mod) follow(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(wait):
+			wait = min(wait*2, backoffLast)
 		case <-m.wake:
+			// Woken (the settings changed, or a reconnect was asked for): try at once, and
+			// start the backoff over.
+			wait = backoffFirst
 		}
-		wait = min(wait*2, backoffLast)
 	}
 }
 

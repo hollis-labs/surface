@@ -30,6 +30,7 @@ type fakeGate struct {
 	lastIDs    []string // the Last-Event-ID of each connection
 	ignoreLID  bool     // replay from the start whatever the client says
 	failDecide bool     // decide answers 503
+	failCard   bool     // the card route answers 503
 	push       chan struct{}
 	srv        *httptest.Server
 }
@@ -85,6 +86,11 @@ func (f *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/card"):
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathApprovals+"/"), "/card")
 		f.mu.Lock()
+		if f.failCard {
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		c, ok := f.cards[id]
 		f.mu.Unlock()
 		if !ok {
@@ -432,4 +438,31 @@ func TestASecretNeverReachesGatecrasherOrTheStore(t *testing.T) {
 			t.Fatalf("POST %s took a post: %d", path, code)
 		}
 	}
+}
+
+// Gatecrasher down when the owner answered: the answer fails, the card cannot be fetched
+// again, and the approval comes back once Gatecrasher answers (the next connection).
+func TestAnApprovalComesBackAfterGatecrasherWasDown(t *testing.T) {
+	f := newFake(t)
+	h, m := start(t, f)
+	f.submit("apr_1", "approve", "elevated", nil)
+	eventually(t, "the card shows", func() bool { return len(openCards(h)) == 1 })
+	c := openCards(h)[0]
+	f.mu.Lock()
+	f.failDecide, f.failCard = true, true
+	f.mu.Unlock()
+	_, _ = h.CardStore.Respond(context.Background(), c.ID, module.CardOutcome{Status: "submitted", Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}})
+	got, _, _ := h.CardStore.Get(context.Background(), c.ID)
+	m.answered(context.Background(), got)
+	f.mu.Lock()
+	f.failDecide, f.failCard = false, false
+	f.mu.Unlock()
+	eventually(t, "the approval is shown again", func() bool {
+		for _, x := range openCards(h) {
+			if x.Subject == "approval:apr_1" {
+				return true
+			}
+		}
+		return false
+	})
 }

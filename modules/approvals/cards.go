@@ -180,7 +180,7 @@ func (m *mod) show(ctx context.Context, g *gate, id string) error {
 				return nil // already shown and open
 			}
 		}
-		if sh.status != "pending" {
+		if sh.status != "pending" && sh.status != "unshowable" {
 			return nil // decided here already, or closed: the stream's event says the rest
 		}
 	}
@@ -207,6 +207,9 @@ func (m *mod) show(ctx context.Context, g *gate, id string) error {
 
 // unshowable tells the owner of an approval that cannot be shown, so it is not silently lost.
 func (m *mod) unshowable(ctx context.Context, id string, err error) {
+	if sh, ok := m.shown(ctx, id); ok && sh.status == "unshowable" {
+		return // reported already
+	}
 	m.h.Log().Warn("approvals: an approval cannot be shown", "approval", id, "err", err)
 	body, _ := json.Marshal(map[string]string{"body": "Approval " + id + " is waiting in Gatecrasher but cannot be shown here: " + err.Error() + ". Decide it in another surface, or ask its producer."})
 	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval cannot be shown", Subject: "approval-error:" + id, Payload: body})
@@ -275,13 +278,35 @@ func (m *mod) answered(ctx context.Context, c module.Card) {
 // again: it is still waiting.
 func (m *mod) notDelivered(ctx context.Context, sh shownRow, err error) {
 	m.h.Log().Warn("approvals: the owner's answer did not reach Gatecrasher", "approval", sh.id, "err", err)
-	body, _ := json.Marshal(map[string]string{"body": "Your answer on \"" + sh.title + "\" did not reach Gatecrasher (" + err.Error() + "). It is shown again."})
+	body, _ := json.Marshal(map[string]string{"body": "Your answer on \"" + sh.title + "\" did not reach Gatecrasher (" + err.Error() + "). The approval is still waiting; it is shown again as soon as Gatecrasher answers."})
 	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval answer did not go through", Subject: "approval-error:" + sh.id, Payload: body})
 	sh.card = ""
 	m.remember(ctx, sh)
-	if g, gerr := m.gate(); gerr == nil {
-		if serr := m.show(ctx, g, sh.id); serr != nil {
-			m.h.Log().Warn("approvals: the approval was not shown again", "approval", sh.id, "err", serr)
+	if g, gerr := m.gate(); gerr == nil && m.show(ctx, g, sh.id) == nil {
+		return
+	}
+	// Gatecrasher did not answer: the next connection shows it again (reshow).
+	m.reconnect()
+}
+
+// reshow shows again each approval still waiting here without a card (one whose answer did
+// not go through, or that could not be shown): on every connection.
+func (m *mod) reshow(ctx context.Context, g *gate) {
+	rows, err := m.db.QueryContext(ctx, `SELECT approval_id FROM shown WHERE (status='pending' AND card_id='') OR status='unshowable'`)
+	if err != nil {
+		return
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	_ = rows.Close()
+	for _, id := range ids {
+		if err := m.show(ctx, g, id); err != nil {
+			m.h.Log().Debug("approvals: not shown again yet", "approval", id, "err", err)
 		}
 	}
 }

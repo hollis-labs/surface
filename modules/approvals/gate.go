@@ -197,7 +197,11 @@ func (g *gate) card(ctx context.Context, id string) (gateCard, error) {
 	case res.StatusCode != http.StatusOK:
 		return c, fmt.Errorf("approvals: the card of %s: %s", id, res.Status)
 	}
-	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&c); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return c, fmt.Errorf("approvals: the card of %s was cut off: %w", id, err) // transient: read again
+	}
+	if err := json.Unmarshal(raw, &c); err != nil {
 		return c, permanent{errors.New("approvals: the card could not be read")}
 	}
 	if c.Version != cardVersion {

@@ -119,11 +119,11 @@ func (m *mod) Stop(context.Context) error {
 		u()
 	}
 	m.unsub = nil
+	m.work.Wait() // answers in flight finish before the module's context ends
 	if m.stop != nil {
 		m.stop()
 		<-m.done
 	}
-	m.work.Wait()
 	return nil
 }
 

@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Attention: one list of what waits for the owner** (`docs/attention.md`). There are three states: `needs_you`
+  (an open card that asks something), `failed` (an error card) and `unseen` (a window a delegate opened while the
+  owner was elsewhere, or a question that expired unanswered). Items are derived from the bus, and only the
+  owner's own move marks something seen. `GET /api/attend`, `POST /api/attend/seen`, the `attend.changed` event
+  and the agent's `attend_list` tool serve it.
+
 - **The context trace.** Every message records what it put in front of the agent and why: the window in front,
   the slots and why they were chosen, the routed rule, the fired reflexes, and what the budget cut. Beside it,
   the trace keeps what followed: a re-pin, an unpin, the owner moving to another window. This is the training

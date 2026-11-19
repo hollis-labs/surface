@@ -37,7 +37,7 @@ below hold delegates to them. A request body can never name its actor (`desk.Act
 | 8 | Nothing reflows under the cursor during a drag, and a list never reorders under the cursor; only new arrivals move. | planned (page) |
 | 9 | No notification fires for what is already in front, and bursts are coalesced. | planned |
 | 10 | There is one way the focus is restored: `returnTo` in `desk.go`. Nothing else picks where the focus goes after a close. | kept |
-| 11 | An agent window that lands while the owner is away counts as unseen until it has been visible and focused. | planned (attention model) |
+| 11 | An agent window that lands while the owner is elsewhere counts as unseen until the owner brings it in front ([attention.md](attention.md)). | kept on the server; the page still has to draw it |
 | 12 | Esc closes the topmost layer, in a fixed order: overlay, then card, then transient window. | planned (page) |
 | 13 | A delegate's window opens beside the owner's window it came from, sharing that window's space: to its right when it is wide, below it when it is narrow (judged on a 16:10 desk). It is placed at the end of the tiling only when that window floats or is gone. | kept |
 

@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The classifier can mint its gateway tokens from Warden** (`classifier.warden` in the agent config, instead of
+  `key_file`). Parent credentials are rotate-on-use. Mints hold a lock on the credential file, so apps can share
+  one, and save the next parent before the token is used. A mint whose outcome is lost is never replayed: an
+  `.inflight` marker stops minting until an operator re-enrolls. Tokens are renewed at two thirds of their life.
+  See docs/agent.md.
 - **Fixed: message texts are scrubbed before they go to the embedding gateway** (libs `core/util` v0.11.1). The JEV
   path already scrubbed them; the embeddings path (the slot centroid and the emerging report) did not.
 - **The centroid judge is on the slot facet.**

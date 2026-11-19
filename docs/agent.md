@@ -142,6 +142,23 @@ the selector's own guess. An owner's pin soon after a turn counts in full, becau
 is learned. It reports how often the classifier agrees with the selector, and how many of the owner's corrections
 it would have got right. When those numbers are good enough, the classifier becomes the `Selector`.
 `POST /api/agent/classify` classifies a draft in the current situation without recording it, for the composer.
+`POST /api/agent/classify/feedback` takes the owner's answer to a hint on a draft (`{text, facet, label, accepted}`).
+An accepted hint is learned, and an accepted slot hint also pins that slot for the message about to be sent. It is
+kept in `classify_feedback` and learned again at start.
+
+A third facet, `affect` (neutral, frustrated, urgent, positive), comes from libs' lexicon judge.
+
+**The async tier** asks a decision gateway (JEV) about every facet after the turn, off its path. Its result is
+kept beside the turn (`classified_async`), and `agent.classified` is published. It is on only when the agent
+config file names a gateway:
+
+```json
+"classifier": {"decide_url": "http://127.0.0.1:8080", "key_file": "~/.config/surface/decide.key",
+               "model": "jev-1.13.0", "purpose": "surface_classify"}
+```
+
+The text is scrubbed of recognisable credentials before it leaves. A failed or slow call (30s) leaves the column
+empty and changes nothing else.
 
 ### Assembly
 
@@ -320,6 +337,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 | `GET /api/agent/slots`, `POST /api/agent/slots/pin` | every slot with its note; pin a slot (`""` unpins) |
 | `GET /api/agent/trace`, `GET /api/agent/trace/export` | the context trace: the newest turns with their signals; every turn as JSON lines |
 | `POST /api/agent/classify`, `GET /api/agent/classify/replay` | the classifier's result for a draft (records nothing); a fresh classifier replayed over the trace against the selector |
+| `POST /api/agent/classify/feedback` | `{text, facet, label, accepted}`: the owner's answer to a hint; an accepted slot pins it |
 | `GET /api/agent/reflexes`, `PUT`/`DELETE /api/agent/reflexes/{name}` | the reflexes |
 | `GET /api/agent/rules`, `PUT`/`DELETE /api/agent/rules/{id}` | the owner's and the built-in routing rules |
 

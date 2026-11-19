@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/hollis-labs/libs/core/util/classify"
+	"github.com/hollis-labs/libs/core/util/decide"
+
+	"github.com/hollis-labs/surface/core/internal/classifier"
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/router"
 	"github.com/hollis-labs/surface/core/internal/slots"
@@ -66,26 +72,103 @@ func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int
 		s.trace.SetClassified(ctx, id, raw)
 	}
 	s.cls.Learn(turn)
+	s.classifyAsync(sit, id, turn.Text)
 	s.lastMu.Lock()
 	s.lastText, s.lastAt = turn.Text, time.Now()
 	s.lastMu.Unlock()
 }
 
-// trainClassifier teaches the classifier the slots of every traced turn, the owner's
-// corrections counting most. It runs once, at start.
-func (s *Service) trainClassifier(ctx context.Context) {
+// setupAsync gives the classifier its async tier: the decider handed in, or the decision
+// gateway the config file names. Without either there is none.
+func (s *Service) setupAsync(cfg FileConfig, d decide.Decider) {
+	s.asyncCtx, s.asyncCancel = context.WithCancel(context.Background()) //nolint:gosec // G118: Close calls it
+	cc := cfg.Classifier
+	if d == nil && cc.DecideURL != "" {
+		token := ""
+		if cc.KeyFile != "" {
+			raw, err := os.ReadFile(cc.KeyFile) //nolint:gosec // the operator's own key file, named in their config
+			if err != nil {
+				s.log.Warn("classifier: the decision gateway's key file is not readable; no async tier", "err", err)
+				return
+			}
+			token = strings.TrimSpace(string(raw))
+		}
+		if c := decide.NewClient(cc.DecideURL, token, "surface"); c != nil {
+			d = c
+		}
+	}
+	if d == nil {
+		return
+	}
+	purpose := cc.Purpose
+	if purpose == "" {
+		purpose = "surface_classify"
+	}
+	s.cls.SetDecider(d, classify.DecisionOptions{Purpose: purpose, Model: cc.Model, CallerID: "surface"})
+	s.log.Info("classifier: async tier on", "decider", d.Name(), "model", cc.Model)
+}
+
+// classifyAsync asks the async tier about a recorded turn, off the turn's path, and keeps
+// its result beside the turn. A failure leaves the column empty.
+func (s *Service) classifyAsync(sit module.Situation, id int64, text string) {
+	if !s.cls.HasAsync() || s.asyncCtx == nil {
+		return
+	}
+	all := s.k.Slots()
+	s.asyncWG.Add(1)
+	go func() {
+		defer s.asyncWG.Done()
+		ctx, cancel := context.WithTimeout(s.asyncCtx, asyncTimeout)
+		defer cancel()
+		res, err := s.cls.ClassifyAsync(ctx, sit, all, "turn:"+strconv.FormatInt(id, 10), text)
+		if err != nil || ctx.Err() != nil {
+			return
+		}
+		if len(res.Failed) > 0 {
+			s.log.Debug("classifier: async judges failed", "turn", id, "failed", res.Failed)
+		}
+		if raw, err := json.Marshal(res); err == nil {
+			s.trace.SetClassifiedAsync(ctx, id, raw)
+			s.k.Events().Publish("agent.classified", map[string]any{"turn": id, "phase": res.Phase})
+		}
+	}()
+}
+
+// asyncTimeout bounds one async classification.
+const asyncTimeout = 30 * time.Second
+
+// trainClassifier teaches the classifier the slots of every turn traced before start, the
+// owner's corrections counting most, and the hints they accepted. It runs once, at start;
+// what arrives after start is learned as it arrives, so it is left out here.
+func (s *Service) trainClassifier(ctx context.Context, start time.Time) {
+	defer close(s.trained)
 	if s.cls == nil || s.trace == nil {
 		return
 	}
+	before := func(at string) bool {
+		t, err := time.Parse(time.RFC3339Nano, at)
+		return err == nil && t.Before(start)
+	}
 	n := 0
 	err := s.trace.Each(ctx, func(t slots.TraceTurn) error {
-		s.cls.Learn(t)
-		n++
+		if before(t.At) {
+			s.cls.Learn(t)
+			n++
+		}
 		return nil
 	})
 	if err != nil {
 		s.log.Warn("classifier: trace not read", "err", err)
 		return
+	}
+	err = s.trace.EachFeedback(ctx, func(f slots.Feedback) error {
+		if before(f.At) {
+			s.learnFeedback(f)
+		}
+		return nil
+	})
+	if err != nil {
+		s.log.Warn("classifier: hint feedback not read", "err", err)
 	}
 	s.log.Debug("classifier trained from the context trace", "turns", n)
 }
@@ -156,4 +239,19 @@ func (s *Service) traceRoutes(mux *http.ServeMux) {
 			s.log.Warn("context trace: export failed", "err", err)
 		}
 	})
+}
+
+// learnFeedback learns an accepted hint: the owner said the label was right for the draft.
+// A dismissed hint says only that the label was wrong, which these models cannot use yet;
+// it is kept for later.
+func (s *Service) learnFeedback(f slots.Feedback) {
+	if !f.Accepted || s.cls == nil {
+		return
+	}
+	switch f.Facet {
+	case classifier.Slot:
+		s.cls.Correct(f.Text, f.Label)
+	case classifier.Act:
+		s.cls.LearnAct(f.Text, f.Label)
+	}
 }

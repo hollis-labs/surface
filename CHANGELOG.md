@@ -5,6 +5,14 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The classifier's async tier, tone, and hint feedback.**
+  - A decision gateway (JEV) named in the agent config file (`classifier.decide_url`) is asked about every
+    facet after the turn, off its path. Its result is kept beside the turn (`classified_async`, with the
+    `agent.classified` event). With no gateway named it is off.
+  - A third facet, `affect`, labels tone (neutral, frustrated, urgent, positive).
+  - `POST /api/agent/classify/feedback` keeps and learns the owner's answer to a composer hint. An accepted slot
+    hint pins that slot.
+  - Start-up training learns only what was kept before start.
 - **A classifier labels every message in shadow**: what it asks for (`act`) and which slot it belongs to (`slot`).
   It is built on libs `core/util/classify`, and its result is kept beside the turn in the context trace
   (`classified`). Its slot model learns from the trace, and an owner's re-pin counts as a correction.

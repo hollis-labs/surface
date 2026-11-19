@@ -51,6 +51,8 @@ type TraceTurn struct {
 	Trimmed    []string `json:"trimmed"`
 	// Classified is what the classifier made of the turn (a classify.Result), when it ran.
 	Classified json.RawMessage `json:"classified,omitempty"`
+	// ClassifiedAsync is the async tier's result, when it ran.
+	ClassifiedAsync json.RawMessage `json:"classified_async,omitempty"`
 	// Signals are what followed the turn, oldest first.
 	Signals []TraceSignal `json:"signals,omitempty"`
 }
@@ -143,6 +145,57 @@ func (t *Trace) SetClassified(ctx context.Context, id int64, result json.RawMess
 	_, _ = t.db.ExecContext(context.WithoutCancel(ctx), `UPDATE context_turns SET classified=? WHERE id=?`, string(result), id)
 }
 
+// SetClassifiedAsync keeps the async tier's result for a recorded turn.
+func (t *Trace) SetClassifiedAsync(ctx context.Context, id int64, result json.RawMessage) {
+	_, _ = t.db.ExecContext(context.WithoutCancel(ctx), `UPDATE context_turns SET classified_async=? WHERE id=?`, string(result), id)
+}
+
+// Feedback is the owner's answer to a classifier hint on a draft.
+type Feedback struct {
+	At       string `json:"at"`
+	Text     string `json:"text"`
+	Facet    string `json:"facet"`
+	Label    string `json:"label"`
+	Accepted bool   `json:"accepted"`
+	Actor    string `json:"actor,omitempty"`
+}
+
+// AddFeedback keeps one answer to a hint.
+func (t *Trace) AddFeedback(ctx context.Context, f Feedback) error {
+	_, err := t.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO classify_feedback (at, text, facet, label, accepted, actor) VALUES (?, ?, ?, ?, ?, ?)`,
+		time.Now().UTC().Format(time.RFC3339Nano), f.Text, f.Facet, f.Label, f.Accepted, f.Actor)
+	return err
+}
+
+// EachFeedback calls fn for every answer to a hint, oldest first.
+func (t *Trace) EachFeedback(ctx context.Context, fn func(Feedback) error) error {
+	rows, err := t.db.QueryContext(ctx, `SELECT at, text, facet, label, accepted, actor FROM classify_feedback ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	var all []Feedback
+	for rows.Next() {
+		var f Feedback
+		if err := rows.Scan(&f.At, &f.Text, &f.Facet, &f.Label, &f.Accepted, &f.Actor); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		all = append(all, f)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, f := range all {
+		if err := fn(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Each calls fn for every turn, oldest first, each with its signals.
 func (t *Trace) Each(ctx context.Context, fn func(TraceTurn) error) error { return t.each(ctx, 0, fn) }
 
@@ -183,7 +236,7 @@ func (t *Trace) Export(ctx context.Context, w io.Writer) error {
 }
 
 const traceColumns = `SELECT id, at, run_id, text, view, module, mode, layout, open_views, slot, slots, why,
-	top_of_mind, routed, fired, halted, block_chars, trimmed, classified FROM context_turns`
+	top_of_mind, routed, fired, halted, block_chars, trimmed, classified, classified_async FROM context_turns`
 
 // each calls fn for turns with their signals: the newest limit of them, newest first, or
 // with limit 0 every turn, oldest first.
@@ -201,9 +254,9 @@ func (t *Trace) each(ctx context.Context, limit int, fn func(TraceTurn) error) e
 	var turns []TraceTurn
 	for rows.Next() {
 		var tt TraceTurn
-		var open, sl, top, fired, trimmed, classified string
+		var open, sl, top, fired, trimmed, classified, classifiedAsync string
 		if err := rows.Scan(&tt.ID, &tt.At, &tt.RunID, &tt.Text, &tt.View, &tt.Module, &tt.Mode, &tt.Layout, &open, &tt.Slot, &sl,
-			&tt.Why, &top, &tt.Routed, &fired, &tt.Halted, &tt.BlockChars, &trimmed, &classified); err != nil {
+			&tt.Why, &top, &tt.Routed, &fired, &tt.Halted, &tt.BlockChars, &trimmed, &classified, &classifiedAsync); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -215,6 +268,9 @@ func (t *Trace) each(ctx context.Context, limit int, fn func(TraceTurn) error) e
 		}
 		if classified != "" {
 			tt.Classified = json.RawMessage(classified)
+		}
+		if classifiedAsync != "" {
+			tt.ClassifiedAsync = json.RawMessage(classifiedAsync)
 		}
 		turns = append(turns, tt)
 	}

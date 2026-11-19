@@ -142,6 +142,10 @@ func (h *Host) OnCommand(id string, fn func(ctx context.Context, args map[string
 	h.mu.Unlock()
 }
 
+// ServeHTTP serves the module's routes, so a test can put the host behind httptest.NewServer
+// (a WebSocket, a stream: what a recorder cannot carry).
+func (h *Host) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.mux.ServeHTTP(w, r) }
+
 // Do calls one of the module's routes. p is relative to the module's prefix ("/items").
 // It returns the status and the body.
 func (h *Host) Do(method, p, body string) (int, string) {

@@ -11,3 +11,5 @@ modules:
   - browser
   - builder
   - design
+  - files
+  - terminal

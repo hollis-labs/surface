@@ -2,6 +2,8 @@
 
 What exists, what is checked, and what is deliberately not there yet.
 
+The feature list by area, with what has landed, what is in review and what is planned, is [ade-framework.md](ade-framework.md).
+
 ## First milestone
 
 | | State | How it is checked |

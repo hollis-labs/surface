@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/config"
@@ -59,6 +60,8 @@ type App struct {
 	order    []string // command ids in declaration order
 	tools    []BoundTool
 	slots    []BoundSlot
+	arounds  []BoundAround
+	asker    atomic.Pointer[askerBox]
 	routes   *http.ServeMux
 	started  bool
 	mu       sync.RWMutex
@@ -224,6 +227,10 @@ func New(ctx context.Context, o Options) (*App, error) {
 				bs.Knowledge = func(ctx context.Context, sit module.Situation) (string, error) { return fn(ctx, hh, sit) }
 			}
 			a.slots = append(a.slots, bs)
+		}
+		if h.man.Around != nil {
+			hh, fn := h, h.man.Around
+			a.arounds = append(a.arounds, BoundAround{Module: h.id, Read: func(ctx context.Context) (string, error) { return fn(ctx, hh) }})
 		}
 	}
 	return a, nil
@@ -394,6 +401,29 @@ func (a *App) AddTools(tools ...BoundTool) error {
 // Slots is every module's slots.
 func (a *App) Slots() []BoundSlot { return append([]BoundSlot(nil), a.slots...) }
 
+// Arounds is every module's Around, bound to its Host.
+func (a *App) Arounds() []BoundAround { return append([]BoundAround(nil), a.arounds...) }
+
+type askerBox struct{ Asker }
+
+// SetAsker names what takes the modules' errands for the agent. Until it is set (the agent
+// service starts after the modules), and when it is nil, an errand gets module.ErrNoAgent.
+func (a *App) SetAsker(x Asker) { a.asker.Store(&askerBox{x}) }
+
+// moduleAgent is one module's way to the agent.
+type moduleAgent struct {
+	app *App
+	id  string
+}
+
+func (m moduleAgent) Ask(ctx context.Context, x module.Ask) (string, error) {
+	b := m.app.asker.Load()
+	if b == nil || b.Asker == nil {
+		return "", module.ErrNoAgent
+	}
+	return b.AskFrom(ctx, m.id, x)
+}
+
 // Situation is what is happening now.
 func (a *App) Situation(ctx context.Context) module.Situation {
 	st := a.desk.Snapshot()
@@ -472,6 +502,7 @@ func (h *host) Config() module.Config { return h.app.cfg.Scoped(h.id) }
 func (h *host) Events() module.Events { return h.app.bus }
 func (h *host) Marks() module.Marks   { return h.app.marks }
 func (h *host) Cards() module.Cards   { return h.app.cards }
+func (h *host) Agent() module.Agent   { return moduleAgent{app: h.app, id: h.id} }
 func (h *host) RunCommand(ctx context.Context, id string, args map[string]any) (any, error) {
 	return h.app.RunCommand(ctx, id, args)
 }

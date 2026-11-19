@@ -30,7 +30,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 interface Place {
   id: string
   name: string
+  /** The folder; for a remote place, the folder on its host as configured. */
   path: string
+  /** A remote place's ssh host. Remote places come from the files.remotes setting. */
+  host?: string
+  remote?: boolean
 }
 
 interface Entry {
@@ -170,6 +174,9 @@ function AddPlace({ onAdd, onCancel }: { onAdd: (name: string, path: string) => 
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancel
       </Button>
+      <p className="basis-full text-xs text-muted-foreground">
+        A folder on another host is added in the Files setting "Remote folders", and reached over ssh.
+      </p>
     </form>
   )
 }
@@ -312,7 +319,9 @@ function Files({ win, desk, api }: ViewProps) {
     if (select) setSelected(select)
   }, [select])
 
-  const placeName = places?.find((p) => p.id === place)?.name
+  const here = places?.find((p) => p.id === place)
+  const placeName = here?.name
+  const remote = here?.remote === true
   const title = path ? path.slice(path.lastIndexOf("/") + 1) : (placeName ?? "Files")
   useEffect(() => {
     void desk.setTitle(win.id, title)
@@ -400,7 +409,8 @@ function Files({ win, desk, api }: ViewProps) {
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
             {(places ?? []).map((p) => (
-              <SelectItem key={p.id} value={p.id} title={p.path}>
+              <SelectItem key={p.id} value={p.id} title={p.remote ? `${p.host}:${p.path}` : p.path}>
+                {p.remote && <Icon name="server" className="size-3.5 text-muted-foreground" />}
                 {p.name}
               </SelectItem>
             ))}
@@ -409,7 +419,13 @@ function Files({ win, desk, api }: ViewProps) {
         <IconButton label="Add a place" onClick={() => setAdding((a) => !a)}>
           <Icon name="plus" />
         </IconButton>
-        <IconButton label="Remove this place (its files stay)" disabled={!place} onClick={() => void removePlace()}>
+        <IconButton
+          label={
+            remote ? "A remote place is removed in the Remote folders setting" : "Remove this place (its files stay)"
+          }
+          disabled={!place || remote}
+          onClick={() => void removePlace()}
+        >
           <Icon name="minus" />
         </IconButton>
         <Breadcrumb
@@ -576,7 +592,7 @@ function Files({ win, desk, api }: ViewProps) {
               <span className="min-w-0 flex-1 truncate font-medium" title={current.path}>
                 {current.name}
               </span>
-              {NOTE.test(current.name) && (
+              {NOTE.test(current.name) && !remote && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -606,6 +622,7 @@ function Files({ win, desk, api }: ViewProps) {
       <footer className="truncate border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
         {needle ? `${shown.length} of ${entries.length}` : entries.length} {entries.length === 1 ? "item" : "items"}
         {showHidden ? " · hidden files shown" : " · hidden files not shown"}
+        {remote && here ? ` · on ${here.host} over ssh` : ""}
         {current ? ` · ${current.name}, ${formatSize(current.size)}` : ""}
       </footer>
     </div>

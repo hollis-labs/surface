@@ -18,17 +18,22 @@ import (
 //	                per requested scope, so the owner can approve some and drop the rest
 //	                (Gatecrasher's narrowed scopes); a critical one asks for the phrase
 //	choose          the core's choice card, with Decline
-//	answer          the core's prompt card (an empty answer declines)
-//	request_secret  this module's own kind, gatecrasher.secret: a one-field form that posts
-//	                the value from the page straight to the producer's intake. The card's
-//	                answer says only provided or declined; the value is never in it.
+//	answer          the core's prompt card; Skip declines
+//	request_secret  this module's own kind, approvals.secret: a one-field form that posts the
+//	                value from the page straight to the producer's intake. The intake is not
+//	                in the card: the page asks this module for it (GET form/{card}), which
+//	                answers from what Gatecrasher said. The card's answer is only declined;
+//	                a provided secret is reported by the producer, and the card goes then.
 //
-// The owner's answer on the card is the owner deciding: the module sends it to Gatecrasher.
+// The owner's answer counts only on the card this module showed for that approval, and is
+// checked against what this module kept from Gatecrasher, never against the card's payload:
+// the agent and outside clients can show cards, and a card's payload is not the module's word.
 
 const (
-	kindForm = "gatecrasher.secret" // the secret-request card
-	declineID  = "_decline"
-	phrase     = "approve"
+	kindForm = "approvals.secret" // the secret-request card
+	// declineID is the choice card's Decline. A producer's choice with this id is dropped.
+	declineID = "approvals:decline"
+	phrase    = "approve"
 )
 
 // risk maps a tier to the card's risk.
@@ -42,14 +47,22 @@ func risk(tier string) string {
 	return "low"
 }
 
-// surfaceCard is a Gatecrasher card as a Surface card.
-func surfaceCard(c gateCard) (module.Card, error) {
+// shownCard is a Gatecrasher card as a Surface card, with what the answer is checked against.
+type shownCard struct {
+	card   module.Card
+	scopes []string
+	post   string // a secret request's intake
+	field  string
+}
+
+func surfaceCard(c gateCard) (shownCard, error) {
 	sc := module.Card{
 		Title:     c.Title,
 		Subject:   "approval:" + c.ApprovalID,
 		Risk:      risk(c.Tier),
 		ExpiresAt: c.ExpiresAt.UTC().Format(time.RFC3339),
 	}
+	out := shownCard{}
 	who := c.Principal.Sub
 	if c.Principal.Kind != "" {
 		who += " (" + c.Principal.Kind + ")"
@@ -69,62 +82,62 @@ func surfaceCard(c gateCard) (module.Card, error) {
 			for _, s := range r.Scopes {
 				changes = append(changes, map[string]string{"label": "scope", "after": s})
 			}
+			out.scopes = append([]string(nil), r.Scopes...)
 		} else {
-			summary += "\n\n" + head
+			summary += "\n\n" + head + "."
 		}
 		if ev := evidence(c.Evidence); ev != "" {
 			summary += " Evidence: " + ev + "."
 		}
-		payload = map[string]any{"summary": summary, "requested_by": who, "changes": changes}
+		payload = map[string]any{"summary": summary, "requested_by": who, "changes": changes, "per_change": len(changes) > 1}
 		if c.Tier == "critical" {
 			payload["phrase"] = phrase
 		}
 	case "choose":
-		if c.Prompt == nil {
-			return sc, errors.New("a choice card without its question")
+		if c.Prompt == nil || len(c.Prompt.Choices) == 0 {
+			return out, permanent{errors.New("a choice card without its question or choices")}
 		}
 		sc.Kind = "choice"
 		var opts []map[string]string
 		for _, ch := range c.Prompt.Choices {
+			if ch.ID == declineID || ch.ID == "" {
+				continue
+			}
 			opts = append(opts, map[string]string{"id": ch.ID, "label": ch.Label})
 		}
 		opts = append(opts, map[string]string{"id": declineID, "label": "Decline"})
 		payload = map[string]any{"question": c.Prompt.Question, "options": opts, "body": head + " · asked by " + who}
 	case "answer":
 		if c.Prompt == nil {
-			return sc, errors.New("a question card without its question")
+			return out, permanent{errors.New("a question card without its question")}
 		}
 		sc.Kind = "prompt"
-		payload = map[string]any{"question": c.Prompt.Question, "body": head + " · asked by " + who + ". Leave it empty to decline.", "multiline": true}
+		payload = map[string]any{"question": c.Prompt.Question, "body": head + " · asked by " + who + ". Skip declines it.", "multiline": true}
 	case "request_secret":
 		s := c.Secret
 		if s == nil {
-			return sc, errors.New("a request_secret card without its form")
+			return out, permanent{errors.New("a secret request without its form")}
 		}
-		origin, err := intakeOrigin(s.PostURL)
-		if err != nil {
-			return sc, err
+		if _, err := intakeOrigin(s.PostURL); err != nil {
+			return out, permanent{err}
 		}
-		field := s.Field
-		if field == "" {
-			field = "value"
+		out.post, out.field = s.PostURL, s.Field
+		if out.field == "" {
+			out.field = "value"
 		}
 		sc.Kind = kindForm
 		sc.Blocking = true // a secret request is always critical
-		payload = map[string]any{
-			"summary": strings.TrimSpace(c.Summary), "head": head, "requested_by": who,
-			"post_url": s.PostURL, "origin": origin, "field": field,
-			"intake_id": s.IntakeID, "expires_at": s.ExpiresAt.UTC().Format(time.RFC3339),
-		}
+		payload = map[string]any{"summary": strings.TrimSpace(c.Summary), "head": head, "requested_by": who}
 	default:
-		return sc, fmt.Errorf("a card of type %q", c.Type)
+		return out, permanent{fmt.Errorf("a card of type %q", c.Type)}
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return sc, err
+		return out, permanent{err}
 	}
 	sc.Payload = raw
-	return sc, nil
+	out.card = sc
+	return out, nil
 }
 
 // intakeOrigin is the origin the page posts a secret to: https, or http on loopback.
@@ -158,14 +171,17 @@ func evidence(e map[string]string) string {
 	return strings.Join(parts, ", ")
 }
 
-// show puts a pending approval in front of the owner, once.
+// show puts a pending approval in front of the owner, once. A permanent error means it can
+// never be shown as it is.
 func (m *mod) show(ctx context.Context, g *gate, id string) error {
 	if sh, ok := m.shown(ctx, id); ok {
-		if c, found, _ := m.h.Cards().Get(ctx, sh.card); found && c.Status == "" {
-			return nil // already shown and open
+		if sh.card != "" {
+			if c, found, _ := m.h.Cards().Get(ctx, sh.card); found && c.Status == "" {
+				return nil // already shown and open
+			}
 		}
 		if sh.status != "pending" {
-			return nil // decided here already; the stream's event will close it
+			return nil // decided here already, or closed: the stream's event says the rest
 		}
 	}
 	c, err := g.card(ctx, id)
@@ -180,13 +196,21 @@ func (m *mod) show(ctx context.Context, g *gate, id string) error {
 	if err != nil {
 		return err
 	}
-	shown, err := m.h.Cards().Show(ctx, sc)
+	shown, err := m.h.Cards().Show(ctx, sc.card)
 	if err != nil {
-		return err
+		return permanent{fmt.Errorf("the card was refused: %w", err)}
 	}
-	m.remember(ctx, id, shown.ID, c.Type, "pending", c.Title)
+	m.remember(ctx, shownRow{id: id, card: shown.ID, typ: c.Type, status: "pending", title: c.Title, scopes: sc.scopes, post: sc.post, field: sc.field})
 	m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": "pending"})
 	return nil
+}
+
+// unshowable tells the owner of an approval that cannot be shown, so it is not silently lost.
+func (m *mod) unshowable(ctx context.Context, id string, err error) {
+	m.h.Log().Warn("approvals: an approval cannot be shown", "approval", id, "err", err)
+	body, _ := json.Marshal(map[string]string{"body": "Approval " + id + " is waiting in Gatecrasher but cannot be shown here: " + err.Error() + ". Decide it in another surface, or ask its producer."})
+	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval cannot be shown", Subject: "approval-error:" + id, Payload: body})
+	m.remember(ctx, shownRow{id: id, typ: "unknown", status: "unshowable", title: id})
 }
 
 // close takes an approval's card away when Gatecrasher closed it (decided here or elsewhere,
@@ -196,51 +220,85 @@ func (m *mod) close(ctx context.Context, id, status string) {
 	if !ok {
 		return
 	}
-	if c, found, _ := m.h.Cards().Get(ctx, sh.card); found && c.Status == "" {
-		end := "superseded"
-		if status == "expired" {
-			end = "expired"
+	if sh.card != "" {
+		if c, found, _ := m.h.Cards().Get(ctx, sh.card); found && c.Status == "" {
+			end := "superseded"
+			if status == "expired" {
+				end = "expired"
+			}
+			_, _ = m.h.Cards().End(ctx, sh.card, end)
 		}
-		_, _ = m.h.Cards().End(ctx, sh.card, end)
 	}
-	m.remember(ctx, id, sh.card, sh.typ, status, sh.title)
+	sh.status = status
+	m.remember(ctx, sh)
 	m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": status})
 }
 
-// answered sends the owner's answer on a card to Gatecrasher.
+// answered sends the owner's answer on a card to Gatecrasher. It acts only on the card this
+// module showed for that approval while it is still pending here.
 func (m *mod) answered(ctx context.Context, c module.Card) {
 	id, ok := strings.CutPrefix(c.Subject, "approval:")
-	if !ok || c.Status != "submitted" || c.Outcome == nil {
+	if !ok {
 		return
 	}
 	sh, ok := m.shown(ctx, id)
-	if !ok || sh.status != "pending" {
+	if !ok || sh.status != "pending" || sh.card == "" || c.ID != sh.card {
 		return
 	}
-	d, ok := decision(c)
+	d, ok := decision(c, sh)
 	if !ok {
-		return // a secret provided: the producer reports it, and the stream closes the card
+		return
 	}
 	g, err := m.gate()
 	if err != nil {
-		m.h.Log().Warn("approvals: the owner's answer was not sent", "approval", id, "err", err)
+		m.notDelivered(ctx, sh, err)
 		return
 	}
 	switch err := g.decide(ctx, id, d); {
-	case err == nil, errors.Is(err, errTerminal):
-		m.remember(ctx, id, sh.card, sh.typ, d.Outcome, sh.title)
+	case err == nil:
+		sh.status = d.Outcome
+		m.remember(ctx, sh)
 		m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": d.Outcome})
+	case errors.Is(err, errTerminal):
+		// Closed elsewhere first: keep what Gatecrasher says, not what was answered here.
+		status := "closed"
+		if gc, cerr := g.card(ctx, id); cerr == nil {
+			status = gc.Status
+		}
+		m.close(ctx, id, status)
 	default:
-		m.h.Log().Warn("approvals: the owner's answer was not sent", "approval", id, "err", err)
+		m.notDelivered(ctx, sh, err)
 	}
 }
 
-// decision is the decide call an answered card makes; false for a card that makes none.
-func decision(c module.Card) (decideRequest, bool) {
+// notDelivered tells the owner their answer did not reach Gatecrasher, and shows the approval
+// again: it is still waiting.
+func (m *mod) notDelivered(ctx context.Context, sh shownRow, err error) {
+	m.h.Log().Warn("approvals: the owner's answer did not reach Gatecrasher", "approval", sh.id, "err", err)
+	body, _ := json.Marshal(map[string]string{"body": "Your answer on \"" + sh.title + "\" did not reach Gatecrasher (" + err.Error() + "). It is shown again."})
+	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval answer did not go through", Subject: "approval-error:" + sh.id, Payload: body})
+	sh.card = ""
+	m.remember(ctx, sh)
+	if g, gerr := m.gate(); gerr == nil {
+		if serr := m.show(ctx, g, sh.id); serr != nil {
+			m.h.Log().Warn("approvals: the approval was not shown again", "approval", sh.id, "err", serr)
+		}
+	}
+}
+
+// decision is the decide call an answered card makes; false for none. Dismissing a card
+// (canceled) declines it: an approval left unanswered in Gatecrasher would wait unseen.
+func decision(c module.Card, sh shownRow) (decideRequest, bool) {
+	if c.Status == "canceled" {
+		return decideRequest{Outcome: "denied", Note: "dismissed by the owner"}, true
+	}
 	o := c.Outcome
+	if c.Status != "submitted" || o == nil {
+		return decideRequest{}, false // expired, superseded: Gatecrasher closes it on its own
+	}
 	switch c.Kind {
 	case "approval":
-		approved, all := 0, true
+		approved := map[int]bool{}
 		for _, d := range o.Decisions {
 			if d.ItemID == "approval" {
 				if d.Action == "approve" {
@@ -248,22 +306,27 @@ func decision(c module.Card) (decideRequest, bool) {
 				}
 				return decideRequest{Outcome: "denied"}, true
 			}
-			if d.Action == "approve" {
-				approved++
-			} else {
-				all = false
+			var i int
+			if _, err := fmt.Sscanf(d.ItemID, "change:%d", &i); err == nil && d.Action == "approve" && i >= 0 && i < len(sh.scopes) {
+				approved[i] = true
+			}
+		}
+		var keep []string
+		for i, s := range sh.scopes {
+			if approved[i] {
+				keep = append(keep, s)
 			}
 		}
 		switch {
-		case approved == 0:
+		case len(keep) == 0:
 			return decideRequest{Outcome: "denied"}, true
-		case all:
+		case len(keep) == len(sh.scopes):
 			return decideRequest{Outcome: "approved"}, true
 		}
-		return decideRequest{Outcome: "approved", Narrowed: &narrowed{Scopes: scopes(c)}}, true
+		return decideRequest{Outcome: "approved", Narrowed: &narrowed{Scopes: keep}}, true
 	case "choice":
 		if len(o.Answers) == 0 {
-			return decideRequest{}, false
+			return decideRequest{Outcome: "denied"}, true
 		}
 		v, _ := o.Answers[0].Value.(string)
 		if v == "" || v == declineID {
@@ -272,7 +335,7 @@ func decision(c module.Card) (decideRequest, bool) {
 		return decideRequest{Outcome: "approved", Choice: v}, true
 	case "prompt":
 		if len(o.Answers) == 0 {
-			return decideRequest{}, false
+			return decideRequest{Outcome: "denied"}, true
 		}
 		v, _ := o.Answers[0].Value.(string)
 		if strings.TrimSpace(v) == "" {
@@ -283,27 +346,6 @@ func decision(c module.Card) (decideRequest, bool) {
 		if declined, _ := o.Data["declined"].(bool); declined {
 			return decideRequest{Outcome: "denied"}, true
 		}
-		return decideRequest{}, false
 	}
 	return decideRequest{}, false
-}
-
-// scopes are the approved changes' scopes, read from the card's payload by the position in
-// each decision's item id ("change:<i>").
-func scopes(c module.Card) []string {
-	var p struct {
-		Changes []struct {
-			After string `json:"after"`
-		} `json:"changes"`
-	}
-	_ = json.Unmarshal(c.Payload, &p)
-	var out []string
-	for _, d := range c.Outcome.Decisions {
-		var i int
-		if _, err := fmt.Sscanf(d.ItemID, "change:%d", &i); err != nil || d.Action != "approve" || i < 0 || i >= len(p.Changes) {
-			continue
-		}
-		out = append(out, p.Changes[i].After)
-	}
-	return out
 }

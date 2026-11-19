@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -39,7 +40,9 @@ func (m *mod) follow(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		m.setState(err)
+		if err != nil {
+			m.setState(err)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -67,10 +70,10 @@ func (m *mod) stream(ctx context.Context, g *gate) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Accept", "text/event-stream")
-	if seq := m.cursor(ctx); seq > 0 {
+	if seq := m.cursor(ctx, g.base); seq > 0 {
 		req.Header.Set("Last-Event-ID", strconv.FormatInt(seq, 10))
 	}
-	res, err := (&http.Client{}).Do(req) // no timeout: the stream is long-lived; idleLimit guards it
+	res, err := (&http.Client{CheckRedirect: noRedirect}).Do(req) // no timeout: the stream is long-lived; idleLimit guards it
 	if err != nil {
 		return fmt.Errorf("approvals: Gatecrasher cannot be reached: %w", redact(err))
 	}
@@ -112,7 +115,7 @@ func (m *mod) stream(ctx context.Context, g *gate) error {
 				if data != "" && (event == "" || event == "approval") {
 					var ev feedEvent
 					if json.Unmarshal([]byte(data), &ev) == nil {
-						if err := m.handle(ctx, g, ev); err != nil {
+						if err := m.handle(sctx, g, ev); err != nil {
 							return err // reconnect from the last seq handled, this event included
 						}
 					}
@@ -133,18 +136,23 @@ func (m *mod) stream(ctx context.Context, g *gate) error {
 // The seq is saved after, so an event is never handled twice across reconnects; one that
 // could not be handled ends the connection, and the next starts from it again.
 func (m *mod) handle(ctx context.Context, g *gate, ev feedEvent) error {
-	if ev.Seq <= m.cursor(ctx) {
+	if ev.Seq <= m.cursor(ctx, g.base) {
 		return nil
 	}
 	if ev.ApprovalID != "" {
 		if ev.Status == "pending" {
 			if err := m.show(ctx, g, ev.ApprovalID); err != nil {
-				return fmt.Errorf("approvals: %s was not shown: %w", ev.ApprovalID, err)
+				var p permanent
+				if !errors.As(err, &p) {
+					return fmt.Errorf("approvals: %s was not shown: %w", ev.ApprovalID, err)
+				}
+				// It will never show as it is: tell the owner, and go on with the rest.
+				m.unshowable(ctx, ev.ApprovalID, err)
 			}
 		} else {
 			m.close(ctx, ev.ApprovalID, ev.Status)
 		}
 	}
-	m.setCursor(ctx, ev.Seq)
+	m.setCursor(ctx, g.base, ev.Seq)
 	return nil
 }

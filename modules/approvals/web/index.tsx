@@ -1,15 +1,15 @@
 /**
- * Approvals: the secret-request card (kind gatecrasher.secret). The other approvals use the
+ * Approvals: the secret-request card (kind approvals.secret). The other approvals use the
  * core's approval, choice and prompt cards.
  *
  * The value the owner types goes from this component straight to the producer's intake, as
  * the one form field the card names, and nowhere else. It lives only in this component's
  * state, is cleared once sent, and is never put in the card's answer, a route of this app, an
- * event, the desk's report or a log. The answer says only "provided" or "declined"; the
+ * event, the desk's report or a log. The card's answer is only "declined"; on a send the
  * producer reports the secret received, and Gatecrasher closes the card.
  */
 import type { CardProps, ModuleWeb } from "@hollis-labs/surface-page/sdk"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CardActions, CardFrame, CardReceipt } from "@/components/ui/card-frame"
@@ -34,50 +34,92 @@ export async function postSecret(postUrl: string, field: string, value: string):
   })
 }
 
-function SecretCard({ card, respond }: CardProps) {
+interface Form {
+  post_url: string
+  origin: string
+  field: string
+}
+
+function SecretCard({ card, respond, api }: CardProps) {
   const p = card.payload ?? {}
+  const [form, setForm] = useState<Form | null>(null)
+  const [refused, setRefused] = useState(false)
   const [value, setValue] = useState("")
   const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
   const [problem, setProblem] = useState("")
   const open = !card.status
-  const origin = str(p.origin)
+
+  // Where the form posts comes from this module, which keeps it from Gatecrasher, and only
+  // for a card the module showed: never from the card's payload, which others can edit.
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    api
+      .get<Form>(`form/${encodeURIComponent(card.id)}`)
+      .then((f) => live && setForm(f))
+      .catch(() => live && setRefused(true))
+    return () => {
+      live = false
+    }
+  }, [api, card.id, open])
 
   const provide = async () => {
-    if (!value || busy) return
+    if (!form || !value || busy) return
     setBusy(true)
     setProblem("")
     try {
-      await postSecret(str(p.post_url), str(p.field) || "value", value)
+      await postSecret(form.post_url, form.field, value)
       setValue("")
-      await respond({ status: "submitted", data: { provided: true } })
+      // A no-cors post cannot read the intake's answer: the card closes when the producer
+      // reports the secret received, and Gatecrasher says so.
+      setSent(true)
     } catch {
-      setProblem(`It could not be sent to ${origin}. Nothing was kept; try again.`)
+      setProblem(`It could not be sent to ${form.origin}. Nothing was kept; try again.`)
     } finally {
       setBusy(false)
     }
   }
-  const decline = () => void respond({ status: "submitted", data: { declined: true } })
+  const decline = () => {
+    setValue("")
+    void respond({ status: "submitted", data: { declined: true } })
+  }
 
   return (
     <CardFrame
       title={card.title || "A secret is asked for"}
       tone="danger"
       meta={<Badge variant="destructive">critical</Badge>}
-      data-slot="card-gatecrasher-secret"
+      data-slot="card-approvals-secret"
     >
       <div className="flex flex-col gap-2 text-sm">
         {str(p.summary) && <p>{str(p.summary)}</p>}
         <p className="text-muted-foreground">
           {str(p.head)} · for {str(p.requested_by)}
         </p>
-        {open ? (
+        {!open ? (
+          <CardReceipt state={card.status === "submitted" ? "submitted" : "expired"}>
+            {card.status === "submitted" ? "Answered" : "Closed"}
+          </CardReceipt>
+        ) : refused ? (
+          <p className="text-destructive">
+            This card was not shown by the Approvals module, or is no longer open. Nothing will be sent from it.
+          </p>
+        ) : !form ? (
+          <p className="text-muted-foreground">…</p>
+        ) : sent ? (
+          <p className="text-muted-foreground">
+            Sent to <span className="font-mono">{form.origin}</span>. Waiting for it to confirm; this card closes when
+            it does.
+          </p>
+        ) : (
           <>
             <p className="text-muted-foreground">
-              Sent only to <span className="font-mono">{origin}</span>, never to this app or its agent.
+              Sent only to <span className="font-mono">{form.origin}</span>, never to this app or its agent.
             </p>
             <Input
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
               spellCheck={false}
               aria-label="The secret"
               placeholder="The secret"
@@ -92,18 +134,14 @@ function SecretCard({ card, respond }: CardProps) {
                 Decline
               </Button>
               <Button size="sm" disabled={busy || !value} onClick={() => void provide()}>
-                Send to {origin}
+                Send to {form.origin}
               </Button>
             </CardActions>
           </>
-        ) : (
-          <CardReceipt state={card.status === "submitted" ? "submitted" : "expired"}>
-            {card.status === "submitted" ? "Answered" : "Closed"}
-          </CardReceipt>
         )}
       </div>
     </CardFrame>
   )
 }
 
-export default { views: {}, cards: { "gatecrasher.secret": SecretCard } } satisfies ModuleWeb
+export default { views: {}, cards: { "approvals.secret": SecretCard } } satisfies ModuleWeb

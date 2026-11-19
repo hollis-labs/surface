@@ -147,6 +147,7 @@ registerCard("approval", "1", (p) => (
     changes={list<CardApprovalChange>(p.card.payload?.changes)}
     requestedBy={str(p.card.payload?.requested_by)}
     phrase={str(p.card.payload?.phrase)}
+    perChange={p.card.payload?.per_change === true}
   />
 ))
 registerCard("progress", "1", ({ card }) => (

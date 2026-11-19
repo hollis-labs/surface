@@ -23,14 +23,15 @@ const ownerKey = "test-owner"
 // fakeGate is Gatecrasher for a surface: an event log served as a stream (from
 // Last-Event-ID), the cards, and decide.
 type fakeGate struct {
-	mu        sync.Mutex
-	events    []feedEvent
-	cards     map[string]map[string]any
-	decided   map[string]decideRequest
-	lastIDs   []string // the Last-Event-ID of each connection
-	ignoreLID bool     // replay from the start whatever the client says
-	push      chan struct{}
-	srv       *httptest.Server
+	mu         sync.Mutex
+	events     []feedEvent
+	cards      map[string]map[string]any
+	decided    map[string]decideRequest
+	lastIDs    []string // the Last-Event-ID of each connection
+	ignoreLID  bool     // replay from the start whatever the client says
+	failDecide bool     // decide answers 503
+	push       chan struct{}
+	srv        *httptest.Server
 }
 
 func newFake(t *testing.T) *fakeGate {
@@ -97,6 +98,10 @@ func (f *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&d)
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		if f.failDecide {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if _, done := f.decided[id]; done {
 			w.WriteHeader(http.StatusConflict)
 			return
@@ -181,6 +186,18 @@ func TestAnApprovalIsShownAndDecided(t *testing.T) {
 	if c.Kind != "approval" || c.Subject != "approval:apr_1" || c.Risk != "high" || p["phrase"] != phrase || !strings.Contains(p["summary"].(string), "from warden. Audience llm-gateway, for 10 min.") {
 		t.Fatalf("%+v %v", c, p)
 	}
+	if p["per_change"] != true {
+		t.Fatalf("a two-scope grant is not split per scope: %v", p)
+	}
+	// A card the module did not show, with the same subject, decides nothing.
+	forged := answer(module.Card{ID: "forged", Kind: "approval", Subject: "approval:apr_1"}, module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}})
+	m.answered(context.Background(), forged)
+	f.mu.Lock()
+	_, early := f.decided["apr_1"]
+	f.mu.Unlock()
+	if early {
+		t.Fatal("a forged card decided the approval")
+	}
 	// The owner approves one of the two scopes: Gatecrasher gets the approval narrowed.
 	m.answered(context.Background(), answer(c, module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "change:0", Action: "approve"}, {ItemID: "change:1", Action: "reject"}}}))
 	f.mu.Lock()
@@ -195,26 +212,39 @@ func TestAnApprovalIsShownAndDecided(t *testing.T) {
 }
 
 func TestDecisionsByCardKind(t *testing.T) {
+	sh := shownRow{scopes: []string{"a.read", "a.write"}}
+	sub := func(kind string, o module.CardOutcome) module.Card {
+		return module.Card{Kind: kind, Status: "submitted", Outcome: &o}
+	}
 	cases := []struct {
 		name string
 		card module.Card
 		want decideRequest
 		ok   bool
 	}{
-		{"approve all", module.Card{Kind: "approval", Outcome: &module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}}}, decideRequest{Outcome: "approved"}, true},
-		{"reject", module.Card{Kind: "approval", Outcome: &module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "reject"}}}}, decideRequest{Outcome: "denied"}, true},
-		{"choose", module.Card{Kind: "choice", Outcome: &module.CardOutcome{Answers: []module.CardAnswer{{Value: "b"}}}}, decideRequest{Outcome: "approved", Choice: "b"}, true},
-		{"decline a choice", module.Card{Kind: "choice", Outcome: &module.CardOutcome{Answers: []module.CardAnswer{{Value: declineID}}}}, decideRequest{Outcome: "denied"}, true},
-		{"answer", module.Card{Kind: "prompt", Outcome: &module.CardOutcome{Answers: []module.CardAnswer{{Value: "use staging"}}}}, decideRequest{Outcome: "approved", Answer: "use staging"}, true},
-		{"empty answer declines", module.Card{Kind: "prompt", Outcome: &module.CardOutcome{Answers: []module.CardAnswer{{Value: " "}}}}, decideRequest{Outcome: "denied"}, true},
-		{"secret provided: the producer reports it", module.Card{Kind: kindForm, Outcome: &module.CardOutcome{Data: map[string]any{"provided": true}}}, decideRequest{}, false},
-		{"secret declined", module.Card{Kind: kindForm, Outcome: &module.CardOutcome{Data: map[string]any{"declined": true}}}, decideRequest{Outcome: "denied"}, true},
+		{"approve all", sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}}), decideRequest{Outcome: "approved"}, true},
+		{"reject", sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "reject"}}}), decideRequest{Outcome: "denied"}, true},
+		{"split, both", sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "change:0", Action: "approve"}, {ItemID: "change:1", Action: "approve"}}}), decideRequest{Outcome: "approved"}, true},
+		{"split, none", sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "change:0", Action: "reject"}, {ItemID: "change:1", Action: "reject"}}}), decideRequest{Outcome: "denied"}, true},
+		{"split, ids not changes: denied, never a full approval", sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "x", Action: "approve"}, {ItemID: "change:9", Action: "approve"}}}), decideRequest{Outcome: "denied"}, true},
+		{"choose", sub("choice", module.CardOutcome{Answers: []module.CardAnswer{{Value: "b"}}}), decideRequest{Outcome: "approved", Choice: "b"}, true},
+		{"decline a choice", sub("choice", module.CardOutcome{Answers: []module.CardAnswer{{Value: declineID}}}), decideRequest{Outcome: "denied"}, true},
+		{"answer", sub("prompt", module.CardOutcome{Answers: []module.CardAnswer{{Value: "use staging"}}}), decideRequest{Outcome: "approved", Answer: "use staging"}, true},
+		{"empty answer declines", sub("prompt", module.CardOutcome{Answers: []module.CardAnswer{{Value: " "}}}), decideRequest{Outcome: "denied"}, true},
+		{"dismissed declines", module.Card{Kind: "prompt", Status: "canceled"}, decideRequest{Outcome: "denied"}, true},
+		{"expired: nothing", module.Card{Kind: "approval", Status: "expired"}, decideRequest{}, false},
+		{"secret provided: the producer reports it", sub(kindForm, module.CardOutcome{Data: map[string]any{"provided": true}}), decideRequest{}, false},
+		{"secret declined", sub(kindForm, module.CardOutcome{Data: map[string]any{"declined": true}}), decideRequest{Outcome: "denied"}, true},
 	}
 	for _, c := range cases {
-		got, ok := decision(c.card)
-		if ok != c.ok || got.Outcome != c.want.Outcome || got.Choice != c.want.Choice || got.Answer != c.want.Answer {
+		got, ok := decision(c.card, sh)
+		if ok != c.ok || got.Outcome != c.want.Outcome || got.Choice != c.want.Choice || got.Answer != c.want.Answer || (got.Narrowed != nil) != (c.want.Narrowed != nil) {
 			t.Errorf("%s: %+v %v", c.name, got, ok)
 		}
+	}
+	got, _ := decision(sub("approval", module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "change:1", Action: "approve"}, {ItemID: "change:0", Action: "reject"}}}), sh)
+	if got.Outcome != "approved" || got.Narrowed == nil || len(got.Narrowed.Scopes) != 1 || got.Narrowed.Scopes[0] != "a.write" {
+		t.Fatalf("narrowed: %+v", got)
 	}
 }
 
@@ -225,7 +255,7 @@ func TestChoiceQuestionAndSecretCards(t *testing.T) {
 	f.submit("apr_q", "answer", "elevated", map[string]any{"prompt": map[string]any{"question": "Why?"}})
 	f.submit("apr_s", "request_secret", "critical", map[string]any{"secret": map[string]any{"intake_id": "int_1", "post_url": "https://warden.example.test/intake/int_1", "field": "value", "write_only": true, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}})
 	f.submit("apr_bad", "request_secret", "critical", map[string]any{"secret": map[string]any{"post_url": "http://evil.example.test/x"}})
-	eventually(t, "three cards show", func() bool { return len(openCards(h)) == 3 })
+	eventually(t, "three cards and the error for the bad one show", func() bool { return len(openCards(h)) == 4 })
 	kinds := map[string]module.Card{}
 	for _, c := range openCards(h) {
 		kinds[c.Kind] = c
@@ -236,14 +266,75 @@ func TestChoiceQuestionAndSecretCards(t *testing.T) {
 		t.Fatalf("choice: %v", p)
 	}
 	s := kinds[kindForm]
-	_ = json.Unmarshal(s.Payload, &p)
-	if !s.Blocking || p["origin"] != "https://warden.example.test" || p["field"] != "value" {
-		t.Fatalf("secret: %+v %v", s, p)
+	if !s.Blocking || strings.Contains(string(s.Payload), "warden.example.test") {
+		t.Fatalf("secret: the intake is in the card, or it does not block: %+v", s)
+	}
+	// The page gets the intake from the module, for the card it showed only.
+	code, body := h.Do("GET", "/form/"+s.ID, "")
+	if code != http.StatusOK || !strings.Contains(body, `"origin":"https://warden.example.test"`) || !strings.Contains(body, `"field":"value"`) {
+		t.Fatalf("form: %d %s", code, body)
+	}
+	if code, _ := h.Do("GET", "/form/not-a-card", ""); code != http.StatusNotFound {
+		t.Fatalf("a form for a card it did not show: %d", code)
 	}
 	if _, ok := kinds["prompt"]; !ok {
 		t.Fatal("no question card")
 	}
-	// A secret request whose intake is not https is not shown (and does not block the rest).
+	// The secret request whose intake is not https is not shown: the owner is told, and the
+	// stream went on past it.
+	eventually(t, "the unshowable one is reported", func() bool {
+		for _, c := range openCards(h) {
+			if c.Kind == "error" && c.Subject == "approval-error:apr_bad" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func TestAProducersChoiceCannotTakeTheDeclineID(t *testing.T) {
+	f := newFake(t)
+	h, _ := start(t, f)
+	f.submit("apr_c", "choose", "elevated", map[string]any{"prompt": map[string]any{"question": "Which?", "choices": []map[string]string{{"id": declineID, "label": "Sneaky"}, {"id": "a", "label": "A"}}}})
+	f.submit("apr_next", "approve", "elevated", nil)
+	eventually(t, "both show, the stream did not stick", func() bool { return len(openCards(h)) == 2 })
+}
+
+func TestAFailedDecideIsShownAgain(t *testing.T) {
+	f := newFake(t)
+	h, m := start(t, f)
+	f.submit("apr_1", "approve", "elevated", nil)
+	eventually(t, "the card shows", func() bool { return len(openCards(h)) == 1 })
+	c := openCards(h)[0]
+	f.mu.Lock()
+	f.failDecide = true
+	f.mu.Unlock()
+	_, _ = h.CardStore.Respond(context.Background(), c.ID, module.CardOutcome{Status: "submitted", Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}})
+	got, _, _ := h.CardStore.Get(context.Background(), c.ID)
+	m.answered(context.Background(), got)
+	var kinds []string
+	for _, x := range openCards(h) {
+		kinds = append(kinds, x.Kind)
+	}
+	if len(kinds) != 2 {
+		t.Fatalf("want the error and the approval again, got %v", kinds)
+	}
+}
+
+func TestDecidedElsewhereKeepsGatecrashersWord(t *testing.T) {
+	f := newFake(t)
+	h, m := start(t, f)
+	f.submit("apr_1", "approve", "elevated", nil)
+	eventually(t, "the card shows", func() bool { return len(openCards(h)) == 1 })
+	c := openCards(h)[0]
+	f.mu.Lock()
+	f.decided["apr_1"] = decideRequest{Outcome: "denied"} // someone else denied it first
+	f.cards["apr_1"]["status"] = "denied"
+	f.mu.Unlock()
+	m.answered(context.Background(), answer(c, module.CardOutcome{Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}}))
+	if r, _ := m.shown(context.Background(), "apr_1"); r.status != "denied" {
+		t.Fatalf("recorded %q, Gatecrasher says denied", r.status)
+	}
 }
 
 func TestReconnectResumesWithoutDuplicates(t *testing.T) {
@@ -266,8 +357,8 @@ func TestReconnectResumesWithoutDuplicates(t *testing.T) {
 	if len(lids) < 2 || lids[len(lids)-1] == "" {
 		t.Fatalf("a reconnect did not send Last-Event-ID: %v", lids)
 	}
-	if m.cursor(context.Background()) != 2 {
-		t.Fatalf("cursor %d", m.cursor(context.Background()))
+	if n := m.cursor(context.Background(), f.srv.URL); n != 2 {
+		t.Fatalf("cursor %d", n)
 	}
 }
 
@@ -312,6 +403,9 @@ func TestASecretNeverReachesGatecrasherOrTheStore(t *testing.T) {
 		t.Fatal("impossible: the canary is in the card before it was typed")
 	}
 	m.answered(context.Background(), answer(c, module.CardOutcome{Data: map[string]any{"provided": true, "value": canary}}))
+	if r, _ := m.shown(context.Background(), "apr_s"); strings.Contains(r.post+r.field+r.title, canary) {
+		t.Fatal("the canary is in the module's record")
+	}
 	f.mu.Lock()
 	_, decided := f.decided["apr_s"]
 	f.mu.Unlock()
@@ -319,21 +413,23 @@ func TestASecretNeverReachesGatecrasherOrTheStore(t *testing.T) {
 		t.Fatal("a provided secret made a decide call")
 	}
 	var dump strings.Builder
-	rows, err := m.db.Query(`SELECT approval_id, card_id, type, status, title FROM shown`)
+	rows, err := m.db.Query(`SELECT approval_id, card_id, type, status, title, scopes, post_url, field FROM shown`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for rows.Next() {
-		var a, b, c, d, e string
-		_ = rows.Scan(&a, &b, &c, &d, &e)
-		dump.WriteString(a + b + c + d + e)
+		var a, b, c, d, e, f2, g, h2 string
+		_ = rows.Scan(&a, &b, &c, &d, &e, &f2, &g, &h2)
+		dump.WriteString(a + b + c + d + e + f2 + g + h2)
 	}
 	_ = rows.Close()
 	if strings.Contains(dump.String(), canary) {
 		t.Fatal("the canary is in the module's store")
 	}
-	// The module serves no route of its own: nothing on this server can take a value.
-	if code, _ := h.Do("POST", "/api/m/approvals/secret", "value="+canary); code != http.StatusNotFound {
-		t.Fatalf("a route took a post: %d", code)
+	// The module's one route is GET: nothing on this server can take a value.
+	for _, path := range []string{"/form/" + c.ID, "/secret", "/"} {
+		if code, _ := h.Do("POST", path, "value="+canary); code < 400 {
+			t.Fatalf("POST %s took a post: %d", path, code)
+		}
 	}
 }

@@ -66,9 +66,6 @@ func ToolText(raw json.RawMessage) (string, error) {
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return "", fmt.Errorf("tether: unreadable tool result: %w", err)
 	}
-	if r.IsError {
-		return "", ErrRefused
-	}
 	var blocks []string
 	for _, c := range r.Content {
 		if c.Type != "text" {
@@ -79,12 +76,63 @@ func ToolText(raw json.RawMessage) (string, error) {
 		}
 		blocks = append(blocks, c.Text)
 	}
+	if r.IsError {
+		return "", &RefusedError{Detail: strings.Join(blocks, "")}
+	}
 	return strings.Join(blocks, ""), nil
 }
 
 // ErrRefused is a tool's own failure. Its text is not passed on: what Tether says may carry
 // more than a reason, and nothing from the far side is echoed into the conversation.
 var ErrRefused = errors.New("tether: the call was refused")
+
+// RefusedError is a tool's own failure with what the far side said. It reads as ErrRefused
+// (errors.Is holds, and Error() says no more), so a module that reports err.Error() passes
+// nothing on. Detail is for a caller that hands the result to a model as material, such as
+// the agent's own Tether tools, where the reason a call failed is what lets it try again.
+type RefusedError struct{ Detail string }
+
+func (e *RefusedError) Error() string        { return ErrRefused.Error() }
+func (e *RefusedError) Is(target error) bool { return target == ErrRefused }
+
+// ToolInfo is one tool as the server lists it.
+type ToolInfo struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+}
+
+// Lister lists the server's tools that the client's Allowed names (tools/list, every page).
+type Lister interface {
+	List(ctx context.Context) ([]ToolInfo, error)
+}
+
+// listResult reads one page of tools/list, keeping the allowed tools.
+func listResult(raw json.RawMessage, allowed Allowed, into []ToolInfo) ([]ToolInfo, string, error) {
+	var page struct {
+		Tools      []ToolInfo `json:"tools"`
+		NextCursor string     `json:"nextCursor"`
+	}
+	if err := json.Unmarshal(raw, &page); err != nil {
+		return into, "", errors.New("tether: the tool list could not be read")
+	}
+	for _, t := range page.Tools {
+		if allowed[t.Name] {
+			into = append(into, t)
+		}
+	}
+	return into, page.NextCursor, nil
+}
+
+// maxListPages bounds tools/list paging against a server that never stops.
+const maxListPages = 50
+
+func rpcRefused(e *struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}) error {
+	return &RefusedError{Detail: e.Message}
+}
 
 // Allowed is the set of tools a client may call.
 type Allowed map[string]bool
@@ -182,26 +230,32 @@ func lastEventData(stream []byte, id int64) []byte {
 	return found
 }
 
+// open starts a session: the token, and the session id the server gave.
+func (c *HTTP) open(ctx context.Context) (session, token string, err error) {
+	if c.TokenFile != "" {
+		if token, err = ReadToken(c.TokenFile); err != nil {
+			return "", "", err
+		}
+	}
+	init, session, err := c.post(ctx, "", token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "initialize", Params: initParams("surface-" + c.Module)})
+	if err != nil {
+		return "", "", err
+	}
+	if init.Error != nil {
+		return "", "", errors.New("tether: the MCP endpoint refused to start a session")
+	}
+	if _, _, err = c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", Method: "notifications/initialized"}); err != nil {
+		return "", "", err
+	}
+	return session, token, nil
+}
+
 func (c *HTTP) Call(ctx context.Context, tool string, args map[string]any) (string, error) {
 	if err := c.Allowed.check(c.Module, tool); err != nil {
 		return "", err
 	}
-	token := ""
-	if c.TokenFile != "" {
-		t, err := ReadToken(c.TokenFile)
-		if err != nil {
-			return "", err
-		}
-		token = t
-	}
-	init, session, err := c.post(ctx, "", token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "initialize", Params: initParams("surface-" + c.Module)})
+	session, token, err := c.open(ctx)
 	if err != nil {
-		return "", err
-	}
-	if init.Error != nil {
-		return "", errors.New("tether: the MCP endpoint refused to start a session")
-	}
-	if _, _, err = c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", Method: "notifications/initialized"}); err != nil {
 		return "", err
 	}
 	res, _, err := c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "tools/call", Params: map[string]any{"name": tool, "arguments": args}})
@@ -209,9 +263,36 @@ func (c *HTTP) Call(ctx context.Context, tool string, args map[string]any) (stri
 		return "", err
 	}
 	if res.Error != nil {
-		return "", ErrRefused
+		return "", rpcRefused(res.Error)
 	}
 	return ToolText(res.Result)
+}
+
+// List lists the allowed tools the endpoint has.
+func (c *HTTP) List(ctx context.Context) ([]ToolInfo, error) {
+	session, token, err := c.open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []ToolInfo
+	cursor := ""
+	for range maxListPages {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		res, _, err := c.post(ctx, session, token, rpcRequest{JSONRPC: "2.0", ID: c.seq.Add(1), Method: "tools/list", Params: params})
+		if err != nil {
+			return nil, err
+		}
+		if res.Error != nil {
+			return nil, rpcRefused(res.Error)
+		}
+		if out, cursor, err = listResult(res.Result, c.Allowed, out); err != nil || cursor == "" {
+			return out, err
+		}
+	}
+	return out, nil
 }
 
 // Stdio runs a command that speaks MCP over stdio (newline-delimited JSON-RPC), one process per
@@ -227,8 +308,46 @@ func (c *Stdio) Call(ctx context.Context, tool string, args map[string]any) (str
 	if err := c.Allowed.check(c.Module, tool); err != nil {
 		return "", err
 	}
+	var text string
+	err := c.session(ctx, func(request func(method string, params any) (json.RawMessage, error)) error {
+		res, err := request("tools/call", map[string]any{"name": tool, "arguments": args})
+		if err != nil {
+			return err
+		}
+		text, err = ToolText(res)
+		return err
+	})
+	return text, err
+}
+
+// List lists the allowed tools the command's server has.
+func (c *Stdio) List(ctx context.Context) ([]ToolInfo, error) {
+	var out []ToolInfo
+	err := c.session(ctx, func(request func(method string, params any) (json.RawMessage, error)) error {
+		cursor := ""
+		for range maxListPages {
+			params := map[string]any{}
+			if cursor != "" {
+				params["cursor"] = cursor
+			}
+			res, err := request("tools/list", params)
+			if err != nil {
+				return err
+			}
+			if out, cursor, err = listResult(res, c.Allowed, out); err != nil || cursor == "" {
+				return err
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+// session starts the command, opens an MCP session on it, and gives use a way to make
+// requests on it; the process ends when use returns.
+func (c *Stdio) session(ctx context.Context, use func(request func(method string, params any) (json.RawMessage, error)) error) error {
 	if len(c.Argv) == 0 {
-		return "", errors.New("tether: no command")
+		return errors.New("tether: no command")
 	}
 	timeout := c.Timeout
 	if timeout == 0 {
@@ -239,16 +358,16 @@ func (c *Stdio) Call(ctx context.Context, tool string, args map[string]any) (str
 	cmd := exec.CommandContext(ctx, c.Argv[0], c.Argv[1:]...) //nolint:gosec // the command is the owner's own setting
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", err
+		return err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", err
+		return err
 	}
 	// The command's own output stays out of everything the module reports.
 	cmd.Stderr = io.Discard
 	if err = cmd.Start(); err != nil {
-		return "", errors.New("tether: the command did not start")
+		return errors.New("tether: the command did not start")
 	}
 	defer func() {
 		_ = stdin.Close()
@@ -256,7 +375,7 @@ func (c *Stdio) Call(ctx context.Context, tool string, args map[string]any) (str
 	}()
 	enc := json.NewEncoder(stdin)
 	lines := bufio.NewScanner(stdout)
-	lines.Buffer(make([]byte, 0, 64<<10), 4<<20)
+	lines.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	await := func(id int64) (*rpcResponse, error) {
 		for lines.Scan() {
 			var r rpcResponse
@@ -270,29 +389,33 @@ func (c *Stdio) Call(ctx context.Context, tool string, args map[string]any) (str
 		return nil, errors.New("tether: the command ended without answering")
 	}
 	if err = enc.Encode(rpcRequest{JSONRPC: "2.0", ID: 1, Method: "initialize", Params: initParams("surface-" + c.Module)}); err != nil {
-		return "", err
+		return err
 	}
 	r, err := await(1)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if r.Error != nil {
-		return "", errors.New("tether: the command refused to start a session")
+		return errors.New("tether: the command refused to start a session")
 	}
 	if err = enc.Encode(rpcRequest{JSONRPC: "2.0", Method: "notifications/initialized"}); err != nil {
-		return "", err
+		return err
 	}
-	if err = enc.Encode(rpcRequest{JSONRPC: "2.0", ID: 2, Method: "tools/call", Params: map[string]any{"name": tool, "arguments": args}}); err != nil {
-		return "", err
-	}
-	r, err = await(2)
-	if err != nil {
-		return "", err
-	}
-	if r.Error != nil {
-		return "", ErrRefused
-	}
-	return ToolText(r.Result)
+	var seq int64 = 1
+	return use(func(method string, params any) (json.RawMessage, error) {
+		seq++
+		if err := enc.Encode(rpcRequest{JSONRPC: "2.0", ID: seq, Method: method, Params: params}); err != nil {
+			return nil, err
+		}
+		r, err := await(seq)
+		if err != nil {
+			return nil, err
+		}
+		if r.Error != nil {
+			return nil, rpcRefused(r.Error)
+		}
+		return r.Result, nil
+	})
 }
 
 // Config is how a module reaches Tether: an MCP URL (with a token file) or a stdio command.

@@ -113,13 +113,21 @@ func guard(next http.Handler) http.Handler {
 			fail(w, http.StatusMisdirectedRequest, fmt.Errorf("host %q is not this app's: reach it at 127.0.0.1 or localhost, or add the name to SURFACE_ALLOWED_HOSTS", r.Host))
 			return
 		}
-		if o := r.Header.Get("Origin"); o != "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		o := r.Header.Get("Origin")
+		if o != "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !sameHost(o, r.Host) && !devOrigin(o) {
 				fail(w, http.StatusForbidden, errors.New("cross-origin request refused"))
 				return
 			}
 		}
-		next.ServeHTTP(w, r)
+		// Who is asking (docs/desk-rules.md). The app's own page is the owner. Anything without
+		// an Origin (MCP, the HTTP tools, the CLI) is a client from outside, held to the agent's
+		// etiquette on the desk.
+		actor := module.ActorOutside
+		if o != "" {
+			actor = module.ActorOwner
+		}
+		next.ServeHTTP(w, r.WithContext(module.WithActor(r.Context(), actor)))
 	})
 }
 

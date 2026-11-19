@@ -1,6 +1,8 @@
 package api
 
 import (
+	"github.com/hollis-labs/surface/module"
+
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,6 +49,23 @@ func TestGuardRefusesARebindingPage(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		if rec.Code != c.want {
 			t.Errorf("host %s origin %s: %d, want %d", c.host, c.origin, rec.Code, c.want)
+		}
+	}
+}
+
+// The page is the owner; a request with no Origin (MCP, the tools, the CLI) is from outside.
+func TestGuardSaysWhoIsAsking(t *testing.T) {
+	var got module.Actor
+	h := guard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got = module.ActorOf(r.Context()) }))
+	for origin, want := range map[string]module.Actor{"http://127.0.0.1:8190": module.ActorOwner, "": module.ActorOutside} {
+		req := httptest.NewRequest("POST", "/api/desk/actions", nil)
+		req.Host = "127.0.0.1:8190"
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		if got != want {
+			t.Errorf("origin %q: actor %q, want %q", origin, got, want)
 		}
 	}
 }

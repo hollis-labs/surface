@@ -32,6 +32,13 @@ type Win struct {
 	Args   map[string]any `json:"args"`
 	State  map[string]any `json:"state,omitempty"`
 	Dirty  bool           `json:"dirty,omitempty"`
+	// Provenance (docs/desk-rules.md): who opened the window, the owner's window that was in
+	// front then, what for, how long it is meant to stay, and whether it is the owner's.
+	OpenedBy  string `json:"opened_by,omitempty"`
+	Opener    string `json:"opener,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Retention string `json:"retention,omitempty"`
+	Kept      bool   `json:"kept,omitempty"`
 }
 
 // State is the whole desk.
@@ -54,6 +61,9 @@ type State struct {
 	Setup map[string]any `json:"setup,omitempty"`
 	// Trail is the focus history, newest last, for returning to the previous window.
 	Trail []string `json:"trail,omitempty"`
+	// Owned is the windows the owner has put in front, newest last: the trail without the
+	// agent's comings and goings. A closed window gives the focus back to the newest of these.
+	Owned []string `json:"owned,omitempty"`
 	Seq   int      `json:"seq"`
 	// Rev counts changes, so a page can tell a newer state from an older one.
 	Rev int `json:"rev"`
@@ -84,6 +94,12 @@ type Action struct {
 	Focus string `json:"focus,omitempty"`
 	// Force closes a window that holds unsaved work.
 	Force bool `json:"force,omitempty"`
+	// open: what the window is for, and "transient" or "deliverable".
+	Reason    string `json:"reason,omitempty"`
+	Retention string `json:"retention,omitempty"`
+	// Actor is who asks. It is never read from the request body: Apply takes it from the
+	// context (module.ActorOf).
+	Actor module.Actor `json:"-"`
 }
 
 // ViewInfo is what the desk needs to know of a view.
@@ -99,6 +115,14 @@ type Publisher interface {
 
 // ErrDirty is returned when a window holding unsaved work is closed without Force.
 var ErrDirty = errors.New("the window holds unsaved work")
+
+// ErrNotYours is returned when a delegate (the agent, a reflex, an outside client) tries to
+// close the owner's window.
+var ErrNotYours = errors.New("the window is the owner's: ask them to close it")
+
+// ErrOwnerBusy is returned when a delegate tries to take the focus from a window holding the
+// owner's unsaved work.
+var ErrOwnerBusy = errors.New("the owner is working in the window in front (unsaved changes): open in the background, or ask")
 
 // Desk is the window manager.
 type Desk struct {
@@ -186,6 +210,7 @@ func (d *Desk) copyState() State {
 	s := d.st
 	s.Wins = append([]Win{}, d.st.Wins...)
 	s.Trail = append([]string{}, d.st.Trail...)
+	s.Owned = append([]string{}, d.st.Owned...)
 	s.Tree = d.st.Tree.clone()
 	return s
 }
@@ -225,6 +250,7 @@ func (d *Desk) find(id string) int {
 // Apply makes one change, keeps it and announces it. It returns the window the action
 // concerned, when there is one.
 func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
+	a.Actor = module.ActorOf(ctx)
 	d.mu.Lock()
 	win, changed, quiet, err := d.reduce(a)
 	if err != nil {
@@ -245,7 +271,7 @@ func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
 				d.pub.Publish("desk.focus", map[string]any{"window": snap.Focus})
 			}
 			if a.Type == "open" {
-				d.pub.Publish("desk.opened", map[string]any{"window": win.ID, "view": win.View})
+				d.pub.Publish("desk.opened", map[string]any{"window": win.ID, "view": win.View, "opened_by": win.OpenedBy, "focused": snap.Focus == win.ID})
 			}
 		}
 	}
@@ -294,8 +320,8 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 				if a.Title != "" {
 					st.Wins[i].Title = a.Title
 				}
-				if !a.Background {
-					d.focus(w.ID)
+				if !d.background(a) {
+					d.focus(w.ID, a.Actor)
 				}
 				return st.Wins[i], true, false, nil
 			}
@@ -304,6 +330,10 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		w := Win{
 			ID: fmt.Sprintf("%s-%d", strings.ReplaceAll(a.View, ".", "-"), st.Seq), View: a.View, Module: v.Module,
 			Title: firstNonEmpty(a.Title, v.Title), Key: key, Args: a.Args,
+			OpenedBy: string(a.Actor), Opener: d.ownersWindow(), Reason: a.Reason, Kept: !a.Actor.Delegate(),
+		}
+		if a.Actor.Delegate() && a.Retention == "transient" {
+			w.Retention = "transient"
 		}
 		if w.Args == nil {
 			w.Args = map[string]any{}
@@ -315,17 +345,22 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			st.Tree.float(w.ID, d.name("float"), d.name("stack"), *a.Rect)
 		case st.Layout == "float":
 			st.Tree.float(w.ID, d.name("float"), d.name("stack"), d.spot(a.View))
+		case a.Actor.Delegate() && st.Tree.beside(w.ID, d.name("stack"), w.Opener):
+			// A delegate's window goes beside the owner's window it was opened from.
 		default:
 			st.Tree.add(w.ID, d.name("stack"), st.Ratio)
 		}
-		if !a.Background || st.Focus == "" {
-			d.focus(w.ID)
+		if !d.background(a) || st.Focus == "" {
+			d.focus(w.ID, a.Actor)
 		}
 		return w, true, false, nil
 	case "close":
 		i, err := need()
 		if err != nil {
 			return win, false, false, err
+		}
+		if a.Actor.Delegate() && (st.Wins[i].Kept || !module.Actor(st.Wins[i].OpenedBy).Delegate()) {
+			return st.Wins[i], false, false, ErrNotYours
 		}
 		if st.Wins[i].Dirty && !a.Force {
 			return st.Wins[i], false, false, ErrDirty
@@ -335,22 +370,49 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		st.Tree.remove(a.ID)
 		d.dropFromTrail(a.ID)
 		if st.Focus == a.ID {
-			st.Focus = ""
-			// Return to the previous window, as the trail remembers it.
-			for len(st.Trail) > 0 {
-				last := st.Trail[len(st.Trail)-1]
-				st.Trail = st.Trail[:len(st.Trail)-1]
-				if d.find(last) >= 0 {
-					st.Focus = last
-					break
-				}
-			}
-			if st.Focus == "" && len(st.Wins) > 0 {
-				st.Focus = st.Wins[len(st.Wins)-1].ID
-			}
+			st.Focus = d.returnTo(win)
 			st.Tree.show(st.Focus)
 		}
 		return win, true, false, nil
+	case "keep":
+		// The owner takes a window over: from now on it is theirs.
+		i, err := need()
+		if err != nil {
+			return win, false, false, err
+		}
+		if a.Actor.Delegate() {
+			return st.Wins[i], false, false, errors.New("desk: only the owner keeps a window")
+		}
+		if st.Wins[i].Kept {
+			return st.Wins[i], false, true, nil
+		}
+		st.Wins[i].Kept = true
+		return st.Wins[i], true, true, nil
+	case "release":
+		// A delegate is done with its transient windows: the one named, or all of them. A
+		// window the owner kept, or one holding unsaved work, stays (rule 6).
+		var gone []Win
+		for j := 0; j < len(st.Wins); j++ {
+			w := st.Wins[j]
+			if (a.ID != "" && w.ID != a.ID) || w.Retention != "transient" || w.Kept || w.Dirty || !module.Actor(w.OpenedBy).Delegate() {
+				continue
+			}
+			st.Wins = append(st.Wins[:j], st.Wins[j+1:]...)
+			j--
+			st.Tree.remove(w.ID)
+			d.dropFromTrail(w.ID)
+			gone = append(gone, w)
+		}
+		if len(gone) == 0 {
+			return win, false, true, nil
+		}
+		for _, w := range gone {
+			if st.Focus == w.ID {
+				st.Focus = d.returnTo(w)
+				st.Tree.show(st.Focus)
+			}
+		}
+		return gone[0], true, false, nil
 	case "focus":
 		i, err := need()
 		if err != nil {
@@ -359,7 +421,10 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if s, _, at := st.Tree.locate(a.ID); st.Focus == a.ID && s != nil && s.Selected == at {
 			return st.Wins[i], false, false, nil
 		}
-		d.focus(a.ID)
+		if a.Actor.Delegate() && a.ID != st.Focus && d.ownerBusy() {
+			return st.Wins[i], false, false, ErrOwnerBusy
+		}
+		d.focus(a.ID, a.Actor)
 		return st.Wins[i], true, false, nil
 	case "title":
 		i, err := need()
@@ -397,6 +462,10 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			return st.Wins[i], false, true, nil
 		}
 		st.Wins[i].Dirty = a.Dirty
+		// Unsaved work is the owner's work: the window becomes theirs.
+		if a.Dirty && !a.Actor.Delegate() {
+			st.Wins[i].Kept = true
+		}
 		return st.Wins[i], true, true, nil
 	case "rect":
 		// Float a window at a rectangle, or move the float it is in.
@@ -407,6 +476,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if a.Rect == nil {
 			return win, false, false, errors.New("desk: rect needs a rectangle")
 		}
+		d.claim(i, a.Actor)
 		r := *a.Rect
 		r.W, r.H = max(r.W, minFloatW), max(r.H, minFloatH)
 		if _, f, _ := st.Tree.locate(a.ID); f != nil {
@@ -421,6 +491,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if err != nil {
 			return win, false, false, err
 		}
+		d.claim(i, a.Actor)
 		if st.Tree.floating(a.ID) {
 			st.Tree.remove(a.ID)
 			st.Tree.add(a.ID, d.name("stack"), st.Ratio)
@@ -435,7 +506,8 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if err != nil {
 			return win, false, false, err
 		}
-		d.focus(a.ID)
+		d.claim(i, a.Actor)
+		d.focus(a.ID, a.Actor)
 		if s, f, _ := st.Tree.locate(a.ID); s != nil && f == nil {
 			s.Maximized = !s.Maximized
 		}
@@ -476,8 +548,13 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		next := a.Tree.clone()
 		next.normalize(d.ids(), st.Ratio, d.name)
 		st.Tree = next
+		// ID is the window the owner grabbed, when the page says: moving it makes it theirs.
+		// The windows that only shifted to make room are not taken over.
+		if j := d.find(a.ID); a.ID != "" && j >= 0 {
+			d.claim(j, a.Actor)
+		}
 		if a.Focus != "" && a.Focus != st.Focus && d.find(a.Focus) >= 0 {
-			d.focus(a.Focus)
+			d.focus(a.Focus, a.Actor)
 			return st.Wins[d.find(a.Focus)], true, false, nil
 		}
 		return win, true, true, nil
@@ -487,6 +564,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if err != nil {
 			return win, false, false, err
 		}
+		d.claim(i, a.Actor)
 		if st.Tree.floating(a.ID) {
 			st.Tree.remove(a.ID)
 			st.Tree.add(a.ID, d.name("stack"), st.Ratio)
@@ -494,7 +572,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if tiled := st.Tree.tiled(); len(tiled) > 0 {
 			st.Tree.swap(a.ID, tiled[0].Wins[tiled[0].Selected])
 		}
-		d.focus(a.ID)
+		d.focus(a.ID, a.Actor)
 		return st.Wins[i], true, true, nil
 	case "tab":
 		// Put a window in another's stack, as the tab showing.
@@ -505,6 +583,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if a.Other == a.ID || d.find(a.Other) < 0 {
 			return win, false, false, fmt.Errorf("desk: no other window %q to tab with", a.Other)
 		}
+		d.claim(i, a.Actor)
 		st.Tree.remove(a.ID)
 		to, _, _ := st.Tree.locate(a.Other)
 		to.Wins = append(to.Wins, a.ID)
@@ -518,6 +597,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 		if d.find(a.Other) < 0 {
 			return win, false, false, fmt.Errorf("desk: no window %q", a.Other)
 		}
+		d.claim(i, a.Actor)
 		st.Tree.swap(a.ID, a.Other)
 		st.Tree.show(st.Focus)
 		return st.Wins[i], true, true, nil
@@ -538,7 +618,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			delta = 1
 		}
 		next := order[((at+delta)%len(order)+len(order))%len(order)]
-		d.focus(next)
+		d.focus(next, a.Actor)
 		return st.Wins[d.find(next)], true, false, nil
 	case "back":
 		// Return to the previous window.
@@ -547,7 +627,7 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 			st.Trail = st.Trail[:len(st.Trail)-1]
 			if j := d.find(last); j >= 0 && last != st.Focus {
 				cur := st.Focus
-				d.focus(last)
+				d.focus(last, a.Actor)
 				// focus pushed the window we left; a "back" should not grow the trail.
 				if n := len(st.Trail); n > 0 && st.Trail[n-1] == cur {
 					st.Trail = st.Trail[:n-1]
@@ -574,27 +654,95 @@ func (d *Desk) reduce(a Action) (win Win, changed, quiet bool, err error) {
 }
 
 // focus gives a window the focus, shows it where it sits, and remembers the one it replaced.
-func (d *Desk) focus(id string) {
+// The owner's own moves are also kept in Owned, the trail a closed window returns along.
+func (d *Desk) focus(id string, by module.Actor) {
 	st := &d.st
 	if st.Focus != "" && st.Focus != id {
-		d.dropFromTrail(st.Focus)
-		st.Trail = append(st.Trail, st.Focus)
+		st.Trail = append(without(st.Trail, st.Focus), st.Focus)
 		if len(st.Trail) > 32 {
 			st.Trail = st.Trail[len(st.Trail)-32:]
+		}
+	}
+	if !by.Delegate() {
+		st.Owned = append(without(st.Owned, id), id)
+		if len(st.Owned) > 32 {
+			st.Owned = st.Owned[len(st.Owned)-32:]
 		}
 	}
 	st.Focus = id
 	st.Tree.show(id)
 }
 
+// claim makes a window the owner's when the owner is the one acting on it (rule 4).
+func (d *Desk) claim(i int, by module.Actor) {
+	if !by.Delegate() {
+		d.st.Wins[i].Kept = true
+	}
+}
+
+// background says whether an open should leave the focus where it is: when asked, or when a
+// delegate would otherwise take it from the owner's unsaved work (rule 2).
+func (d *Desk) background(a Action) bool {
+	return a.Background || (a.Actor.Delegate() && d.ownerBusy())
+}
+
+// ownerBusy reports that the window in front holds the owner's unsaved work.
+func (d *Desk) ownerBusy() bool {
+	i := d.find(d.st.Focus)
+	return i >= 0 && d.st.Wins[i].Dirty
+}
+
+// ownersWindow is the owner's window in front, or the newest one they had there: what a new
+// window was opened from, as far as the owner is concerned.
+func (d *Desk) ownersWindow() string {
+	for j := len(d.st.Owned) - 1; j >= 0; j-- {
+		if d.find(d.st.Owned[j]) >= 0 {
+			return d.st.Owned[j]
+		}
+	}
+	return d.st.Focus
+}
+
+// returnTo picks where the focus goes when the window in front closes (rule 3): the newest
+// window the owner had in front, then the closed window's opener, then the trail, then the
+// newest window. The trail alone would follow wherever the agent last looked.
+func (d *Desk) returnTo(closed Win) string {
+	st := &d.st
+	for j := len(st.Owned) - 1; j >= 0; j-- {
+		if id := st.Owned[j]; id != closed.ID && d.find(id) >= 0 {
+			return id
+		}
+	}
+	if closed.Opener != "" && d.find(closed.Opener) >= 0 {
+		return closed.Opener
+	}
+	for len(st.Trail) > 0 {
+		last := st.Trail[len(st.Trail)-1]
+		st.Trail = st.Trail[:len(st.Trail)-1]
+		if d.find(last) >= 0 {
+			return last
+		}
+	}
+	if len(st.Wins) > 0 {
+		return st.Wins[len(st.Wins)-1].ID
+	}
+	return ""
+}
+
 func (d *Desk) dropFromTrail(id string) {
-	out := d.st.Trail[:0]
-	for _, t := range d.st.Trail {
+	d.st.Trail = without(d.st.Trail, id)
+	d.st.Owned = without(d.st.Owned, id)
+}
+
+// without drops id from a list, in place.
+func without(list []string, id string) []string {
+	out := list[:0]
+	for _, t := range list {
 		if t != id {
 			out = append(out, t)
 		}
 	}
-	d.st.Trail = out
+	return out
 }
 
 func firstNonEmpty(a, b string) string {

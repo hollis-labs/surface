@@ -422,7 +422,8 @@ func (s *Service) bind(t kernel.BoundTool) EngineTool {
 	}
 	return EngineTool{Name: t.Name, Description: t.Description, InputSchema: schema, Level: lvl,
 		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
-			v, err := call(ctx, input)
+			// Whatever the engine runs, the agent does: the desk holds it to the agent's etiquette.
+			v, err := call(module.WithActor(ctx, module.ActorAgent), input)
 			if err != nil {
 				return "", err
 			}
@@ -469,7 +470,7 @@ func clip(s string, n int) string {
 type doer struct{ s *Service }
 
 func (d doer) RunCommand(ctx context.Context, id string, args map[string]any) (any, error) {
-	return d.s.k.RunCommand(ctx, id, args)
+	return d.s.k.RunCommand(module.WithActor(ctx, module.ActorReflex), id, args)
 }
 
 func (d doer) CallTool(ctx context.Context, name string, input json.RawMessage) (any, error) {
@@ -480,7 +481,7 @@ func (d doer) CallTool(ctx context.Context, name string, input json.RawMessage) 
 	if lvl := level(t.Level); lvl != string(module.LevelRead) && lvl != string(module.LevelAct) {
 		return nil, fmt.Errorf("a reflex may not call %s: it changes data (%s); remind the agent instead", name, lvl)
 	}
-	return t.Call(ctx, input)
+	return t.Call(module.WithActor(ctx, module.ActorReflex), input)
 }
 
 // engineErr maps the libs agent/host refusals onto the seam's.

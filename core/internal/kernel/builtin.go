@@ -199,8 +199,8 @@ func coreTools(a *App) []module.Tool {
 				return wc, nil
 			}},
 		{Name: "desk_open", Level: module.LevelAct,
-			Description: "Open a view in a window, or bring its window forward. args are what the view opens with (a note path, a URL); key identifies one of several windows of the same view.",
-			Input:       schema(`{"type":"object","required":["view"],"properties":{"view":{"type":"string"},"args":{"type":"object"},"key":{"type":"string"},"title":{"type":"string"},"background":{"type":"boolean","description":"Open without taking the focus."}}}`),
+			Description: "Open a view in a window, or bring its window forward. args are what the view opens with (a note path, a URL); key identifies one of several windows of the same view. Say what it is for in reason. retention is transient for a window that serves the task at hand, deliverable (the default) for a result the owner keeps. A window you open never takes the focus from the owner's unsaved work; when they close it, the focus goes back to the window they had.",
+			Input:       schema(`{"type":"object","required":["view"],"properties":{"view":{"type":"string"},"args":{"type":"object"},"key":{"type":"string"},"title":{"type":"string"},"background":{"type":"boolean","description":"Open without taking the focus."},"reason":{"type":"string","description":"What the window is for, in a few words."},"retention":{"type":"string","enum":["transient","deliverable"]}}}`),
 			Describe: func(raw json.RawMessage) string {
 				in, _ := decode[struct{ View string }](raw)
 				return "Open " + in.View
@@ -212,11 +212,13 @@ func coreTools(a *App) []module.Tool {
 					Key        string         `json:"key"`
 					Title      string         `json:"title"`
 					Background bool           `json:"background"`
+					Reason     string         `json:"reason"`
+					Retention  string         `json:"retention"`
 				}](raw)
 				if err != nil {
 					return nil, err
 				}
-				return a.desk.Open(ctx, in.View, module.OpenOptions{Args: in.Args, Key: in.Key, Title: in.Title, Background: in.Background})
+				return a.desk.Open(ctx, in.View, module.OpenOptions{Args: in.Args, Key: in.Key, Title: in.Title, Background: in.Background, Reason: in.Reason, Retention: in.Retention})
 			}},
 		{Name: "desk_focus", Level: module.LevelAct, Description: "Bring a window to the front.",
 			Input: schema(`{"type":"object","required":["window"],"properties":{"window":{"type":"string"}}}`),
@@ -227,7 +229,7 @@ func coreTools(a *App) []module.Tool {
 				}
 				return "done", a.desk.Focus(ctx, in.Window)
 			}},
-		{Name: "desk_close", Level: module.LevelAct, Description: "Close a window. A window holding unsaved work is not closed.",
+		{Name: "desk_close", Level: module.LevelAct, Description: "Close a window you opened. A window holding unsaved work is not closed, and neither is the owner's (one they opened or took over, kept: true in desk_windows): ask them instead.",
 			Input: schema(`{"type":"object","required":["window"],"properties":{"window":{"type":"string"}}}`),
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[idIn](raw)
@@ -235,6 +237,23 @@ func coreTools(a *App) []module.Tool {
 					return nil, err
 				}
 				return "done", a.desk.Close(ctx, in.Window)
+			}},
+		{Name: "desk_release", Level: module.LevelAct,
+			Description: "Say you are done with the transient windows you opened: the one named, or all of them. Each closes unless the owner kept it or has unsaved work in it, and the focus goes back to the owner's window.",
+			Input: schema(`{"type":"object","properties":{"window":{"type":"string","description":"One window; omit for all your transient windows."}}}`),
+			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
+				in, err := decode[idIn](raw)
+				if err != nil {
+					return nil, err
+				}
+				w, err := a.desk.Apply(ctx, desk.Action{Type: "release", ID: in.Window})
+				if err != nil {
+					return nil, err
+				}
+				if w.ID == "" {
+					return "Nothing to release: no transient window of yours that the owner has not kept.", nil
+				}
+				return "done", nil
 			}},
 		{Name: "desk_window", Level: module.LevelAct,
 			Description: "Change how one window sits: float (toggle in or out of the tiling), maximize (toggle; a tiled window covers the tiling), first (give it the first place in the tiling), tab (put it in the same stack as the window named in with, as a tab behind which that one sits), or rect (float it at a rectangle, or move it if it floats).",

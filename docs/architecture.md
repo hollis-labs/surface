@@ -62,6 +62,10 @@ What a window is *showing* still comes from the page: a view calls `desk.report(
 record in front), the desk keeps it on the window, and the window's module may add to it (`View.Describe`).
 That is `WindowContext`: what the agent and the context slots mean by "where the owner is".
 
+Each change to the desk is made by an actor (the owner, the agent, a reflex, an outside client), and the desk
+keeps who opened each window and holds the agent to the owner's say over the windows that are theirs:
+[desk-rules.md](desk-rules.md).
+
 ## Layouts
 
 A layout is an arrangement the owner can come back to: the windows (view, key, args, placement), the mode

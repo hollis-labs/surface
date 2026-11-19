@@ -2,6 +2,7 @@ package desk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -441,5 +442,263 @@ func TestACapturedLayoutComesBackAsItWas(t *testing.T) {
 	}
 	if w := d.Snapshot().Tree.Root.Children[0].Weight; w != 70 {
 		t.Errorf("the first window's weight is %v, want the layout's ratio of 70", w)
+	}
+}
+
+// as is a context in which actor a is acting.
+func as(a module.Actor) context.Context { return module.WithActor(context.Background(), a) }
+
+func mustOpen(ctx context.Context, t *testing.T, d *Desk, view string, opts module.OpenOptions) module.Window {
+	t.Helper()
+	w, err := d.Open(ctx, view, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func TestAWindowRecordsWhoOpenedItAndFromWhere(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	mine := mustOpen(as(module.ActorOwner), t, d, "notes", module.OpenOptions{})
+	theirs := mustOpen(as(module.ActorAgent), t, d, "browser", module.OpenOptions{Reason: "the docs page", Retention: "transient"})
+	if !mine.Kept || mine.OpenedBy != "owner" {
+		t.Errorf("the owner's window: kept %v, opened by %q", mine.Kept, mine.OpenedBy)
+	}
+	if theirs.Kept || theirs.OpenedBy != "agent" || theirs.Opener != mine.ID || theirs.Reason != "the docs page" || theirs.Retention != "transient" {
+		t.Errorf("the agent's window: %+v", theirs)
+	}
+	// Retention is the delegate's word; the owner's windows have none.
+	own := mustOpen(as(module.ActorOwner), t, d, "scratch", module.OpenOptions{Retention: "transient"})
+	if own.Retention != "" {
+		t.Errorf("an owner's window got retention %q", own.Retention)
+	}
+}
+
+func TestClosingTheAgentsWindowGoesBackToTheOwnersNotWhereTheAgentLooked(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	agent := as(module.ActorAgent)
+	notes := mustOpen(as(module.ActorOwner), t, d, "notes", module.OpenOptions{})
+	scratch := mustOpen(agent, t, d, "scratch", module.OpenOptions{Background: true})
+	page := mustOpen(agent, t, d, "browser", module.OpenOptions{})
+	// The agent looks around: the plain trail now ends on its own windows.
+	if err := d.Focus(agent, scratch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Focus(agent, page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(as(module.ActorOwner), page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Errorf("closing the agent's window put %s in front, want the owner's %s", f, notes.ID)
+	}
+}
+
+func TestClosingGoesBackToWhereTheOwnerLastWas(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner := as(module.ActorOwner)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	page := mustOpen(as(module.ActorAgent), t, d, "browser", module.OpenOptions{})
+	// The owner goes elsewhere, then comes back to the agent's window and closes it.
+	scratch := mustOpen(owner, t, d, "scratch", module.OpenOptions{})
+	if err := d.Focus(owner, page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(owner, page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f := d.Snapshot().Focus; f != scratch.ID {
+		t.Errorf("focus went to %s, want %s, where the owner last was (not the opener %s)", f, scratch.ID, notes.ID)
+	}
+}
+
+func TestADelegateDoesNotTakeTheFocusFromUnsavedWork(t *testing.T) {
+	d, rec := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	if _, err := d.Apply(owner, Action{Type: "dirty", ID: notes.ID, Dirty: true}); err != nil {
+		t.Fatal(err)
+	}
+	page := mustOpen(agent, t, d, "browser", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Errorf("the agent's open took the focus from unsaved work: %s in front", f)
+	}
+	if page.Focused {
+		t.Error("the agent's window says it is focused")
+	}
+	if err := d.Focus(agent, page.ID); !errors.Is(err, ErrOwnerBusy) {
+		t.Errorf("the agent focusing away from unsaved work: %v, want ErrOwnerBusy", err)
+	}
+	// The owner may go where they like.
+	if err := d.Focus(owner, page.ID); err != nil {
+		t.Errorf("the owner focusing: %v", err)
+	}
+	if len(rec.topics) == 0 {
+		t.Error("nothing was announced")
+	}
+}
+
+func TestADelegateClosesOnlyItsOwnWindows(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	legacy := mustOpen(context.Background(), t, d, "scratch", module.OpenOptions{})
+	page := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "a"})
+	taken := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "b"})
+
+	for _, w := range []module.Window{notes, legacy} {
+		if err := d.Close(agent, w.ID); !errors.Is(err, ErrNotYours) {
+			t.Errorf("the agent closing %s (opened by %q): %v, want ErrNotYours", w.ID, w.OpenedBy, err)
+		}
+		if err := d.Close(as(module.ActorOutside), w.ID); !errors.Is(err, ErrNotYours) {
+			t.Errorf("an outside client closing %s: %v, want ErrNotYours", w.ID, err)
+		}
+	}
+	// Unsaved work makes the window the owner's; so does keeping it.
+	if _, err := d.Apply(owner, Action{Type: "dirty", ID: taken.ID, Dirty: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Apply(owner, Action{Type: "dirty", ID: taken.ID, Dirty: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(agent, taken.ID); !errors.Is(err, ErrNotYours) {
+		t.Errorf("the agent closing a window the owner worked in: %v, want ErrNotYours", err)
+	}
+	if _, err := d.Apply(agent, Action{Type: "keep", ID: page.ID}); err == nil {
+		t.Error("the agent kept a window for the owner")
+	}
+	if err := d.Close(agent, page.ID); err != nil {
+		t.Errorf("the agent closing its own window: %v", err)
+	}
+	// The owner closes anything.
+	if err := d.Close(owner, notes.ID); err != nil {
+		t.Errorf("the owner closing their window: %v", err)
+	}
+}
+
+func TestTheActorIsNeverReadFromTheRequest(t *testing.T) {
+	var a Action
+	if err := json.Unmarshal([]byte(`{"type":"close","id":"x","actor":"owner","Actor":"owner"}`), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Actor != "" {
+		t.Errorf("a request body set the actor to %q", a.Actor)
+	}
+}
+
+func TestProvenanceSurvivesARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	d, _ := open(t, path)
+	notes := mustOpen(as(module.ActorOwner), t, d, "notes", module.OpenOptions{})
+	page := mustOpen(as(module.ActorAgent), t, d, "browser", module.OpenOptions{Reason: "docs"})
+	again, _ := open(t, path)
+	var got Win
+	for _, w := range again.Snapshot().Wins {
+		if w.ID == page.ID {
+			got = w
+		}
+	}
+	if got.OpenedBy != "agent" || got.Opener != notes.ID || got.Reason != "docs" || got.Kept {
+		t.Errorf("after a restart: %+v", got)
+	}
+	if err := again.Close(as(module.ActorOwner), page.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f := again.Snapshot().Focus; f != notes.ID {
+		t.Errorf("after a restart, closing went to %s, want %s", f, notes.ID)
+	}
+}
+
+func TestADelegatesWindowOpensBesideTheOwnersWindow(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	// Notes fills the desk, so it is wide: the agent's window goes to its right.
+	page := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "a"})
+	root := d.Snapshot().Tree.Root
+	if len(root.Children) != 2 || root.Children[0].Wins[0] != notes.ID || root.Children[1].Wins[0] != page.ID {
+		t.Fatalf("want notes | page across the desk, got %+v", root.Children)
+	}
+	// Notes is now half the desk, taller than wide: the next one goes below it, not at
+	// the end of the tiling.
+	if err := d.Focus(owner, notes.ID); err != nil {
+		t.Fatal(err)
+	}
+	below := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "b"})
+	col := d.Snapshot().Tree.Root.Children[0]
+	if col.Type != "row" || len(col.Children) != 2 || col.Children[0].Wins[0] != notes.ID || col.Children[1].Wins[0] != below.ID {
+		t.Fatalf("want notes over the new window, got %+v", col)
+	}
+	// Each of those is wide again (half the width, half the height): the third goes to the
+	// right of Notes, inside its column.
+	if err := d.Focus(owner, notes.ID); err != nil {
+		t.Fatal(err)
+	}
+	third := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "c"})
+	pair := d.Snapshot().Tree.Root.Children[0].Children[0]
+	if pair.Type != "row" || len(pair.Children) != 2 || pair.Children[1].Wins[0] != third.ID {
+		t.Errorf("want notes | third inside the column, got %+v", pair)
+	}
+}
+
+func TestMovingAWindowMakesItTheOwners(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	for _, typ := range []string{"float", "maximize", "promote"} {
+		w := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: typ})
+		// The agent moving its own window takes nothing over.
+		if _, err := d.Apply(agent, Action{Type: typ, ID: w.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Close(agent, w.ID); err != nil {
+			t.Fatalf("%s by the agent: %v", typ, err)
+		}
+		w = mustOpen(agent, t, d, "browser", module.OpenOptions{Key: typ})
+		if _, err := d.Apply(owner, Action{Type: typ, ID: w.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Close(agent, w.ID); !errors.Is(err, ErrNotYours) {
+			t.Errorf("after the owner's %s the agent closed it: %v", typ, err)
+		}
+	}
+	// A drag: only the window the owner grabbed is taken over.
+	grabbed := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "grabbed"})
+	shifted := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "shifted"})
+	tree := d.Snapshot().Tree
+	if _, err := d.Apply(owner, Action{Type: "tree", ID: grabbed.ID, Tree: &tree}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(agent, grabbed.ID); !errors.Is(err, ErrNotYours) {
+		t.Errorf("the grabbed window: %v, want ErrNotYours", err)
+	}
+	if err := d.Close(agent, shifted.ID); err != nil {
+		t.Errorf("a window that only shifted: %v", err)
+	}
+}
+
+func TestReleasingClosesOnlyTransientWindowsNobodyKept(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	step := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "step", Retention: "transient"})
+	kept := mustOpen(agent, t, d, "browser", module.OpenOptions{Key: "kept", Retention: "transient", Background: true})
+	result := mustOpen(agent, t, d, "scratch", module.OpenOptions{Background: true})
+	if _, err := d.Apply(owner, Action{Type: "keep", ID: kept.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Apply(agent, Action{Type: "release"}); err != nil {
+		t.Fatal(err)
+	}
+	open := map[string]bool{}
+	for _, w := range d.Snapshot().Wins {
+		open[w.ID] = true
+	}
+	if open[step.ID] || !open[kept.ID] || !open[result.ID] || !open[notes.ID] {
+		t.Errorf("after release: %v (want %s gone, the rest open)", open, step.ID)
+	}
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Errorf("focus went to %s, want the owner's %s", f, notes.ID)
 	}
 }

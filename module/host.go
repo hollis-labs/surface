@@ -53,6 +53,19 @@ type Window struct {
 	// position). Small, and never trusted as more than a report from the page.
 	State   map[string]any `json:"state,omitempty"`
 	Focused bool           `json:"focused,omitempty"`
+	// OpenedBy is who opened the window (an Actor; "" for a window from before actors were
+	// kept, which counts as the owner's). Opener is the owner's window that was in front when
+	// it opened, where the focus goes back to when it closes. Reason is what the opener said
+	// it was for.
+	OpenedBy string `json:"opened_by,omitempty"`
+	Opener   string `json:"opener,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	// Retention is how long a delegate means the window to stay: "transient" (for the task
+	// at hand) or "deliverable" (the result, to keep); "" is deliverable.
+	Retention string `json:"retention,omitempty"`
+	// Kept marks the owner's window: one they opened, or one they took over by working in
+	// it. A delegate may not close it.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // WindowContext is what a window is showing, as far as its module can say. It is small and
@@ -82,6 +95,10 @@ type OpenOptions struct {
 	Title string         `json:"title,omitempty"`
 	// Background opens the window without giving it the focus.
 	Background bool `json:"background,omitempty"`
+	// Reason says what the window is for, for the owner and for whoever reads the desk later.
+	Reason string `json:"reason,omitempty"`
+	// Retention is "transient" or "deliverable" (the default); see Window.
+	Retention string `json:"retention,omitempty"`
 }
 
 // Layout is an arrangement of windows the user can come back to: which views are open,

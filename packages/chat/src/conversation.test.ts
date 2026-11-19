@@ -292,3 +292,49 @@ test("the Nanite runner's events draw a turn: steps, usage and slots change noth
   const call = s.items[`${run}:toolu_2`]
   assert.deepEqual(call?.kind === "tool" && call.input, { a: 1 })
 })
+
+test("a question asked after the lease lapsed is still answered: the page takes the lease first", async () => {
+  const host = fakeHost()
+  host.script(() => [])
+  const store = open(host)
+  await store.start()
+  await store.send("deploy it")
+  await until(() => store.get().run !== null)
+  const run = store.get().run as string
+  // More than 90 s into the run, the lease the send took has lapsed; then the agent asks.
+  host.lapse()
+  host.publish([
+    {
+      verb: "approval.request",
+      run_id: run,
+      approval_id: "ap1",
+      descriptor: { tool: "cerberus_resource_deploy", input: {} },
+    } as StreamEvent,
+  ])
+  await until(() => store.get().approval !== null)
+  await store.answer("always")
+  assert.equal(store.get().error, "", store.get().error)
+  const answered = host.requests.filter((r) => r.path.endsWith("/approvals/ap1"))
+  assert.equal(answered.length, 1)
+  assert.equal(store.get().holder, store.attachment())
+})
+
+test("an answer while another window holds the input says so and keeps the question", async () => {
+  const host = fakeHost()
+  host.script(() => [])
+  const store = open(host)
+  await store.start()
+  await store.send("go")
+  await until(() => store.get().run !== null)
+  const run = store.get().run as string
+  const other = open(host)
+  await other.start()
+  await other.takeover()
+  host.publish([
+    { verb: "approval.request", run_id: run, approval_id: "ap2", descriptor: { tool: "x", input: {} } } as StreamEvent,
+  ])
+  await until(() => store.get().approval !== null)
+  await store.answer("once")
+  assert.match(store.get().error, /Another window has the input/)
+  assert.notEqual(store.get().approval, null, "the question stays to be answered")
+})

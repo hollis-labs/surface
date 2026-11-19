@@ -225,14 +225,41 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     }
   }
 
+  /**
+   * Takes the input lease for this page (or renews it) before an answer or a stop: the host
+   * applies those only for the holder, and the lease taken by a send lapses after 90 s, so a
+   * question asked later in a long run would otherwise be refused. False when another window
+   * holds it.
+   */
+  async function hold(): Promise<boolean> {
+    try {
+      await api.lease(conversation, attachment)
+      return true
+    } catch (err) {
+      if (err instanceof HostError && (err.status === 409 || err.status === 403)) {
+        set({ ...state, error: "Another window has the input. Take over to answer here." })
+        return false
+      }
+      throw err
+    }
+  }
+
   function stop() {
-    if (state.run) void api.cancel(conversation, state.run, attachment).catch(() => undefined)
+    if (!state.run) return
+    const run = state.run
+    void hold()
+      .then(async (ok) => {
+        if (ok) await api.cancel(conversation, run, attachment)
+      })
+      .catch(() => undefined)
   }
 
   /** Answer the question the agent is waiting on. "session" lasts this conversation. */
   async function answer(decision: Decision) {
     const q = state.approval
     if (!q) return
+    const ok = await hold().catch(() => true) // a transport error: let the answer say it
+    if (!ok) return
     set({ ...state, approval: null })
     await api
       .approve(

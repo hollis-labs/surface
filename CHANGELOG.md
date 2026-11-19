@@ -9,6 +9,14 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   board, outline, calendar, canvas and flow, and an item's detail with its review, sign-off, Torque link and
   revisions. Three windows on one component, one for each preset, with commands to open each on a workspace.
   See modules/work/README.md.
+- **Files reaches folders on other hosts over ssh.** The live setting `files.remotes` is a JSON list of
+  `{id, label, host, path}`. The host is an ssh destination from the owner's ssh config. Each remote is a place with
+  the id `remote:<id>`: it is listed by `files_places`, shown in the Files window's place picker, and taken by
+  every files tool's `place` argument. Tool names and schemas are unchanged. The host runs one fixed POSIX script
+  per operation over `ssh -o BatchMode=yes -o ConnectTimeout=8`, and every argument is quoted. The denylist is checked
+  both on the path given and on the real path the host resolves it to. Reads, listings, downloads (16 MB), searches
+  and writes are bounded. The host needs GNU find and coreutils, as any Linux host has. In a remote place a search
+  runs the host's grep, so a regular expression there is POSIX extended.
 - **The classifier can mint its gateway tokens from Warden** (`classifier.warden` in the agent config, instead of
   `key_file`). Parent credentials are rotate-on-use. Mints hold a lock on the credential file, so apps can share
   one, and save the next parent before the token is used. A mint whose outcome is lost is never replayed: an

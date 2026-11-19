@@ -143,12 +143,21 @@ func readText(l loc, offset, limit int, maxBytes int64) (Text, error) {
 	if head, _ := br.Peek(sniffLen); looksBinary(head) {
 		return Text{}, fmt.Errorf("%s cannot be shown as text: %w", l.name(), errBinary)
 	}
+	t, err := scanText(br, 1, offset, limit, maxBytes)
+	t.Size = fi.Size()
+	return t, err
+}
+
+// scanText reads lines from br, whose first line is line firstLine of the file: at most
+// limit lines starting at line offset, and at most maxBytes bytes. Size is left to the
+// caller.
+func scanText(br *bufio.Reader, firstLine, offset, limit int, maxBytes int64) (Text, error) {
 	if offset < 1 {
 		offset = 1
 	}
-	t := Text{Size: fi.Size(), StartLine: offset}
+	t := Text{StartLine: offset}
 	var b bytes.Buffer
-	line := 1
+	line := firstLine
 	for {
 		// A line longer than the buffer comes in pieces (ErrBufferFull); they are taken
 		// one by one, so a huge line costs no more memory than maxBytes.

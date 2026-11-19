@@ -264,9 +264,10 @@ func (m *mod) briefMessage(j Job) (Message, Task) {
 How to work it:
 - Repository %s. Branch from %s as %s and open a pull request from it.
 - Follow docs/gui.md in that repository: a look is changed in registry/ui or registry/theme, never in an app; every component and variant gets its specimen in web/src/gallery.
+- Mark the gallery sections that show this job's work with draft="%s" (<Section title=... draft="%s">), wherever they live in web/src/gallery: the review opens on the gallery's Draft tab, which shows only those sections.
 - Serve the gallery from your checkout with hot reload so it can be reviewed live: make design-preview HOST=<address the reviewer can reach> PORT=<port>. It prints the URL.
 - Review notes come back as a new round on this thread. Merge the pull request yourselves once it is approved here; Surface does not merge.
-%s`, or(repo, "the Surface repository"), or(base, "main"), j.Branch, replyHow(j, base))
+%s`, or(repo, "the Surface repository"), or(base, "main"), j.Branch, j.ID, j.ID, replyHow(j, base))
 	msg := Message{Kind: "request", Subject: "Design job " + j.ID + ": " + j.Title, Body: b.String(), Thread: "design-" + j.ID}
 	task := Task{
 		Project:     m.h.Config().String("torque_project"),

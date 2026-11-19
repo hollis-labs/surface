@@ -4,8 +4,10 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 
 /**
  * An app's frame: a bar across the top, a rail down the left, a side panel on the right,
- * and the content in the middle. Each region is optional and shows when it is given and
- * its `show…` prop is not false. The side panel can be dragged wider or narrower. Layout
+ * and the content in the middle. Each region is optional. The bar shows when it is given;
+ * the rail and the side panel are sidebars and stay hidden until the app opens them
+ * (`showRail`, `showSide`), so a new app starts with the content alone and a button to open
+ * what it needs. The side panel can be dragged wider or narrower. Layout
  * only: what goes in each region is the app's.
  */
 function AppFrame({
@@ -13,8 +15,8 @@ function AppFrame({
   rail,
   side,
   showBar = true,
-  showRail = true,
-  showSide = true,
+  showRail = false,
+  showSide = false,
   sideSize = 420,
   sideMinSize = 280,
   sideMaxSize = "60%",

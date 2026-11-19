@@ -157,14 +157,19 @@ Design work is reviewed while it is being done, in the app of the person who ask
   make design-preview HOST=<an address the reviewer can reach> PORT=<port>
   ```
 
-  It prints the URL (`http://<host>:<port>/gallery.html`; `?theme=light|dark`, `#<section>`). The page is the
+  It prints the URL (`http://<host>:<port>/gallery.html`; `?theme=light|dark`, `&job=<job id>`, `#<section>`). The page is the
   Components gallery on its own, from fixtures, with no app and no server, and it may be framed by another
   origin. `HOST=0.0.0.0` listens on every interface. `make design-gallery OUT=<dir>` builds the same page to
   static files.
-- **The reviewer** sees it in a Design job's window (`modules/design`): the preview of the branch in a frame,
-  a switch to the base's preview, dark and light, a section picker, the branch head and the files it changes,
-  and notes pinned to a section and component (marks on the job). An edit in the designer's checkout shows
-  in the window without a refresh.
+- **The draft on its own.** The designer marks the sections that show the job's work with the job's id:
+  `<Section title="…" draft="d_1234abcd">`. With `job=<id>` in the URL the gallery adds a **Draft** tab, first
+  and open, that shows only those sections, wherever they live. The marks are inert elsewhere, so they can stay
+  after the merge.
+- **The reviewer** sees it in a Design job's window (`modules/design`): the preview fills the window and opens
+  on the Draft tab; the bar has the branch/base switch, dark and light, the section picker, Send notes and
+  Approve. **Details** opens the rest in a dialog: the notes for the next round (pinned to a section and
+  component), the changed files, the rounds, the Designer's replies and the preview URLs. An edit in the
+  designer's checkout shows in the window without a refresh.
 - **The rounds** go through the agent: `design_request` hands the job to the Design team (a Tether message and a
   manual Torque task), `design_feedback` sends the open notes as the next round, `design_approve` asks the
   owner with an approval card and, on approve, tells the team to merge. The team merges; Surface does not.

@@ -33,10 +33,10 @@ describe("remarkCite", () => {
       "<p>Fixed in [[torque.task CW-20261119-0064]], see [[path ~/dev/app/main.go]].</p>",
     )
   })
-  it("leaves fenced code alone and takes inline code that is one reference", () => {
-    const out = render("Run `CW-20261119-0064` and `make CW-20261119-0064`.\n\n```\nCW-20261119-0064\n```")
-    assert.match(out, /Run \[\[torque\.task CW-20261119-0064 mono\]\] and <code>make CW-20261119-0064<\/code>/)
-    assert.match(out, /<pre><code>CW-20261119-0064\n<\/code><\/pre>/)
+  it("leaves code alone, fenced and inline", () => {
+    const out = render("Run `CW-20261119-0064` now.\n\n```\nCW-20261119-0064\n```")
+    assert.match(out, /Run <code>CW-20261119-0064<\/code> now/)
+    assert.doesNotMatch(out, /\[\[/)
   })
   it("makes a tach link a chip with its label", () => {
     assert.equal(

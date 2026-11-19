@@ -7,8 +7,7 @@
  * - Links: `[label](tach:<service>/<id>)` becomes a chip with that label; a bare URL (an autolink,
  *   its text the URL itself) becomes a chip, and so does a link that is a reference of another
  *   kind (a fragment's reader link). A labelled link to a web page stays a link.
- * - Code: fenced code is left alone; inline code that is exactly one reference (`CW-…`,
- *   `~/dev/app/main.go`) becomes a chip set in the monospace face.
+ * - Code, fenced or inline, is left alone: what is in code is shown as written.
  */
 import { detect, detectRefs, parseTachHref, type RefRegistry } from "./core/index.ts"
 
@@ -41,7 +40,7 @@ function textOf(n: MdNode): string {
   return (n.children ?? []).map(textOf).join("")
 }
 
-const SKIP = new Set(["code", "html", "definition", "linkReference", "imageReference", "image", "cite"])
+const SKIP = new Set(["code", "inlineCode", "html", "definition", "linkReference", "imageReference", "image", "cite"])
 
 /** The transform, over a registry of kinds. */
 export function citeTransform(registry: RefRegistry, tree: MdNode): void {
@@ -57,16 +56,6 @@ export function citeTransform(registry: RefRegistry, tree: MdNode): void {
       if (n.type === "text" && n.value) {
         for (const s of detect(n.value, registry, { skipCode: false })) {
           out.push(s.type === "text" ? { type: "text", value: s.text } : citeNode(s.kind, s.canonical, s.raw))
-        }
-        continue
-      }
-      if (n.type === "inlineCode" && n.value) {
-        const v = n.value.trim()
-        const refs = detectRefs(v, registry, { skipCode: false })
-        if (refs.length === 1 && refs[0].start === 0 && refs[0].end === v.length && refs[0].kind !== "url") {
-          out.push(citeNode(refs[0].kind, refs[0].canonical, refs[0].raw, undefined, true))
-        } else {
-          out.push(n)
         }
         continue
       }

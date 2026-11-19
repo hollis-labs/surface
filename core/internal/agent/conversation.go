@@ -90,7 +90,12 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		}
 	}
 	// Its runs announce themselves on the bus, as the host engine's do.
-	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded}
+	if s.runs, err = openRunLog(ctx, s.k.DB()); err != nil {
+		closeRunnerNow(w)
+		_ = st.Close()
+		return nil, err
+	}
+	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model}
 	w.svc, err = chat.NewService(chat.Config{
 		Runner:  run,
 		Log:     st,
@@ -121,6 +126,13 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		return nil, err
 	}
 	return w, nil
+}
+
+// closeRunnerNow closes the wire's runner when its setup fails part way.
+func closeRunnerNow(w *wire) {
+	if w.nanite != nil {
+		_ = w.nanite.Close()
+	}
 }
 
 // scriptDelay paces the scripted runner's events, so a stream can be watched (and a page
@@ -204,7 +216,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	sit := s.k.Situation(ctx)
 	sit.Input = text
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	extra := slots.Extra{Instructions: s.layoutInstructions(ctx, sit)}
+	extra := s.extra(ctx, sit)
 	var routed *router.Route
 	askFirst := ""
 	if !auto {
@@ -239,7 +251,9 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	}
 	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
 	if out.Halt != "" {
-		s.record(ctx, sit, slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra), routed, out.Fired, true)
+		if errandOf(turn.Meta) == "" {
+			s.record(ctx, sit, slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra), routed, out.Fired, true)
+		}
 		// A reflex answered instead of the agent. On this wire that is a turn like any other,
 		// so every attached page sees the message and the answer.
 		s.k.Events().Publish("agent.halted", map[string]any{"text": text, "message": out.Halt, "fired": out.Fired})
@@ -248,8 +262,11 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	extra.Reminders = out.Reminders
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
-	if traced := s.record(ctx, sit, asm, routed, out.Fired, false); traced != 0 && turn.RunID != "" {
-		s.trace.SetRun(ctx, traced, turn.RunID)
+	// A module's errand is not the owner speaking: it stays out of the trace.
+	if errandOf(turn.Meta) == "" {
+		if traced := s.record(ctx, sit, asm, routed, out.Fired, false); traced != 0 && turn.RunID != "" {
+			s.trace.SetRun(ctx, traced, turn.RunID)
+		}
 	}
 	// The runner places the context as text in one slot for this turn: the block alone, with
 	// the config's extra standing instructions (if any) in front. The panel reads the
@@ -267,6 +284,13 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	if debug {
 		s.log.Info("turn context", "run_id", turn.RunID, "bytes", len(block), "block", block)
 	}
+	origin := "owner"
+	if mod := errandOf(turn.Meta); mod != "" {
+		origin = "errand:" + mod
+	} else if auto {
+		origin = "auto"
+	}
+	s.runs.turn(turn.RunID, origin, asm.Slot)
 	s.k.Events().Publish("agent.turn", map[string]any{"run_id": turn.RunID, "slot": asm.Slot, "slots": sel.Names(),
 		"top_of_mind": asm.TopOfMind, "fired": out.Fired, "routed": routed})
 	return chat.Continue()

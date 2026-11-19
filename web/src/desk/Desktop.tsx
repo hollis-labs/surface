@@ -117,6 +117,11 @@ export function Desktop({ modules }: DesktopProps) {
       return chord ? [{ chord, id: c.id }] : []
     })
     const onKey = (e: KeyboardEvent) => {
+      // An element that keeps some chords for itself (a Markdown editor's ⌘K) says so in
+      // data-keys-own; inside it those chords are its, not the page's.
+      const own = (e.target as Element | null)?.closest?.("[data-keys-own]")?.getAttribute("data-keys-own")
+      const kept = own ? own.split(/\s+/).flatMap((k) => parseKeys(k) ?? []) : []
+      if (kept.some((c) => matches(c, e))) return
       for (const { chord, id } of chords) {
         if (matches(chord, e)) {
           e.preventDefault()

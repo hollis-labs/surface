@@ -1,5 +1,6 @@
 /** The chat components with a canned conversation: no agent, no server. */
 import { Bot } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import {
   Conversation,
   ConversationContent,
@@ -7,7 +8,7 @@ import {
   ConversationScrollButton,
   ConversationViewport,
 } from "@/components/ui/conversation"
-import { Markdown } from "@/components/ui/markdown"
+import { Markdown, MarkdownExtensions, type MarkdownExtensionsValue } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ui/tool"
 import { ComposerSpecimens } from "./composer"
@@ -30,6 +31,68 @@ const ANSWER = `Here is the layout I set up:
 
 /** Half an answer, as it is while streaming: the open bold and code are closed for drawing. */
 const STREAMING = "Opening the **Drafts window and `drafts_get"
+
+/** A page of text: what Notes, Drafts and Reader show. */
+const DOCUMENT = `# Release notes
+
+A note with every kind of block. Jump to [the code](#code) or [the table](#a-table).
+
+## Checklist
+
+- [x] Parse GitHub-flavoured Markdown
+- [x] ~~Plain text~~ rich text everywhere
+- [ ] Ship it, see https://example.invalid/ship
+
+## Code
+
+\`\`\`go
+// Hello says hello.
+func Hello(name string) string {
+\treturn fmt.Sprintf("hello, %s", name) // 42
+}
+\`\`\`
+
+\`\`\`ts
+const n: number = await count("notes")
+\`\`\`
+
+\`\`\`bash
+make desk && ./bin/desk serve --port 8199
+\`\`\`
+
+## A table
+
+| Module | Shows | Size |
+|:---|:---:|---:|
+| Notes | the note | document |
+| Chat | an answer | default |
+
+> A quote, with \`inline code\` and **bold**.
+
+---
+
+1. First
+2. Second
+   - nested`
+
+/** References as chips: what a page adds with MarkdownExtensions, without changing Markdown. */
+const CITED =
+  "The plan is in the brief [1](#ref-1) and the review [2](#ref-2); see [the docs](https://example.invalid/)."
+const citeChips: MarkdownExtensionsValue = {
+  components: {
+    a: ({ node: _n, href, children }) =>
+      href?.startsWith("#ref-") ? (
+        <Badge variant="secondary">{children}</Badge>
+      ) : (
+        <a className="text-primary underline" href={href} target="_blank" rel="noreferrer noopener">
+          {children}
+        </a>
+      ),
+  },
+}
+const quoteAsBadge: MarkdownExtensionsValue["components"] = {
+  blockquote: ({ node: _n, children }) => <Badge variant="outline">{children}</Badge>,
+}
 
 export function Chat() {
   return (
@@ -84,6 +147,29 @@ export function Chat() {
             title="Ask the agent"
             description="It sees the window in front and can work the desk for you."
           />
+        </Specimen>
+      </Section>
+      <Section
+        title="Markdown"
+        about="The one renderer for text. GFM (tables, task lists, strikethrough, autolinks), coloured code with copy, heading ids; size document for a page. Extend with remarkPlugins, rehypePlugins and components (props, appended or merged over the defaults) or once for a page with the MarkdownExtensions context."
+      >
+        <Specimen label='Markdown size="document"' wide>
+          <div className="w-full">
+            <Markdown size="document">{DOCUMENT}</Markdown>
+          </div>
+        </Specimen>
+        <Specimen label="Markdown (default size), the same text">
+          <div className="w-full">
+            <Markdown>{DOCUMENT}</Markdown>
+          </div>
+        </Specimen>
+        <Specimen label="MarkdownExtensions: components.a draws #ref- links as chips">
+          <div className="flex w-full flex-col gap-2">
+            <MarkdownExtensions value={citeChips}>
+              <Markdown>{CITED}</Markdown>
+            </MarkdownExtensions>
+            <Markdown components={quoteAsBadge}>{"> components prop: this quote is a Badge"}</Markdown>
+          </div>
         </Specimen>
       </Section>
       <Section

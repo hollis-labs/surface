@@ -9,6 +9,7 @@ import { CardNotice } from "@/components/ui/card-notice"
 import { CardPlan } from "@/components/ui/card-plan"
 import { CardProgress } from "@/components/ui/card-progress"
 import { CardPrompt } from "@/components/ui/card-prompt"
+import { Approval } from "./approval"
 import { Section, Specimen } from "./Specimen"
 
 /** The states a card can be drawn in, and "stale": open, but changed under the person. */
@@ -57,6 +58,7 @@ function AllStates({ name, draw }: { name: string; draw: (p: AnswerableCardProps
 export function Cards() {
   return (
     <>
+      <Approval />
       <AllStates
         name="card-confirm"
         draw={(p) => (

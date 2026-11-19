@@ -14,3 +14,4 @@ modules:
   - viewer
   - diagram
   - inbox
+  - reader

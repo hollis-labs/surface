@@ -2,7 +2,8 @@
  * Reader's window: the entries of the feeds the owner follows, and one entry to read. The list
  * and the reading pane sit side by side when the window is wide; narrower, the entry takes the
  * window and Back returns to the list. Entries are plain text: a feed's markup and scripts are
- * never shown. Keys: j/k next and previous, m read or unread, s star, o the original.
+ * never shown. The text is set by the registry's Markdown, escaped so it reads as written (its
+ * web addresses become links). Keys: j/k next and previous, m read or unread, s star, o the original.
  */
 import { Icon, type ModuleWeb, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -19,8 +20,33 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+
+const URL_RE = /(https?:\/\/[^\s<>]+|www\.[^\s<>]+)/g
+
+/**
+ * An entry's plain text as Markdown that draws it as written: paragraphs kept, a feed's own line
+ * breaks inside a paragraph read as wrapping, and every Markdown mark escaped except inside web
+ * addresses (which become links).
+ */
+function plainToMarkdown(text: string): string {
+  const escapeMarks = (t: string) =>
+    t.replace(/[\\`*_{}[\]<>#+\-!|~&]/g, (c) => `\\${c}`).replace(/^(\d+)([.)])/, "$1\\$2")
+  return text
+    .split(/\n{2,}/)
+    .map((p) =>
+      p
+        .replace(/\s*\n\s*/g, " ")
+        .trim()
+        .split(URL_RE)
+        .map((part, i) => (i % 2 ? part : escapeMarks(part)))
+        .join(""),
+    )
+    .filter(Boolean)
+    .join("\n\n")
+}
 
 interface Feed {
   id: string
@@ -382,17 +408,11 @@ function Reader({ win, desk, api }: ViewProps) {
                   </div>
                 )}
               </header>
-              <div className="flex flex-col gap-3 text-[0.95rem] leading-relaxed">
-                {open.text ? (
-                  open.text.split(/\n{2,}/).map((p, i) => (
-                    // A feed's own line breaks inside a paragraph are wrapping, not meaning.
-                    // biome-ignore lint/suspicious/noArrayIndexKey: paragraphs of one fixed text
-                    <p key={i}>{p.replace(/\s*\n\s*/g, " ")}</p>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground">This entry has no text. The original has it.</p>
-                )}
-              </div>
+              {open.text ? (
+                <Markdown size="document">{plainToMarkdown(open.text)}</Markdown>
+              ) : (
+                <p className="text-muted-foreground">This entry has no text. The original has it.</p>
+              )}
             </div>
           </article>
         )}

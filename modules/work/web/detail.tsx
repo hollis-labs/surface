@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Markdown } from "@/components/ui/markdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import type {
@@ -204,7 +205,11 @@ export function Detail({
           </div>
         )}
 
-        {d.lead && <div className="work-text border-t px-3 py-2.5 text-sm">{d.lead}</div>}
+        {d.lead && (
+          <div className="border-t px-3 py-2.5">
+            <Markdown>{d.lead}</Markdown>
+          </div>
+        )}
         {d.order.map((sec) => (
           <Sec key={sec} title={sec}>
             {edit?.section === sec ? (
@@ -228,16 +233,16 @@ export function Detail({
               />
             ) : (
               <div
-                className={`work-text cursor-text rounded-sm text-sm hover:bg-accent ${d.sections[sec] ? "" : "text-muted-foreground"}`}
+                className={`cursor-text rounded-sm text-sm wrap-anywhere hover:bg-accent ${d.sections[sec] ? "" : "text-muted-foreground"}`}
                 data-section={sec}
-                onClick={() => {
-                  // Selecting a passage (to suggest a change to it) is not a click to edit.
-                  if (window.getSelection()?.toString()) return
+                onClick={(e) => {
+                  // Selecting a passage (to suggest a change to it) is not a click to edit, nor is following a link.
+                  if (window.getSelection()?.toString() || (e.target as Element).closest("a")) return
                   startEdit(sec)
                 }}
                 title="Click to edit (⌘↩ or clicking away keeps it, Esc does not)"
               >
-                {d.sections[sec] || "Click to write"}
+                {d.sections[sec] ? <Markdown>{d.sections[sec]}</Markdown> : "Click to write"}
               </div>
             )}
           </Sec>

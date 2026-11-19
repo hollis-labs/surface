@@ -133,3 +133,26 @@ func TestOutlineSkipsCodeFences(t *testing.T) {
 		t.Errorf("outline: %q", got)
 	}
 }
+
+func TestFileResolvesImagesInsideTheFolderOnly(t *testing.T) {
+	s, dir := testStore(t)
+	if err := os.MkdirAll(filepath.Join(dir, "img"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rel, full, err := s.file("img/a.png")
+	if err != nil || rel != "img/a.png" || full != filepath.Join(dir, "img", "a.png") {
+		t.Errorf("file(img/a.png) = %q, %q, %v", rel, full, err)
+	}
+	for _, bad := range []string{"../x.png", "img/../../x.png", ".trash/a.png", ""} {
+		if _, _, err := s.file(bad); err == nil {
+			t.Errorf("file(%q) was accepted", bad)
+		}
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "out")); err != nil {
+		t.Skip("no symlinks here")
+	}
+	if _, _, err := s.file("out/a.png"); err == nil {
+		t.Error("a file through a link out of the folder was accepted")
+	}
+}

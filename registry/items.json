@@ -12,9 +12,11 @@
   },
   "markdown": {
     "title": "Markdown",
-    "description": "Markdown as a model writes it, set in the theme; drawn block by block so a streaming message re-parses only its last block.",
+    "description": "The one renderer for text: GitHub-flavoured Markdown set in the theme, with coloured code (copy button), heading ids, and plugins and components added by props or the MarkdownExtensions context; drawn block by block so a streaming message re-parses only its last block.",
     "pins": {
+      "highlight.js": "11.11.1",
       "react-markdown": "10.1.0",
+      "rehype-highlight": "7.0.2",
       "remark-gfm": "4.0.1"
     }
   },

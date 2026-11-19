@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Markdown } from "@/components/ui/markdown"
 import { Textarea } from "@/components/ui/textarea"
 
 interface ScratchItem {
@@ -116,11 +117,12 @@ function Scratch({ win, desk, api }: ViewProps) {
             <ItemContent>
               <ItemTitle>
                 <Icon name={KIND_ICON[it.kind]} size={13} className="shrink-0 text-muted-foreground" />
-                <span
-                  className={`whitespace-pre-wrap break-words ${it.done ? "text-muted-foreground line-through" : ""}`}
+                {/* What was jotted is Markdown: a link, `code`, a short list. */}
+                <Markdown
+                  className={`min-w-0 flex-1 font-normal ${it.done ? "text-muted-foreground line-through" : ""}`}
                 >
                   {it.text}
-                </span>
+                </Markdown>
               </ItemTitle>
             </ItemContent>
             <ItemActions>

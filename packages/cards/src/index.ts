@@ -1,3 +1,5 @@
+export type { CardDraft, DraftStorage, DraftStore } from "./drafts.ts"
+export { createDraftStore } from "./drafts.ts"
 export type {
   CardEngine,
   CardInput,
@@ -17,5 +19,12 @@ export type { AnswerableInput, AnswerableState } from "./react.ts"
 export { useAnswerable } from "./react.ts"
 export type { CardMiss, CardRegistry, CardResolution } from "./registry.ts"
 export { createCardRegistry } from "./registry.ts"
-export type { CardAnswer, CardDecision, CardOutcome, CardResponder, PriorResponseState } from "./response.ts"
-export { acceptsInput, classifyPriorResponse } from "./response.ts"
+export type {
+  CardAnswer,
+  CardDecision,
+  CardOutcome,
+  CardResponder,
+  LateAnswerCard,
+  PriorResponseState,
+} from "./response.ts"
+export { ANSWERABLE_KINDS, acceptsInput, acceptsLateAnswer, classifyPriorResponse } from "./response.ts"

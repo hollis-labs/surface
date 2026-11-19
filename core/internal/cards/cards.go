@@ -26,6 +26,18 @@ type Publisher interface {
 // ErrClosed is returned when a card that is no longer open is answered.
 var ErrClosed = errors.New("the card is no longer open")
 
+// Abandoned is the status of an agent's question whose run ended while it waited for the
+// answer (the run was stopped, the app shut down). It is not "canceled", which is the user
+// declining. An abandoned card, like an agent's question that expired, takes one late answer.
+const Abandoned = "abandoned"
+
+// LateAnswerable says whether a closed card still takes the user's answer: an agent's
+// question (card_ask) the agent stopped waiting for, because its run ended (abandoned) or
+// its wait ran out (expired), and that has had no late answer yet.
+func LateAnswerable(c module.Card) bool {
+	return c.Source == "agent" && Answerable(c.Kind) && !c.Late && (c.Status == Abandoned || c.Status == "expired")
+}
+
 // ErrNotFound is returned for an id no card has.
 var ErrNotFound = errors.New("no such card")
 
@@ -52,19 +64,19 @@ func newID() string {
 	return "cd_" + hex.EncodeToString(b)
 }
 
-const cols = `id, kind, version, title, source, subject, risk, blocking, payload, status, outcome, revision, created_at, updated_at, responded_at, expires_at`
+const cols = `id, kind, version, title, source, subject, risk, blocking, payload, status, outcome, revision, created_at, updated_at, responded_at, expires_at, late, delivered_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scan(row scanner) (module.Card, error) {
 	var c module.Card
 	var payload, outcome string
-	var blocking int
+	var blocking, late int
 	if err := row.Scan(&c.ID, &c.Kind, &c.Version, &c.Title, &c.Source, &c.Subject, &c.Risk, &blocking, &payload,
-		&c.Status, &outcome, &c.Revision, &c.Created, &c.Updated, &c.Responded, &c.ExpiresAt); err != nil {
+		&c.Status, &outcome, &c.Revision, &c.Created, &c.Updated, &c.Responded, &c.ExpiresAt, &late, &c.Delivered); err != nil {
 		return c, err
 	}
-	c.Blocking = blocking != 0
+	c.Blocking, c.Late = blocking != 0, late != 0
 	c.Payload = json.RawMessage(payload)
 	if outcome != "" && outcome != "null" {
 		var o struct {
@@ -143,8 +155,9 @@ func (s *Store) Show(ctx context.Context, c module.Card) (module.Card, error) {
 			return c, err
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO cards (`+cols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.Kind, c.Version, c.Title, c.Source, c.Subject, c.Risk, c.Blocking, string(c.Payload), "", "null", 1, t, t, "", c.ExpiresAt); err != nil {
+	c.Late, c.Delivered = false, ""
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO cards (`+cols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.Kind, c.Version, c.Title, c.Source, c.Subject, c.Risk, c.Blocking, string(c.Payload), "", "null", 1, t, t, "", c.ExpiresAt, 0, ""); err != nil {
 		return c, err
 	}
 	for _, old := range replaced {
@@ -229,7 +242,7 @@ func (s *Store) close(ctx context.Context, id, status string, o *module.CardOutc
 // End closes a card from the sender's side.
 func (s *Store) End(ctx context.Context, id, status string) (module.Card, error) {
 	switch status {
-	case "superseded", "expired", "canceled", "failed":
+	case "superseded", "expired", "canceled", "failed", Abandoned:
 	default:
 		return module.Card{}, fmt.Errorf("cards: a card cannot end as %q", status)
 	}
@@ -244,21 +257,150 @@ func (s *Store) End(ctx context.Context, id, status string) (module.Card, error)
 	return c, nil
 }
 
-// Respond records the user's answer.
+// Respond records the user's answer. An answer to a card that is no longer open is refused,
+// whatever the page still showed, except a late answer to an agent's question the agent
+// stopped waiting for (LateAnswerable): that is taken once and marked late. A submitted late
+// answer is handed to the agent as a message (LateAnswers); a canceled one only dismisses
+// the card.
 func (s *Store) Respond(ctx context.Context, id string, o module.CardOutcome) (module.Card, error) {
 	if o.Status != "submitted" && o.Status != "canceled" {
 		return module.Card{}, fmt.Errorf("cards: an answer is submitted or canceled, not %q", o.Status)
 	}
-	// An answer to a card that has lapsed is refused, whatever the page still showed.
+	// Lapse it first if its time has passed, so the answer meets the card as it stands.
 	if _, _, err := s.Get(ctx, id); err != nil {
 		return module.Card{}, err
 	}
 	c, err := s.close(ctx, id, o.Status, &o, "")
+	if errors.Is(err, ErrClosed) && LateAnswerable(c) {
+		c, err = s.closeLate(ctx, id, o)
+	}
 	if err != nil {
 		return c, err
 	}
 	s.changed(c)
 	return c, nil
+}
+
+// closeLate records a late answer. The update matches only a card still waiting for one, so
+// of two late answers only the first is taken.
+func (s *Store) closeLate(ctx context.Context, id string, o module.CardOutcome) (module.Card, error) {
+	raw, err := json.Marshal(o)
+	if err != nil {
+		return module.Card{}, err
+	}
+	t := stamp(s.now())
+	res, err := s.db.ExecContext(ctx, `UPDATE cards SET status=?, outcome=?, late=1, revision=revision+1, updated_at=?, responded_at=?
+		WHERE id=? AND late=0 AND source='agent' AND status IN (?, 'expired')`, o.Status, string(raw), t, t, id, Abandoned)
+	if err != nil {
+		return module.Card{}, err
+	}
+	c, ok, err := s.get(ctx, id)
+	if err != nil {
+		return c, err
+	}
+	if !ok {
+		return c, ErrNotFound
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return c, ErrClosed
+	}
+	return c, nil
+}
+
+// LateAnswers returns the late answers submitted but not yet handed to the agent, oldest
+// first. It is the delivery queue: kept in the database, so a restart does not lose it.
+func (s *Store) LateAnswers(ctx context.Context) ([]module.Card, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE late=1 AND status='submitted' AND delivered_at='' ORDER BY responded_at, id`)
+	if err != nil {
+		return nil, err
+	}
+	out := []module.Card{}
+	for rows.Next() {
+		c, err := scan(rows)
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Close()
+}
+
+// MarkDelivered records that a late answer reached the agent. It reports false when it had
+// been marked already.
+func (s *Store) MarkDelivered(ctx context.Context, id string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE cards SET delivered_at=?, revision=revision+1 WHERE id=? AND late=1 AND delivered_at=''`,
+		stamp(s.now()), id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return false, nil
+	}
+	if c, ok, err := s.get(ctx, id); err == nil && ok {
+		s.changed(c)
+	}
+	return true, nil
+}
+
+// LateWindow is how long after the agent stopped waiting a card is still offered for a late
+// answer (LateOpen). Respond takes one later too; the window only keeps old ones off the page.
+const LateWindow = 7 * 24 * time.Hour
+
+// LateOpen returns the cards that take a late answer (LateAnswerable) and stopped waiting
+// within LateWindow, oldest first.
+func (s *Store) LateOpen(ctx context.Context) ([]module.Card, error) {
+	since := stamp(s.now().Add(-LateWindow))
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE source='agent' AND late=0 AND status IN (?, 'expired') AND responded_at>=?
+		ORDER BY created_at, id`, Abandoned, since)
+	if err != nil {
+		return nil, err
+	}
+	out := []module.Card{}
+	for rows.Next() {
+		c, err := scan(rows)
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if LateAnswerable(c) {
+			out = append(out, c)
+		}
+	}
+	return out, rows.Close()
+}
+
+// AbandonOrphans ends the agent's questions left open by an app that stopped without
+// closing them (it was killed): after a start no run can be waiting for them. They become
+// abandoned, so the user can still answer them late.
+func (s *Store) AbandonOrphans(ctx context.Context) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind FROM cards WHERE status='' AND source='agent'`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id, kind string
+		if err := rows.Scan(&id, &kind); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		if Answerable(kind) {
+			ids = append(ids, id)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, id := range ids {
+		if c, err := s.close(ctx, id, Abandoned, nil, ""); err == nil {
+			s.changed(c)
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (s *Store) get(ctx context.Context, id string) (module.Card, bool, error) {

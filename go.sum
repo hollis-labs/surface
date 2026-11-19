@@ -93,6 +93,8 @@ github.com/hollis-labs/libs/ui/ui-go v0.4.0 h1:3TydDJElqD1ilgfY1FY+ei+joAuRcwMyu
 github.com/hollis-labs/libs/ui/ui-go v0.4.0/go.mod h1:MBO41Mrbgo6YfRbm8MI50qQXjDfwhkvA/WxRdtOiL38=
 github.com/hollis-labs/nanite v0.0.0-20261118194837-7a61c736d81e h1:4IuZvKkRCUThRW6XB/jeyKgSshCE9NnPyLM0ROUTOcc=
 github.com/hollis-labs/nanite v0.0.0-20261118194837-7a61c736d81e/go.mod h1:XwkHnbrFTqvsrknQr3KgzRxwo5oKEM/JK0SA6W36Bqw=
+github.com/hollis-labs/nanite v0.5.0 h1:J6Wo3RT2l6bBuXpyCj6y8Aahx3O0W6rMKxnvvQGTIJw=
+github.com/hollis-labs/nanite v0.5.0/go.mod h1:XwkHnbrFTqvsrknQr3KgzRxwo5oKEM/JK0SA6W36Bqw=
 github.com/hollis-labs/substrate v0.1.1-0.20261118181415-ea679652a9db h1:BBmSvjOxt6D1oowbH0PGya9xc63mayi7MDhABxSIDUQ=
 github.com/hollis-labs/substrate v0.1.1-0.20261118181415-ea679652a9db/go.mod h1:0RnOCC5MnvAX30SfyFSrC3dsTa/KEPL3+kxfUFY/+DI=
 github.com/hollis-labs/substrate v0.1.1-0.20261119081948-cc561ab2a0bc h1:jqzhywiNk6qWJsx0KZiZTZYq+0mEGQRafGOs6vKuE0w=

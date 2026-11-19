@@ -16,3 +16,4 @@ modules:
   - inbox
   - reader
   - assist
+  - projects

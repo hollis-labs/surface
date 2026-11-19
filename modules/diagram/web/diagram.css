@@ -1,0 +1,24 @@
+/* The Diagram canvas (window.tsx). The drawing's own colours are written in by render.tsx. */
+.dia-canvas {
+  display: block;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.dia-canvas text {
+  pointer-events: none;
+  user-select: none;
+}
+.dia-node {
+  cursor: move;
+}
+.dia-canvas[data-comparing="true"] .dia-node,
+.dia-edge {
+  cursor: pointer;
+}
+.dia-lane > rect {
+  cursor: move;
+}
+.dia-handle {
+  cursor: crosshair;
+}

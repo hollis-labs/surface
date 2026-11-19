@@ -145,7 +145,11 @@ func allowedHost(hostport string, extra map[string]bool) bool {
 func allowedHostsFromEnv() map[string]bool {
 	out := map[string]bool{}
 	for _, h := range strings.Split(os.Getenv("SURFACE_ALLOWED_HOSTS"), ",") {
-		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+		h = strings.TrimSpace(h)
+		if name, _, err := net.SplitHostPort(h); err == nil {
+			h = name // a port given with the name is not part of what is compared
+		}
+		if h = strings.ToLower(strings.TrimSuffix(strings.Trim(h, "[]"), ".")); h != "" {
 			out[h] = true
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -188,5 +189,27 @@ func TestAHeldChangeIsListedUntilItApplies(t *testing.T) {
 	s.on(ctx, ev("desk.changed", map[string]any{"wins": []map[string]any{{"id": "b1"}}}))
 	if len(s.List()) != 0 {
 		t.Errorf("after it applied: %v", states(s))
+	}
+}
+
+// Closing while the bus is still delivering must not panic: a delivery already under way when
+// the subscription goes may still arrive (#40's CI caught a send on a closed channel).
+func TestClosingWhileEventsArriveIsSafe(t *testing.T) {
+	for range 50 {
+		wins := []module.Window{}
+		s, bus := open(t, filepath.Join(t.TempDir(), "a.db"), &wins)
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for range 200 {
+					bus.Publish("agent.run.started", map[string]any{"run_id": "r"})
+				}
+			}()
+		}
+		_ = s.Close(context.Background())
+		_ = s.Close(context.Background()) // a second Close is harmless
+		wg.Wait()
 	}
 }

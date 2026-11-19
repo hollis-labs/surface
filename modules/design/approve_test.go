@@ -110,15 +110,17 @@ func approve2(h *moduletest.Host, card module.Card) module.Card {
 // A reply naming another head while the card is open: the card is superseded, nothing is
 // approved on it, and the owner is asked again on the new head.
 func TestHeadChangesWhileTheCardIsOpen(t *testing.T) {
-	h, m, box := startWith(t, time.Hour)
+	h, m, box, gh := startOnGitHub(t)
 	ctx := context.Background()
 	j := newJob(t, h, "Composer")
-	box.put(designerReply("r1", j.ID, "preview: http://laptop.test:1/gallery.html\nhead: "+headA+"\npr: "+prA, 1))
+	gh.set(headA, pull(9, headA, false))
+	box.put(designerReply("r1", j.ID, "preview: http://laptop.test:1/gallery.html\nhead: "+headA+"\npr: https://github.com/o/r/pull/9", 1))
 	_, _ = m.refresh(ctx, j.ID)
 	old, err := m.askApproval(ctx, j.ID, time.Minute)
 	if err != nil || old == nil {
 		t.Fatal(old, err)
 	}
+	gh.set(headB, pull(9, headB, false)) // pushed, and GitHub shows it
 	box.put(designerReply("r2", j.ID, "One more fix.\nhead: "+headB, 2))
 	_, _ = m.refresh(ctx, j.ID)
 
@@ -472,9 +474,11 @@ func TestTwoPullRequestsShareAHead(t *testing.T) {
 // No pull request recorded: nothing to approve. The pull request changing while the card is
 // open supersedes it, as a head change does.
 func TestApprovalNeedsItsPullRequest(t *testing.T) {
-	h, m, box := startWith(t, time.Hour)
+	h, m, box, gh := startOnGitHub(t)
 	ctx := context.Background()
+	prA, prB := "https://github.com/o/r/pull/9", "https://github.com/o/r/pull/11"
 	j := newJob(t, h, "Composer")
+	gh.set(headA, pull(9, headA, false), pull(11, headA, false))
 	box.put(designerReply("p1", j.ID, "preview: http://laptop.test:1/\nhead: "+headA, 1))
 	_, _ = m.refresh(ctx, j.ID)
 	if _, err := h.Tool("design_approve", `{"id":"`+j.ID+`"}`); err == nil || !strings.Contains(err.Error(), "pr:") {

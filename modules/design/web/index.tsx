@@ -72,6 +72,8 @@ interface Job {
   head_differs?: boolean
   update_received?: boolean
   merge_warning?: string
+  approval_owed?: boolean
+  closed_reason?: string
   rounds: Round[]
   replies: Reply[]
   created: string
@@ -442,7 +444,13 @@ function JobPane({ win, desk, api }: ViewProps) {
                   ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
                   : "Nothing to approve until the Designer names a head and a pull request"}
               {job.update_received ? " · an update came back without a preview" : ""}
+              {job.approval_owed
+                ? " · waiting for GitHub to show this commit; you are asked to approve on your own"
+                : ""}
             </p>
+            {job.status === "closed" && job.closed_reason && (
+              <p className="text-xs text-muted-foreground">Closed: {job.closed_reason}</p>
+            )}
             {job.merge_warning && <p className="text-xs font-medium text-destructive">{job.merge_warning}</p>}
             {outcome && <p className="text-xs text-muted-foreground">{outcome}</p>}
           </div>

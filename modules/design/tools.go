@@ -210,6 +210,20 @@ func (m *mod) set(ctx context.Context, id string, c Change) (Job, error) {
 	if c.HeadSHA != nil && *c.HeadSHA != "" && !shaPattern.MatchString(strings.ToLower(*c.HeadSHA)) {
 		return Job{}, fmt.Errorf("head_sha %q is not a full commit SHA", *c.HeadSHA)
 	}
+	if c.Status != nil {
+		cur, err := m.st.get(ctx, id)
+		if err != nil {
+			return Job{}, err
+		}
+		reason := ""
+		switch {
+		case *c.Status == StatusClosed && cur.Status == StatusClosed:
+			reason = cur.ClosedReason // closing again keeps why it closed
+		case *c.Status == StatusClosed:
+			reason = "closed by hand in Surface"
+		}
+		c.ClosedReason = &reason // reopened: no reason
+	}
 	j, err := m.st.update(ctx, id, c)
 	if err != nil {
 		return Job{}, err

@@ -94,7 +94,7 @@ func (b *mailbox) isRead(id string) bool {
 func startWith(t *testing.T, every time.Duration) (*moduletest.Host, *mod, *mailbox) {
 	t.Helper()
 	box := newMailbox()
-	m := &mod{gh: &github{client: http.DefaultClient}, dispatch: box, every: every}
+	m := &mod{gh: &github{client: http.DefaultClient}, dispatch: box, every: every, lag: []time.Duration{}, owedBase: time.Nanosecond}
 	h := moduletest.Start(t, m)
 	set(t, h, map[string]string{"sender_urn": sender, "designer_urn": designer, "torque_project": "PRJ-1", "repo": "hollis-labs/surface"})
 	return h, m, box

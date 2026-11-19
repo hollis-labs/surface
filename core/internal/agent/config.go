@@ -90,6 +90,9 @@ type ClassifierConfig struct {
 	// KeyFile holds the gateway's bearer key ("~/" is the home directory). The key needs
 	// the decide scope for DecideModel and the embed scope for EmbedModel.
 	KeyFile string `json:"key_file,omitempty"`
+	// Warden, instead of KeyFile: mint short-lived gateway tokens from a Warden parent
+	// credential (rotate-on-use). Set exactly one of KeyFile and Warden.
+	Warden *WardenConfig `json:"warden,omitempty"`
 	// DecideModel turns on the JEV judge: the gateway's decision route ("jev"). Pinned
 	// models keep results comparable.
 	DecideModel string `json:"decide_model,omitempty"`
@@ -99,6 +102,20 @@ type ClassifierConfig struct {
 	EmbedModel string `json:"embed_model,omitempty"`
 	// Purpose is what a decision gateway accounts the spend to; default surface_classify.
 	Purpose string `json:"purpose,omitempty"`
+}
+
+// WardenConfig names a Warden and the parent credential the classifier mints gateway
+// tokens from.
+type WardenConfig struct {
+	// URL is Warden's base URL.
+	URL string `json:"url"`
+	// CredentialFile holds the parent credential ("~/" is the home directory). It is
+	// rewritten on every mint; keep it 0600. Apps may share one file: mints take a lock.
+	CredentialFile string `json:"credential_file"`
+	// Audience is the tokens' audience ("llm-gateway").
+	Audience string `json:"audience"`
+	// Scopes narrows the tokens; empty asks for what the grant allows.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // Classifier gateway dialects.
@@ -166,6 +183,9 @@ func LoadConfig(app string) (FileConfig, error) {
 	}
 	c.KeyFile = expandHome(c.KeyFile)
 	c.Classifier.KeyFile = expandHome(c.Classifier.KeyFile)
+	if c.Classifier.Warden != nil {
+		c.Classifier.Warden.CredentialFile = expandHome(c.Classifier.Warden.CredentialFile)
+	}
 	return c, nil
 }
 

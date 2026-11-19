@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"sort"
+	"time"
 
 	"github.com/hollis-labs/surface/module"
 	"github.com/hollis-labs/surface/module/tetherlink"
@@ -21,7 +22,14 @@ type mod struct {
 	st *Store
 	// caller replaces the configured link (tests).
 	caller tetherlink.Caller
+
+	stop context.CancelFunc
+	done chan struct{}
 }
+
+// readBackEvery is how often an open workspace is read again from Caster, so what others
+// write there (the team's answers to a round, an agent's new revision) reaches the windows.
+const readBackEvery = 20 * time.Second
 
 const viewID = "work"
 
@@ -83,7 +91,63 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	m.h = h
 	m.st = NewStore(h.Store(), GatewayCaster{Link: link{m}})
 	m.routes(h)
+	run, cancel := context.WithCancel(context.Background())
+	m.stop, m.done = cancel, make(chan struct{})
+	go m.watch(run)
 	return nil
+}
+
+func (m *mod) Stop(context.Context) error {
+	if m.stop != nil {
+		m.stop()
+		<-m.done
+	}
+	return nil
+}
+
+// watch reads the open workspaces back from Caster on readBackEvery.
+func (m *mod) watch(ctx context.Context) {
+	defer close(m.done)
+	t := time.NewTicker(readBackEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		c, cancel := context.WithTimeout(ctx, readBackEvery)
+		m.readBack(c)
+		cancel()
+	}
+}
+
+// readBack reads again each workspace a Work window has open, and says work.changed for each
+// whose items moved in Caster since the copy last read it. Writes made here already said so;
+// this is for what others write, such as the team's answers to a round. Basalisk's page did
+// this by polling; here the server does it once for every window.
+func (m *mod) readBack(ctx context.Context) {
+	if m.st == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, w := range m.h.Desk().Windows(ctx) {
+		if w.Module != "work" {
+			continue
+		}
+		ws, _ := w.Args["workspace"].(string)
+		if ws == "" || seen[ws] {
+			continue
+		}
+		seen[ws] = true
+		ns := m.st.NSOf(ctx, ws)
+		if ns == "" {
+			continue
+		}
+		if n, err := m.st.Refresh(ctx, ns, false); err == nil && n > 0 {
+			m.changed(ws, "", "read-back")
+		}
+	}
 }
 
 var errNotConfigured = ErrNoCaster

@@ -116,8 +116,20 @@ func newGate(base, keyFile string) (*gate, error) {
 	if err != nil || u.Host == "" || !secure(u) {
 		return nil, errors.New("approvals: the Gatecrasher URL must be https, or http on loopback")
 	}
-	return &gate{base: base, keyFile: expand(keyFile), client: &http.Client{Timeout: 20 * time.Second}}, nil
+	return &gate{base: base, keyFile: expand(keyFile), client: &http.Client{Timeout: 20 * time.Second, CheckRedirect: noRedirect}}, nil
 }
+
+// noRedirect: a redirect is refused, so the owner's key goes only to the configured address.
+func noRedirect(*http.Request, []*http.Request) error {
+	return errors.New("approvals: Gatecrasher answered with a redirect")
+}
+
+// permanent is an approval that cannot be shown as it is (an unknown card, a missing one, an
+// intake that is not https): retrying will not help, so it is reported and passed over.
+type permanent struct{ err error }
+
+func (p permanent) Error() string { return p.err.Error() }
+func (p permanent) Unwrap() error { return p.err }
 
 // secure: https, or http on loopback.
 func secure(u *url.URL) bool {
@@ -179,14 +191,17 @@ func (g *gate) card(ctx context.Context, id string) (gateCard, error) {
 		return c, fmt.Errorf("approvals: Gatecrasher cannot be reached: %w", redact(err))
 	}
 	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode != http.StatusOK {
+	switch {
+	case res.StatusCode == http.StatusNotFound:
+		return c, permanent{fmt.Errorf("approvals: Gatecrasher has no card for %s", id)}
+	case res.StatusCode != http.StatusOK:
 		return c, fmt.Errorf("approvals: the card of %s: %s", id, res.Status)
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&c); err != nil {
-		return c, errors.New("approvals: the card could not be read")
+		return c, permanent{errors.New("approvals: the card could not be read")}
 	}
 	if c.Version != cardVersion {
-		return c, fmt.Errorf("approvals: card version %q is not %q", c.Version, cardVersion)
+		return c, permanent{fmt.Errorf("approvals: card version %q is not %q", c.Version, cardVersion)}
 	}
 	return c, nil
 }

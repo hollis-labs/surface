@@ -1,0 +1,4 @@
+# Reviewed allowances for scripts/scan-public (RULE-ID PATH-GLOB REASON). Allowed findings are
+# still printed, in their own section; they only stop failing the check.
+internal-ip core/internal/api/guard_test.go fake test fixture: a CGNAT address in commit 000e687 (PR 26); the test now uses 192.0.2.10 (TEST-NET-1)
+tailscale-host core/internal/api/guard_test.go fake test fixture: an invented *.ts.net name in commit 000e687 (PR 26); the test now uses mymac.example.test

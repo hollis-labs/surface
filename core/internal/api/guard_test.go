@@ -7,20 +7,20 @@ import (
 )
 
 func TestAllowedHost(t *testing.T) {
-	extra := map[string]bool{"mymac.tailnet.ts.net": true}
+	extra := map[string]bool{"mymac.example.test": true}
 	for host, want := range map[string]bool{
-		"":                          true,
-		"127.0.0.1:8190":            true,
-		"[::1]:8190":                true,
-		"localhost:8190":            true,
-		"LOCALHOST.:8190":           true,
-		"desk.localhost:8190":       true,
-		"100.64.1.2:8190":           true, // an IP cannot be rebound
-		"mymac.tailnet.ts.net:8190": true, // listed by the operator
-		"evil.example:8190":         false,
-		"evil.example":              false,
-		"localhost.evil.example":    false,
-		"127.0.0.1.evil.example":    false,
+		"":                        true,
+		"127.0.0.1:8190":          true,
+		"[::1]:8190":              true,
+		"localhost:8190":          true,
+		"LOCALHOST.:8190":         true,
+		"desk.localhost:8190":     true,
+		"192.0.2.10:8190":         true, // an IP cannot be rebound
+		"mymac.example.test:8190": true, // listed by the operator
+		"evil.example:8190":       false,
+		"evil.example":            false,
+		"localhost.evil.example":  false,
+		"127.0.0.1.evil.example":  false,
 	} {
 		if got := allowedHost(host, extra); got != want {
 			t.Errorf("allowedHost(%q) = %v, want %v", host, got, want)
@@ -48,5 +48,14 @@ func TestGuardRefusesARebindingPage(t *testing.T) {
 		if rec.Code != c.want {
 			t.Errorf("host %s origin %s: %d, want %d", c.host, c.origin, rec.Code, c.want)
 		}
+	}
+}
+
+// A listed name may be given with a port; it is compared without one.
+func TestAllowedHostsFromEnv(t *testing.T) {
+	t.Setenv("SURFACE_ALLOWED_HOSTS", " MyMac.example.test:8190 , other.example.test ")
+	got := allowedHostsFromEnv()
+	if !got["mymac.example.test"] || !got["other.example.test"] || len(got) != 2 {
+		t.Fatalf("got %v", got)
 	}
 }

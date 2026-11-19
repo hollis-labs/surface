@@ -237,7 +237,7 @@ export function Desktop({ modules }: DesktopProps) {
       >
         {/* isolate: the windows' stacking order stays inside the canvas, under the bar and the overlays. */}
         <div
-          className="relative isolate size-full overflow-hidden bg-muted/40"
+          className="relative isolate size-full overflow-hidden bg-desk"
           style={{ "--window-gap": `${gap}px` } as React.CSSProperties}
         >
           <WindowManager

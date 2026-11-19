@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
-const names = ["chat", "cards", "genui", "page", "ui"]
+const names = ["chat", "cards", "genui", "theme", "page", "ui"]
 const file = (p) => join(root, "packages", p, "package.json")
 const pkgs = Object.fromEntries(names.map((p) => [p, JSON.parse(readFileSync(file(p), "utf8"))]))
 const want = process.argv[2]

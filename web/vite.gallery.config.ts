@@ -16,6 +16,7 @@ export default defineConfig({
     alias: {
       "@": resolve(root, "src"),
       "@hollis-labs/surface-page/sdk": resolve(root, "src/sdk/index.ts"),
+      "@hollis-labs/surface-theme": resolve(root, "../packages/theme/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

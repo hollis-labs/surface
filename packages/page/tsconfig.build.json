@@ -11,6 +11,7 @@
       "@hollis-labs/surface-page/sdk": ["src/sdk/index.ts"],
       "@hollis-labs/surface-chat": ["../packages/chat/dist/index.d.ts"],
       "@hollis-labs/surface-cards": ["../packages/cards/dist/index.d.ts"],
+      "@hollis-labs/surface-theme": ["../packages/theme/dist/index.d.ts"],
       "@hollis-labs/surface-genui": ["../packages/genui/dist/src/index.d.ts"],
       "@/*": ["src/*"]
     }

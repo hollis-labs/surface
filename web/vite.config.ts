@@ -32,6 +32,7 @@ export default defineConfig({
     alias: {
       "@": resolve(root, "src"),
       "@hollis-labs/surface-page/sdk": resolve(root, "src/sdk/index.ts"),
+      "@hollis-labs/surface-theme": resolve(root, "../packages/theme/src/index.ts"),
       "@hollis-labs/surface-chat": resolve(root, "../packages/chat/src/index.ts"),
       "@hollis-labs/surface-cards": resolve(root, "../packages/cards/src/index.ts"),
       "@hollis-labs/surface-genui": resolve(root, "../packages/genui/src/index.ts"),

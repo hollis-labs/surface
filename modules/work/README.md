@@ -82,5 +82,30 @@ The shapes (`Workspace`, `Card`, `Detail`, `Kind`, `View`, `Preset`, the layout)
 
 ## Views
 
-One placeholder view for now (`work/main`, "Planner"): the Planner's workspaces. The board, calendar,
-outline, canvas, flow and detail views come later, built against these routes.
+Three windows, one component (`work/main`, `web/index.tsx`), each opened on its preset's app: `work`
+(Planner), `work.content` (Content) and `work.writer` (Writer), in the Apps menu. Ported from Basalisk's
+`frontend/src/work`.
+
+- The app's workspaces, and New workspace (from a preset, and a template where the preset has them).
+- A workspace opened on its saved views, switched in the header, and a view added from it: **board**
+  (columns by stage, kind or an enum field; drag a card to another column), **outline** (the children
+  tree; drag before, after or into a row), **calendar** (month or week by a date field; drag to a day or
+  to No date), **canvas** (cards, stacks bound to a stage or a parent, free notes; pan and zoom) and
+  **flow** (links as edges; drag from a node's dot to link, Delete to unlink; lanes; tidy).
+- An item's **detail** beside the view: title, stage, fields by type, sections edited in place (a newer
+  revision becomes suggestions, answered 409), tags, Send to Torque and its status, links both ways,
+  material by reference, the publication log, the review (draft notes, Send round, rounds and answers,
+  sign-off) and the revisions with a word diff.
+
+What is in front is kept in the window's args (`workspace`, `view`, `item`) and reported to the desk, so
+`Describe` and the `work` slot see `work:<workspace>` or `work:<workspace>/<id>`. The views refresh on
+`work.changed`; they do not poll.
+
+| Command | Args | |
+|---|---|---|
+| `work.open`, `work.content`, `work.writer` | `workspace?`, `item?` | Open Planner, Content or Writer: on its list, or on a workspace (a window of its own, keyed by the slug) and an item in it |
+
+Not ported from Basalisk: picking material from the Fragments Engine library (paste the reference
+instead), Cite chips for references (shown as text or a link), and the detail's 30 s look for a team's
+answer to a round (it is read again on `work.changed` and when reopened). The flow draws with a small
+renderer of its own: a module cannot import the Diagram module's.

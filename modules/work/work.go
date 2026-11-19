@@ -45,24 +45,15 @@ func (m *mod) Manifest() module.Manifest {
 	return module.Manifest{
 		ID: "work", Title: "Work", Version: "0.1.0",
 		About: "The Work engine under Planner, Content and Writer: workspaces of typed items, links and saved views, kept in Caster (work/v1).",
-		Views: []module.View{{
-			ID: viewID, Title: "Planner", Icon: "map", Width: 1100, Height: 720, Menu: true, Bare: true, DefaultKey: "planner",
-			Render: module.Component("work/main"),
-			Describe: func(_ context.Context, _ module.Host, w module.Window) (module.WindowContext, error) {
-				ws, _ := w.Args["workspace"].(string)
-				wc := module.WindowContext{Kind: "workspace", Ref: "work"}
-				if ValidSlug(ws) {
-					wc.Ref = "work:" + ws
-					wc.Extra = map[string]any{"workspace": ws}
-				}
-				return wc, nil
-			},
-		}},
+		Views: []module.View{
+			appView(viewID, "planner", "Planner", "target"),
+			appView(viewID+".content", "content", "Content", "megaphone"),
+			appView(viewID+".writer", "writer", "Writer", "pen-line"),
+		},
 		Commands: []module.Command{
-			{ID: "work.open", Title: "Planner: open", Section: "Work", Keywords: "work planner content writer plans goals tasks",
-				Run: func(ctx context.Context, h module.Host, _ map[string]any) (any, error) {
-					return h.Desk().Open(ctx, viewID, module.OpenOptions{Key: "planner"})
-				}},
+			openCommand("work.open", "planner", "Planner: open", "planner plans goals milestones features tasks strategy"),
+			openCommand("work.content", "content", "Content: open", "content articles videos posts publishing calendar"),
+			openCommand("work.writer", "writer", "Writer: open", "writer books chapters scenes characters codex manuscript ttrpg"),
 		},
 		Settings: []module.Setting{
 			{Key: "tether_command", Title: "Tether command", About: "A command that speaks MCP over stdio to Tether (the local bridge): Caster, Torque and mail are reached through it.", Type: module.SettingString, Default: ""},
@@ -74,7 +65,7 @@ func (m *mod) Manifest() module.Manifest {
 		Slots: []module.Slot{{
 			Name:  "work",
 			About: "plans and what is in flight, and the owner's own writing: goals, plans, tasks (Planner), content on its way to being published (Content), books and settings (Writer)",
-			Views: []string{viewID},
+			Views: []string{viewID, viewID + ".content", viewID + ".writer"},
 			Tools: []string{"work_list", "work_get", "work_note", "work_space_create", "work_space_update", "work_space_delete",
 				"work_item_create", "work_item_update", "work_item_place", "work_item_stage", "work_item_delete", "work_item_restore",
 				"work_note_update", "work_note_delete", "work_history", "work_view_save"},

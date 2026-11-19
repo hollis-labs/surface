@@ -4,7 +4,7 @@ Surface has one version. A tag `vX.Y.Z` on this repository is, all at once:
 
 - the registry an app outside this repository reads (`"ref": "vX.Y.Z"` in its `ui.lock.json`);
 - the Go module version (`go get github.com/hollis-labs/surface@vX.Y.Z`);
-- the version of every npm package: `@hollis-labs/surface-chat`, `-cards`, `-genui`, `-page` and `-ui`.
+- the version of every npm package: `@hollis-labs/surface-chat`, `-cards`, `-genui`, `-theme`, `-page` and `-ui`.
 
 So "which Surface is this app on" has one answer. Releases are run by the release manager (the `hollis-release-manager` GitHub App, acting for an agent with the owner's standing permission) or by the owner.
 
@@ -20,7 +20,8 @@ So "which Surface is this app on" has one answer. Releases are run by the releas
 3. **Publish to npm.** Publishing runs only in `hollis-labs/frontend-support`, whose `npm-release` environment
    holds the portfolio's one npm token. Its `release-surface` workflow checks out this repository at the tag,
    checks the versions match it, builds, and publishes the packages in dependency order, skipping any version
-   already on npm:
+   already on npm. Its list (`PACKAGES` in the workflow) must name every package here, `theme` before `page`.
+   v0.2.0 shipped `page` before the list had `theme`, so installing it failed until a re-run published `theme`:
 
    ```sh
    gh workflow run release-surface -R hollis-labs/frontend-support -f ref=vX.Y.Z -f dry_run=false

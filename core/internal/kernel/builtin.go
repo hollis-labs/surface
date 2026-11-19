@@ -16,6 +16,8 @@ import (
 // coreSettings are the core's own live settings.
 var coreSettings = []module.Setting{
 	{Key: "theme", Title: "Theme", About: "How the desk is drawn.", Type: module.SettingEnum, Default: "dark", Options: []string{"dark", "light"}},
+	{Key: "palette", Title: "Palette", About: "The colors the desk is drawn in: a palette id from @hollis-labs/surface-theme (blade-runner, aura, tokyo-night, ...). Chosen from the bar.", Type: module.SettingString, Default: "blade-runner"},
+	{Key: "type", Title: "Type", About: "Mono chrome over a sans body (mixed), or mono everywhere (mono).", Type: module.SettingEnum, Default: "mixed", Options: []string{"mixed", "mono"}},
 	{Key: "gap", Title: "Window gap", About: "Space between tiled windows, in pixels.", Type: module.SettingInt, Default: 10},
 	{Key: "agent_panel_width", Title: "Agent panel width", About: "Width of the agent panel, in pixels.", Type: module.SettingInt, Default: 420},
 	{Key: "confirm_close_dirty", Title: "Ask before closing unsaved work", Type: module.SettingBool, Default: true},

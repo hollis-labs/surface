@@ -190,6 +190,13 @@
   [data-slot="kbd"] {
     font-family: var(--type-ui);
   }
+  /* The bar reads like a status bar: what is on (the window in front, an open panel) is underlined
+     in the accent. */
+  [data-slot="app-frame-bar"] [aria-pressed="true"] {
+    color: var(--primary);
+    box-shadow: inset 0 -2px 0 var(--primary);
+    border-radius: 0;
+  }
   /* Focus: the accent ring with a soft glow. */
   :focus-visible {
     box-shadow: var(--glow);

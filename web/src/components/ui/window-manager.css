@@ -55,15 +55,25 @@
   inset: var(--window-gap, 8px);
 }
 
-/* A stack is a window: a frame with its tabs as the title bar. */
+/* A stack is a window: a frame with its tabs as the title bar. Hyprland's border: the same width
+   on every window, so nothing moves when the focus does; quiet on the others, and on the focused one
+   a gradient from the accent to the second accent, with a soft glow. The border is a background
+   drawn under the padding box, which is how a gradient follows rounded corners. */
 [data-slot="window-manager"] .flexlayout__tabset {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
+  --window-border: 2px;
+  --window-fill: var(--flexlayout-color-tabset-background, var(--card));
+  border: var(--window-border) solid transparent;
+  border-radius: var(--radius-lg, 8px);
+  background:
+    linear-gradient(var(--window-fill), var(--window-fill)) padding-box,
+    linear-gradient(var(--border), var(--border)) border-box;
 }
 /* The stack with the focus: flexlayout marks its tab strip, the frame follows. */
 [data-slot="window-manager"] .flexlayout__tabset:has(> .flexlayout__tabset-selected),
 [data-slot="window-manager"] .flexlayout__tabset:has(.flexlayout__tabset_tabbar_outer.flexlayout__tabset-selected) {
-  border-color: var(--ring);
+  background:
+    linear-gradient(var(--window-fill), var(--window-fill)) padding-box,
+    linear-gradient(135deg, var(--p-accent, var(--ring)), var(--p-accent-2, var(--ring))) border-box;
   box-shadow: var(--glow, none);
 }
 [data-slot="window-manager"] .flexlayout__tabset_tabbar_outer:not(.flexlayout__tabset-selected) {
@@ -113,19 +123,33 @@
 
 /* A floating group sits above the tiling with a shadow of its own. */
 [data-slot="window-manager"] .flexlayout__float_window {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg, 8px);
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(var(--border), var(--border)) border-box;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
 }
-[data-slot="window-manager"] .flexlayout__float_window .flexlayout__tabset {
+[data-slot="window-manager"] .flexlayout__float_window:has(.flexlayout__tabset-selected) {
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(135deg, var(--p-accent, var(--ring)), var(--p-accent-2, var(--ring))) border-box;
+  box-shadow: var(--glow, none), 0 12px 32px rgb(0 0 0 / 0.35);
+}
+/* Inside a floating window the window itself is the frame. */
+[data-slot="window-manager"] .flexlayout__float_window .flexlayout__tabset,
+[data-slot="window-manager"] .flexlayout__float_window .flexlayout__tabset:has(.flexlayout__tabset-selected) {
   border: 0;
   border-radius: 0;
+  background: var(--window-fill);
+  box-shadow: none;
 }
 
 /* With nothing tiled, the tiling is bare canvas (or the caller's empty state), not a frame. */
 [data-slot="window-manager"][data-empty="true"] .flexlayout__tabset:not(.flexlayout__float_window .flexlayout__tabset) {
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
 }
 [data-slot="window-manager"][data-empty="true"]
   .flexlayout__tabset:not(.flexlayout__float_window .flexlayout__tabset)

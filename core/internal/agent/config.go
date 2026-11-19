@@ -44,29 +44,42 @@ type FileConfig struct {
 	Builtins []string `json:"builtins,omitempty"`
 
 	// Classifier configures the classifier's async tier: a decision gateway (JEV) asked
-	// about each message after the turn. Without DecideURL there is no async tier.
+	// about each message after the turn. Without GatewayURL there is no async tier.
 	Classifier ClassifierConfig `json:"classifier,omitempty"`
 
 	// Path is the file this was read from ("" when there was none).
 	Path string `json:"-"`
 }
 
-// ClassifierConfig is the classifier's async tier.
+// ClassifierConfig is the classifier's async tier: a model gateway asked about each message
+// after the turn, off its path. With no GatewayURL there is no async tier.
 type ClassifierConfig struct {
-	// DecideURL is the AI gateway: the classifier posts to <url>/ai/decide, and to
-	// <url>/ai/embeddings when EmbedModel is set. Also unix:///path.sock.
-	DecideURL string `json:"decide_url,omitempty"`
-	// EmbedModel turns on the centroid judges and the emerging-label report: the gateway's
-	// embedding model to use ("text-embedding-3-small"). Pin it: vectors from different
-	// models do not compare.
-	EmbedModel string `json:"embed_model,omitempty"`
-	// KeyFile holds the gateway's bearer key. "~/" is the home directory. Optional.
+	// GatewayURL is the gateway's base URL (or unix:///path.sock).
+	GatewayURL string `json:"gateway_url,omitempty"`
+	// Dialect is how the gateway is spoken to:
+	//   - "llm-gateway" (default): JEV's System-1 API at <url>/v1/systemone and
+	//     OpenAI-compatible <url>/v1/embeddings, with the gateway's model aliases.
+	//   - "tether": a decision gateway's <url>/ai/decide and <url>/ai/embeddings.
+	Dialect string `json:"dialect,omitempty"`
+	// KeyFile holds the gateway's bearer key ("~/" is the home directory). The key needs
+	// the decide scope for DecideModel and the embed scope for EmbedModel.
 	KeyFile string `json:"key_file,omitempty"`
-	// Model is the model hint; pin one (jev-1.13.0) to keep results comparable.
-	Model string `json:"model,omitempty"`
-	// Purpose is what the gateway accounts the spend to; default surface_classify.
+	// DecideModel turns on the JEV judge: the gateway's decision route ("jev"). Pinned
+	// models keep results comparable.
+	DecideModel string `json:"decide_model,omitempty"`
+	// EmbedModel turns on the centroid judges and the emerging-label report: the gateway's
+	// embedding route ("embed-local", "embed-openai"). Vectors from different models do not
+	// compare, so changing it refits the centroids from scratch.
+	EmbedModel string `json:"embed_model,omitempty"`
+	// Purpose is what a decision gateway accounts the spend to; default surface_classify.
 	Purpose string `json:"purpose,omitempty"`
 }
+
+// Classifier gateway dialects.
+const (
+	DialectLLMGateway = "llm-gateway"
+	DialectTether     = "tether"
+)
 
 // ConfigPath is where the agent config of app is read from.
 func ConfigPath(app string) string {

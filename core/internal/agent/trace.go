@@ -85,7 +85,7 @@ func (s *Service) classifyTurn(ctx context.Context, sit module.Situation, id int
 func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedder) {
 	s.asyncCtx, s.asyncCancel = context.WithCancel(context.Background()) //nolint:gosec // G118: Close calls it
 	cc := cfg.Classifier
-	if (d == nil || e == nil) && cc.DecideURL != "" {
+	if (d == nil || e == nil) && cc.GatewayURL != "" {
 		token := ""
 		if cc.KeyFile != "" {
 			raw, err := os.ReadFile(cc.KeyFile) //nolint:gosec // the operator's own key file, named in their config
@@ -95,13 +95,32 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedd
 			}
 			token = strings.TrimSpace(string(raw))
 		}
-		if c := decide.NewClient(cc.DecideURL, token, "surface"); d == nil && c != nil {
-			d = c
-		}
-		if cc.EmbedModel != "" && e == nil {
-			if c := embed.NewClient(cc.DecideURL, token, "surface", cc.EmbedModel); c != nil {
-				e = c
+		switch cc.Dialect {
+		case "", DialectLLMGateway:
+			if d == nil && cc.DecideModel != "" {
+				if c := decide.NewJEVClient(cc.GatewayURL, token); c != nil {
+					d = c
+				}
 			}
+			if e == nil && cc.EmbedModel != "" {
+				if c := embed.NewOpenAIClient(cc.GatewayURL, token, cc.EmbedModel); c != nil {
+					e = c
+				}
+			}
+		case DialectTether:
+			if d == nil && cc.DecideModel != "" {
+				if c := decide.NewClient(cc.GatewayURL, token, "surface"); c != nil {
+					d = c
+				}
+			}
+			if e == nil && cc.EmbedModel != "" {
+				if c := embed.NewClient(cc.GatewayURL, token, "surface", cc.EmbedModel); c != nil {
+					e = c
+				}
+			}
+		default:
+			s.log.Warn("classifier: unknown gateway dialect; no async tier", "dialect", cc.Dialect)
+			return
 		}
 	}
 	if e != nil {
@@ -126,8 +145,8 @@ func (s *Service) setupAsync(cfg FileConfig, d decide.Decider, e classify.Embedd
 	if purpose == "" {
 		purpose = "surface_classify"
 	}
-	s.cls.SetDecider(d, classify.DecisionOptions{Purpose: purpose, Model: cc.Model, CallerID: "surface"})
-	s.log.Info("classifier: async tier on", "decider", d.Name(), "model", cc.Model)
+	s.cls.SetDecider(d, classify.DecisionOptions{Purpose: purpose, Model: cc.DecideModel, CallerID: "surface"})
+	s.log.Info("classifier: async tier on", "decider", d.Name(), "model", cc.DecideModel)
 }
 
 // classifyAsync asks the async tier about a recorded turn, off the turn's path, and keeps
@@ -323,4 +342,4 @@ func (s *Service) emerging(ctx context.Context, facet string, limit int) ([]clas
 	return groups, len(items), nil
 }
 
-var errNoEmbedder = errors.New("no embedder: set classifier.decide_url and classifier.embed_model in the agent config")
+var errNoEmbedder = errors.New("no embedder: set classifier.gateway_url and classifier.embed_model in the agent config")

@@ -156,17 +156,29 @@ kept in `classify_feedback` and learned again at start.
 
 A third facet, `affect` (neutral, frustrated, urgent, positive), comes from libs' lexicon judge.
 
-**The async tier** asks a decision gateway (JEV) about every facet after the turn, off its path. Its result is
-kept beside the turn (`classified_async`), and `agent.classified` is published. It is on only when the agent
-config file names a gateway:
+**The async tier** asks a model gateway about every facet after the turn, off its path. Its result is kept
+beside the turn (`classified_async`), and `agent.classified` is published. It is on only when the agent config
+file (`~/.config/<app>/agent.json`) names a gateway:
 
 ```json
-"classifier": {"decide_url": "http://127.0.0.1:8080", "key_file": "~/.config/surface/decide.key",
-               "model": "jev-1.13.0", "purpose": "surface_classify", "embed_model": "text-embedding-3-small"}
+"classifier": {
+  "gateway_url": "https://<llm-gateway host>/api/llm-gateway",
+  "key_file": "~/.config/surface/llm-gateway.key",
+  "decide_model": "jev",
+  "embed_model": "embed-local"
+}
 ```
 
-`embed_model` adds centroid judges on `act` and `affect` at the async tier. They use the gateway's embeddings
-(`/ai/embeddings`), and the facets' examples are embedded once at start.
+| Field | Meaning |
+|---|---|
+| `gateway_url` | The gateway's base URL, or `unix:///path.sock`. With none there is no async tier. |
+| `dialect` | `llm-gateway` (the default): JEV's System-1 API at `/v1/systemone`, and OpenAI-compatible `/v1/embeddings`, with the gateway's model aliases. `tether`: a decision gateway's `/ai/decide` and `/ai/embeddings`. |
+| `key_file` | The gateway's bearer key. It needs the decide scope for `decide_model` and the embed scope for `embed_model`. |
+| `decide_model` | Turns on the JEV judge on every facet: the gateway's decision route (`jev`). |
+| `embed_model` | Turns on centroid judges on `act` and `affect`, and the emerging-label report: the gateway's embedding route (`embed-local`, `embed-openai`). Vectors from different models do not compare, so a change refits from scratch. |
+| `purpose` | What a `tether` gateway accounts the spend to (default `surface_classify`). |
+
+The facets' examples are embedded once at start, in the background.
 `GET /api/agent/classify/emerging?facet=act&limit=500` clusters the newest turns a facet abstained on, after
 collapsing near-copies. It returns groups with at least three distinct members and a representative text:
 candidate labels, for a person to name, not answers.

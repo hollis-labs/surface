@@ -72,9 +72,15 @@ type Service struct {
 	mu    sync.Mutex
 	items map[string]Item
 
-	events chan module.Event
-	stop   func()
-	done   chan struct{}
+	// events hands the bus's events to the worker. It is never closed: the bus may still be
+	// delivering an event when Close runs (removing a subscription does not wait for a
+	// delivery already under way), and a send on a closed channel would panic. quit ends the
+	// worker instead.
+	events    chan module.Event
+	quit      chan struct{}
+	unsubs    []func()
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // New opens the store and starts following the bus. windows lists the desk's open windows.
@@ -82,7 +88,7 @@ func New(ctx context.Context, db *sql.DB, bus module.Events, windows func(contex
 	if err := storage.Migrate(ctx, db, "attend", migrations, "migrations"); err != nil {
 		return nil, fmt.Errorf("attend: %w", err)
 	}
-	s := &Service{db: db, bus: bus, windows: windows, items: map[string]Item{}, events: make(chan module.Event, 256), done: make(chan struct{})}
+	s := &Service{db: db, bus: bus, windows: windows, items: map[string]Item{}, events: make(chan module.Event, 256), quit: make(chan struct{}), done: make(chan struct{})}
 	rows, err := db.QueryContext(ctx, `SELECT item FROM attend_items`)
 	if err != nil {
 		return nil, err
@@ -102,39 +108,41 @@ func New(ctx context.Context, db *sql.DB, bus module.Events, windows func(contex
 
 	// The bus calls subscribers on the publisher's goroutine: hand the event to a worker,
 	// so the desk is never slowed by a write here.
-	var unsubs []func()
 	for _, topic := range []string{"desk", "cards", "agent.run"} {
-		unsubs = append(unsubs, bus.Subscribe(topic, func(ev module.Event) {
+		s.unsubs = append(s.unsubs, bus.Subscribe(topic, func(ev module.Event) {
 			select {
+			case <-s.quit: // closing: nobody will read it
 			case s.events <- ev:
 			default: // full: dropping a notice is better than holding up the desk
 			}
 		}))
 	}
-	s.stop = func() {
-		for _, u := range unsubs {
-			u()
-		}
-		close(s.events)
-	}
 	// The worker outlives New's caller, so it gets its own context, not the start-up one.
 	wctx := context.WithoutCancel(ctx)
 	go func() {
 		defer close(s.done)
-		for ev := range s.events {
-			s.on(wctx, ev)
+		for {
+			select {
+			case <-s.quit:
+				return
+			case ev := <-s.events:
+				s.on(wctx, ev)
+			}
 		}
 	}()
 	return s, nil
 }
 
-// Close stops following the bus.
+// Close stops following the bus and waits for the worker. It is safe to call more than once,
+// and while events are still being published.
 func (s *Service) Close(context.Context) error {
-	if s.stop != nil {
-		s.stop()
+	s.closeOnce.Do(func() {
+		for _, u := range s.unsubs {
+			u()
+		}
+		close(s.quit)
 		<-s.done
-		s.stop = nil
-	}
+	})
 	return nil
 }
 

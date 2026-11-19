@@ -8,14 +8,16 @@ list, so "waiting for you" means the same thing wherever it comes from.
 |---|---|---|
 | `needs_you` | an open card waits on the owner's answer: `confirm`, `prompt`, `choice`, `form`, `approval`, `plan`, or any blocking card | the card is answered or closed. Looking at it does not clear it. |
 | `failed` | an `error` card the owner has not dealt with | the card is closed, or the owner marks it seen |
-| `unseen` | a window a delegate opened while the owner was in another window; or a question that **expired before anyone answered** | the owner brings the window in front, or marks it seen |
+| `unseen` | a window a delegate opened while the owner was in another window; a question that **expired before anyone answered**; or the agent's answer, finished and not yet read (subject `agent`) | the owner brings the window in front, or marks it seen |
+| `working` | the agent is on the owner's message (subject `agent`): nothing to do but know | the run ends: finished becomes `unseen`, failed becomes `failed`, canceled clears it |
 
-The list is ordered with `needs_you` first, then `failed`, then `unseen`, and the oldest first within each.
+The list is ordered with `needs_you` first, then `failed`, then `unseen`, then `working`, and the oldest first within
+each.
 
 ## Rules
 
 - **Items come from what happens, never from a claim.** They are derived from the bus (`desk.opened`,
-  `desk.focus`, `desk.changed`, `cards.changed`). There is no tool for an agent to raise an item: an agent that
+  `desk.focus`, `desk.changed`, `cards.changed`, `agent.run.started`, `agent.run.ended`). There is no tool for an agent to raise an item: an agent that
   wants an answer shows a card.
 - **Only the owner sees.** A window counts as seen when the owner brings it in front. The agent bringing it in
   front does not count. `POST /api/attend/seen` refuses a delegate.
@@ -36,6 +38,15 @@ The list is ordered with `needs_you` first, then `failed`, then `unseen`, and th
 
 ## Not there yet
 
-- **The agent's own runs** (working, done but not yet read, failed). These need the engine and the conversation
-  wire to say when a run ends.
-- **The panel.** Seen should mean visible *and* focused, which the page will report for the agent panel too.
+- **The panel.** The page marks the subject `agent` seen (`POST /api/attend/seen`) when the panel is visible and
+  the window has focus as an answer finishes, or when the owner opens the panel afterwards.
+
+## The agent's runs on the bus
+
+Either engine announces its runs, and both are watched through what Surface hands them
+(`core/internal/agent/runs.go`): the host engine through its run store, the conversation wire through its runner.
+- `agent.run.started {run_id}`
+- `agent.run.ended {run_id, status, reason}`, where `status` is `finished`, `canceled` or `failed`. A stream that
+  stops without a terminal event counts as `failed`.
+
+The context trace keeps each end as a `run_end` signal on the turn.

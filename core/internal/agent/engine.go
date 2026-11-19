@@ -69,10 +69,14 @@ type hostEngine struct {
 }
 
 // newHostEngine builds the agent/host engine with its conversation tables in db.
-func newHostEngine(ctx context.Context, cfg FileConfig, system string, db *sql.DB) (*hostEngine, error) {
-	store, err := host.NewSQLite(ctx, db)
+func newHostEngine(ctx context.Context, cfg FileConfig, system string, db *sql.DB, watch runWatch) (*hostEngine, error) {
+	sq, err := host.NewSQLite(ctx, db)
 	if err != nil {
 		return nil, err
+	}
+	var store host.Store = sq
+	if watch.started != nil && watch.ended != nil {
+		store = watchedStore{Store: sq, started: watch.started, ended: watch.ended}
 	}
 	h := host.New(host.Config{
 		Model:     cfg.Model,

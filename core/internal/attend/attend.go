@@ -40,9 +40,13 @@ const (
 	NeedsYou = "needs_you" // waiting on the owner's answer
 	Failed   = "failed"    // something went wrong and the owner has not looked
 	Unseen   = "unseen"    // new since the owner last looked
+	Working  = "working"   // the agent is on it; nothing to do but know
 )
 
-var rank = map[string]int{NeedsYou: 0, Failed: 1, Unseen: 2}
+var rank = map[string]int{NeedsYou: 0, Failed: 1, Unseen: 2, Working: 3}
+
+// AgentSubject is the item for the embedded agent's latest run.
+const AgentSubject = "agent"
 
 // Item is one thing waiting for the owner.
 type Item struct {
@@ -99,7 +103,7 @@ func New(ctx context.Context, db *sql.DB, bus module.Events, windows func(contex
 	// The bus calls subscribers on the publisher's goroutine: hand the event to a worker,
 	// so the desk is never slowed by a write here.
 	var unsubs []func()
-	for _, topic := range []string{"desk", "cards"} {
+	for _, topic := range []string{"desk", "cards", "agent.run"} {
 		unsubs = append(unsubs, bus.Subscribe(topic, func(ev module.Event) {
 			select {
 			case s.events <- ev:
@@ -157,7 +161,7 @@ func (s *Service) List() []Item {
 
 // Counts says how many items there are in each state.
 func (s *Service) Counts() map[string]int {
-	out := map[string]int{NeedsYou: 0, Failed: 0, Unseen: 0}
+	out := map[string]int{NeedsYou: 0, Failed: 0, Unseen: 0, Working: 0}
 	for _, it := range s.List() {
 		out[it.State]++
 	}
@@ -171,8 +175,8 @@ func (s *Service) Seen(ctx context.Context, subject string) error {
 	}
 	s.mu.Lock()
 	it, ok := s.items[subject]
-	if ok && it.State == NeedsYou {
-		// Looking at a question does not answer it.
+	if ok && (it.State == NeedsYou || it.State == Working) {
+		// Looking at a question does not answer it, and looking at work does not finish it.
 		s.mu.Unlock()
 		return nil
 	}
@@ -235,6 +239,36 @@ func (s *Service) on(ctx context.Context, ev module.Event) {
 			open[w.ID] = true
 		}
 		changed = s.prune(ctx, open)
+	case "agent.run.started":
+		changed = s.put(ctx, Item{Subject: AgentSubject, State: Working, Title: "The agent", By: "agent", Reason: "working on your message"})
+	case "agent.run.ended":
+		var e struct {
+			Status string `json:"status"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(ev.Data, &e) != nil {
+			return
+		}
+		switch e.Status {
+		case "finished":
+			// The answer is in the panel; it is news until the owner has seen the panel.
+			changed = s.put(ctx, Item{Subject: AgentSubject, State: Unseen, Title: "The agent", By: "agent", Reason: "answered; not yet read"})
+		case "failed":
+			reason := "the run failed"
+			if e.Reason != "" {
+				reason += ": " + e.Reason
+			}
+			changed = s.put(ctx, Item{Subject: AgentSubject, State: Failed, Title: "The agent", By: "agent", Reason: reason})
+		default:
+			// Canceled: the owner stopped it, or it was let go. Nothing to tell.
+			s.mu.Lock()
+			_, had := s.items[AgentSubject]
+			s.mu.Unlock()
+			if had {
+				s.drop(ctx, AgentSubject)
+				changed = true
+			}
+		}
 	case "cards.changed":
 		var c module.Card
 		if json.Unmarshal(ev.Data, &c) != nil || c.ID == "" {
@@ -283,7 +317,7 @@ func (s *Service) card(ctx context.Context, c module.Card) bool {
 // put keeps an item, keeping the time it was first raised when it was there already.
 func (s *Service) put(ctx context.Context, it Item) bool {
 	s.mu.Lock()
-	if old, ok := s.items[it.Subject]; ok {
+	if old, ok := s.items[it.Subject]; ok && old.State == it.State {
 		it.Since = old.Since
 	}
 	if it.Since == "" {

@@ -5,7 +5,7 @@
  * owner does into actions.
  */
 import { applyPalette, DEFAULT_PALETTE, paletteById } from "@hollis-labs/surface-theme"
-import { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AppFrame } from "@/components/ui/app-frame"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,10 +22,13 @@ import { type WindowInfo, WindowManager, type WindowTree } from "@/components/ui
 import { AdeAttention, AdeGuide } from "../ade/Overlay"
 import { AgentPanel } from "../agent"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
-import { getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
+import { call, getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
 import { AttentionBadge } from "./AttentionBadge"
+import { useAttention } from "./attention"
 import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
+import { useComposing } from "./composing"
+import { GhostCursor } from "./GhostCursor"
 import { matches, parseKeys, showKeys } from "./keys"
 import { moduleApi } from "./moduleApi"
 import { Palette } from "./Palette"
@@ -64,6 +67,7 @@ export function Desktop({ modules }: DesktopProps) {
   })
   const [up, setUp] = useState(isConnected())
   const gap = (useSetting<number>("surface.gap") ?? 10) as number
+  useAnswerSeen(agentOpen)
   const paletteId = (useSetting<string>("surface.palette") ?? DEFAULT_PALETTE.id) as string
   const typeStyle = (useSetting<string>("surface.type") ?? "mixed") === "mono" ? "mono" : "mixed"
   const panelWidth = (useSetting<number>("surface.agent_panel_width") ?? 420) as number
@@ -142,20 +146,59 @@ export function Desktop({ modules }: DesktopProps) {
             <Icon name="bot" size={11} />
           </span>
         ) : undefined,
-        actions: notYetKept(w) ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            title="Keep this window: it is yours, and the agent will not close it"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation()
-              void act({ type: "keep", id: w.id })
-            }}
-          >
-            Keep
-          </Button>
-        ) : undefined,
+        actions:
+          notYetKept(w) || w.held ? (
+            <>
+              {w.held && (
+                <>
+                  <span
+                    className="text-warning"
+                    title={`The ${w.held.by} wants to change what this shows${w.held.title ? ` (${w.held.title})` : ""}. It waits until you are done here.`}
+                  >
+                    <Icon name="git-pull-request-arrow" size={12} />
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    title="Apply the waiting change now"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void act({ type: "held", id: w.id, do: "apply" })
+                    }}
+                  >
+                    Apply
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    title="Drop the waiting change"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void act({ type: "held", id: w.id, do: "drop" })
+                    }}
+                  >
+                    Drop
+                  </Button>
+                </>
+              )}
+              {notYetKept(w) && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  title="Keep this window: it is yours, and the agent will not close it"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void act({ type: "keep", id: w.id })
+                  }}
+                >
+                  Keep
+                </Button>
+              )}
+            </>
+          ) : undefined,
       })),
     [state.wins],
   )
@@ -265,7 +308,7 @@ export function Desktop({ modules }: DesktopProps) {
         className="fixed inset-0 text-sm"
         data-layout={state.layout}
         bar={bar}
-        side={<AgentPanel desk={desk} title="Agent" />}
+        side={<PanelComposer />}
         showSide={agentOpen}
         sideSize={panelWidth}
         onSideResize={keepPanelWidth}
@@ -297,12 +340,46 @@ export function Desktop({ modules }: DesktopProps) {
           </WindowManager>
         </div>
         <AdeGuide />
+        <GhostCursor />
       </AppFrame>
       <AdeAttention />
       <Palette open={palette} onOpenChange={setPalette} commands={commands} />
       <ConfirmHost />
     </>
   )
+}
+
+/** The agent panel, reporting the owner's unsent input in its composer (rule 7). */
+function PanelComposer() {
+  const ref = useRef<HTMLDivElement>(null)
+  useComposing(ref, "")
+  return (
+    <div ref={ref} className="contents">
+      <AgentPanel desk={desk} title="Agent" />
+    </div>
+  )
+}
+
+/** The agent's answer counts as seen (attention subject "agent") when it waits while the panel is
+ * open and the page has the focus: as it finishes in front of the owner, or when they open the
+ * panel or come back to the page afterwards. */
+function useAnswerSeen(panelOpen: boolean) {
+  const a = useAttention()
+  const [focused, setFocused] = useState(() => document.hasFocus())
+  useEffect(() => {
+    const on = () => setFocused(true)
+    const off = () => setFocused(false)
+    window.addEventListener("focus", on)
+    window.addEventListener("blur", off)
+    return () => {
+      window.removeEventListener("focus", on)
+      window.removeEventListener("blur", off)
+    }
+  }, [])
+  const waiting = a.items.find((i) => i.subject === "agent" && i.state === "unseen")
+  useEffect(() => {
+    if (waiting && panelOpen && focused) void call("POST", "/api/attend/seen", { subject: "agent" }).catch(() => {})
+  }, [waiting, panelOpen, focused])
 }
 
 /** The agent panel's width is a live setting: a drag is kept once it stops. */
@@ -323,12 +400,15 @@ function WindowBody({ id, modules }: { id: string; modules: Record<string, Modul
   const module = win?.module ?? ""
   const api = useMemo(() => moduleApi(module), [module])
   const pub = useMemo(() => (win ? toWin(win, focused ? win.id : "") : null), [win, focused])
+  const body = useRef<HTMLDivElement>(null)
+  useComposing(body, id)
   if (!win || !pub) return null
   const view = viewById(win.view)
   const Cmp = view ? modules[view.module]?.views[view.render.entry] : undefined
   return (
     <div
       className="relative size-full min-h-0 overflow-auto data-[bare=true]:flex data-[bare=true]:flex-col data-[bare=true]:overflow-hidden"
+      ref={body}
       data-bare={!!view?.bare}
       data-window={win.id}
     >

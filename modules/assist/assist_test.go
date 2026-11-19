@@ -296,3 +296,17 @@ func TestReceiptsAndSettling(t *testing.T) {
 		t.Fatalf("activity: %+v", acts)
 	}
 }
+
+func TestFrictionIsKept(t *testing.T) {
+	h, _, _ := start(t)
+	out, err := h.Tool("friction_log", `{"what":"owner_send has no seat for Design","severity":"major","idea":"add design to the roster"}`)
+	if err != nil || !strings.Contains(out.(string), "tell the owner now") {
+		t.Fatalf("%v %v", out, err)
+	}
+	_, _ = h.Tool("owner_ack", `{"account":"`+me+`","id":"nope","receipt":"noted"}`)
+	got, err := h.Tool("assist_activity", `{"kind":"friction"}`)
+	list, _ := got.([]Entry)
+	if err != nil || len(list) != 1 || list[0].Detail["idea"] != "add design to the roster" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}

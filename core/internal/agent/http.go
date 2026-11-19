@@ -179,6 +179,26 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		}
 		reply(w, 200, rep)
 	})
+	mux.HandleFunc("GET "+Prefix+"/runs", func(w http.ResponseWriter, r *http.Request) {
+		if s.runs == nil {
+			reply(w, 200, []RunRecord{})
+			return
+		}
+		list, err := s.runs.recent(r.Context(), atoi(r.URL.Query().Get("limit"), 50))
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		if r.URL.Query().Get("format") == "jsonl" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			enc := json.NewEncoder(w)
+			for _, x := range list {
+				_ = enc.Encode(x)
+			}
+			return
+		}
+		reply(w, 200, list)
+	})
 	mux.HandleFunc("GET "+Prefix+"/slots", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.slotList(r.Context())) })
 	mux.HandleFunc("POST "+Prefix+"/slots/pin", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {

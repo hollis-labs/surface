@@ -100,6 +100,26 @@ func TestAModulesAroundAndErrand(t *testing.T) {
 	if !found {
 		t.Fatal("the errand's turn is not on the conversation")
 	}
+	// The run log has it, as the module's errand, with how it ended.
+	runDeadline := time.Now().Add(3 * time.Second)
+	for {
+		var runs []struct {
+			RunID  string `json:"run_id"`
+			Origin string `json:"origin"`
+			Status string `json:"status"`
+		}
+		do(t, srv, "GET", "/api/agent/runs", "", &runs)
+		if len(runs) == 1 && runs[0].Status != "" {
+			if runs[0].RunID != run || runs[0].Origin != "errand:errandtest" || runs[0].Status != "finished" {
+				t.Fatalf("the run log: %+v", runs)
+			}
+			break
+		}
+		if time.Now().After(runDeadline) {
+			t.Fatalf("the run log: %+v", runs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	var trace struct {
 		Turns []map[string]any `json:"turns"`
 	}

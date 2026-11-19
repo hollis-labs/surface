@@ -11,3 +11,4 @@ modules:
   - browser
   - design
   - terminal
+  - viewer

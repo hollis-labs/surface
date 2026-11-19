@@ -7,6 +7,7 @@ import m3 from "../../../modules/drafts/web/index"
 import m4 from "../../../modules/browser/web/index"
 import m5 from "../../../modules/design/web/index"
 import m6 from "../../../modules/terminal/web/index"
+import m7 from "../../../modules/viewer/web/index"
 
 export const app = { name: "desk", title: "Surface Desk" }
 
@@ -18,4 +19,5 @@ export const modules: Record<string, ModuleWeb> = {
   "browser": m4,
   "design": m5,
   "terminal": m6,
+  "viewer": m7,
 }

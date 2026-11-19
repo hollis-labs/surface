@@ -8,6 +8,7 @@ import m4 from "../../../modules/builder/web/index"
 import m5 from "../../../modules/design/web/index"
 import m6 from "../../../modules/files/web/index"
 import m7 from "../../../modules/terminal/web/index"
+import m8 from "../../../modules/viewer/web/index"
 
 export const app = { name: "studio", title: "Surface Studio" }
 
@@ -20,4 +21,5 @@ export const modules: Record<string, ModuleWeb> = {
   "design": m5,
   "files": m6,
   "terminal": m7,
+  "viewer": m8,
 }

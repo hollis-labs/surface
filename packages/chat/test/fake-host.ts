@@ -36,6 +36,7 @@ export interface FakeHost {
   /** Refuse the next submit the way a host hook would. */
   refuseNext: (code: string, message: string) => void
   /** Drop every open event stream, as a network failure would. */
+  lapse: () => void
   dropStreams: () => void
   requests: { method: string; path: string; body: unknown; headers: Record<string, string> }[]
   conversation: () => Conv
@@ -190,6 +191,18 @@ export function fakeHost(): FakeHost {
       ])
       return json(200, { attachment: c.holder })
     }
+    if (seg[2] === "lease" && !seg[3]) {
+      // Acquire or renew: a free lease, or this attachment's own.
+      if (c.holder && c.holder !== body.attachment)
+        return json(409, { code: "lease_held", message: "another attachment holds the input" })
+      if (!c.holder) {
+        c.holder = body.attachment
+        publishTo(c, [
+          { verb: "activity", run_id: "", kind: "chat.lease", value: { state: "acquired", attachment: c.holder } },
+        ])
+      }
+      return json(200, { attachment: c.holder })
+    }
     if (seg[2] === "turns") {
       if (c.holder && c.holder !== body.attachment)
         return json(403, { code: "lease_required", message: "another attachment holds the input" })
@@ -224,10 +237,15 @@ export function fakeHost(): FakeHost {
       return json(202, { run_id: run, cursor })
     }
     if (seg[2] === "runs" && seg[4] === "cancel") {
+      if (c.holder !== body.attachment)
+        return json(403, { code: "lease_required", message: "the attachment does not hold the input lease" })
       publishTo(c, [{ verb: "run.abort", run_id: seg[3] }])
       return new Response(null, { status: 204 })
     }
     if (seg[2] === "approvals") {
+      // As the real host: an answer needs the lease at the moment it is applied.
+      if (c.holder !== body.attachment)
+        return json(403, { code: "lease_required", message: "the attachment does not hold the input lease" })
       publishTo(c, [
         {
           verb: "activity",
@@ -256,6 +274,15 @@ export function fakeHost(): FakeHost {
     },
     refuseNext: (code, message) => {
       refusal = { code, message }
+    },
+    /** The lease lapses (90 s with no renewal on the real host). */
+    lapse: () => {
+      const c = convs.get(current) as Conv
+      if (c.holder)
+        publishTo(c, [
+          { verb: "activity", run_id: "", kind: "chat.lease", value: { state: "released", attachment: c.holder } },
+        ])
+      c.holder = null
     },
     dropStreams: () => {
       for (const s of [...(convs.get(current) as Conv).subs]) s.close()

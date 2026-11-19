@@ -372,7 +372,11 @@ function JobPane({ win, desk, api }: ViewProps) {
       : job.head_sha
         ? `Approving covers commit ${job.head_sha.slice(0, 7)}${job.pr_url ? ` (${job.pr_url.replace(/^https:\/\/github\.com\//, "")})` : ""} only`
         : "Nothing to approve until the Designer names a head and a pull request") +
-    (job.update_received ? " · an update came back without a preview" : "") +
+    (job.update_received
+      ? job.preview_url
+        ? " · new work came back on the branch"
+        : " · an update came back without a preview"
+      : "") +
     (job.approval_owed ? " · waiting for GitHub to show this commit; you are asked to approve on your own" : "")
 
   return (
@@ -384,7 +388,8 @@ function JobPane({ win, desk, api }: ViewProps) {
           {job.branch}
           {job.progress.head ? ` @ ${job.progress.head.slice(0, 7)}` : ""}
         </span>
-        <div className="ml-auto flex items-center gap-2">
+        {/* Wraps in a narrow window, so Send notes, Approve and Details are always in reach. */}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
           <ToggleGroup
             size="sm"
             spacing={0}
@@ -456,7 +461,9 @@ function JobPane({ win, desk, api }: ViewProps) {
         <div className="flex flex-col gap-0.5 border-b px-3 py-1 text-xs text-muted-foreground">
           {job.merge_warning && <p className="font-medium text-destructive">{job.merge_warning}</p>}
           {job.approval_owed && <p>Waiting for GitHub to show this commit; you are asked to approve on your own.</p>}
-          {job.update_received && <p>An update came back without a preview.</p>}
+          {job.update_received && (
+            <p>{job.preview_url ? "New work came back on the branch." : "An update came back without a preview."}</p>
+          )}
           {outcome && <p>{outcome}</p>}
         </div>
       )}

@@ -93,3 +93,17 @@ func TestCallAllReadsTheRestInTheSameSession(t *testing.T) {
 		t.Fatalf("Call: %s", out)
 	}
 }
+func TestARefusalKeepsItsDetailApart(t *testing.T) {
+	_, err := ToolText(json.RawMessage(`{"isError":true,"content":[{"type":"text","text":"bad status"}]}`))
+	var r *RefusedError
+	if !errors.As(err, &r) || r.Detail != "bad status" || err.Error() != ErrRefused.Error() {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestListKeepsOnlyTheAllowed(t *testing.T) {
+	got, next, err := listResult(json.RawMessage(`{"tools":[{"name":"a"},{"name":"b"}],"nextCursor":"c2"}`), Allowed{"b": true}, nil)
+	if err != nil || len(got) != 1 || got[0].Name != "b" || next != "c2" {
+		t.Fatalf("%v %q %v", got, next, err)
+	}
+}

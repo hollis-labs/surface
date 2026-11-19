@@ -17,4 +17,5 @@ modules:
   - diagram
   - inbox
   - reader
+  - tether
   - work

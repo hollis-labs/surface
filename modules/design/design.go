@@ -41,7 +41,88 @@ type mod struct {
 	stop     context.CancelFunc
 	life     context.Context // ends at Stop: what the module does on its own runs under it
 	checking sync.Mutex
+	// lag is how long to wait, and how many times, for GitHub to show a head the Designer named
+	// before saying it does not (GitHub can lag a push by seconds). Tests shorten it.
+	lag []time.Duration
+
+	// jobs serializes what changes one job's approval (asking, answering, a feedback round), so
+	// no ordering of them lets a withdrawn or replaced card approve.
+	jobsMu sync.Mutex
+	jobs   map[string]*sync.Mutex
+	// owedNext is when an owed ask is tried again, per job; tries back off so a head GitHub
+	// never shows does not spend the rate limit.
+	owedNext map[string]owedTry
+	// owedBase is the first wait between owed tries (tests shorten it).
+	owedBase time.Duration
 }
+
+type owedTry struct {
+	at time.Time
+	n  int
+}
+
+// lockJob holds job id's lock until the returned function is called.
+func (m *mod) lockJob(id string) func() {
+	m.jobsMu.Lock()
+	if m.jobs == nil {
+		m.jobs = map[string]*sync.Mutex{}
+	}
+	l, ok := m.jobs[id]
+	if !ok {
+		l = &sync.Mutex{}
+		m.jobs[id] = l
+	}
+	m.jobsMu.Unlock()
+	l.Lock()
+	return l.Unlock
+}
+
+// owedDue says whether an owed ask may be tried now.
+func (m *mod) owedDue(id string) bool {
+	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
+	t, ok := m.owedNext[id]
+	return !ok || !time.Now().Before(t.at)
+}
+
+// owedFailed puts the next owed try further off: 1, 2, 4, 8, then every 10 minutes.
+func (m *mod) owedFailed(id string) {
+	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
+	if m.owedNext == nil {
+		m.owedNext = map[string]owedTry{}
+	}
+	t := m.owedNext[id]
+	t.n++
+	base := m.owedBase
+	if base == 0 {
+		base = time.Minute
+	}
+	t.at = time.Now().Add(min(base<<min(t.n-1, 10), 10*time.Minute))
+	m.owedNext[id] = t
+}
+
+func (m *mod) owedDone(id string) {
+	m.jobsMu.Lock()
+	defer m.jobsMu.Unlock()
+	delete(m.owedNext, id)
+}
+
+// How an ask reads GitHub. The owner pressing Approve waits out a short lag, and a read GitHub
+// refused (the last good one) does not stop them. An ask Surface makes on its own needs a
+// fresh read showing the head; on a new head it waits out the lag, when owed it reads once.
+type askHow struct {
+	wait, fresh bool
+}
+
+var (
+	byOwner   = askHow{wait: true}
+	onNewHead = askHow{wait: true, fresh: true}
+	whenOwed  = askHow{fresh: true}
+)
+
+// defaultLag: a push usually shows on GitHub within a few seconds.
+var defaultLag = []time.Duration{3 * time.Second, 6 * time.Second}
 
 // ref is what a job's marks are pinned to.
 func ref(id string) string { return "design:" + id }
@@ -297,6 +378,7 @@ func (m *mod) request(ctx context.Context, title, brief, refs string) (map[strin
 
 // Feedback sends the open notes and text as the next round and marks the job changes requested.
 func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, error) {
+	defer m.lockJob(id)()
 	j, err := m.st.get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -326,6 +408,10 @@ func (m *mod) feedback(ctx context.Context, id, text string) (map[string]any, er
 		_, _ = m.h.Marks().Reply(ctx, nl.ID, module.MarkReply{Body: fmt.Sprintf("Sent in round %d.", n), Author: "agent"})
 		_ = m.h.Marks().Resolve(ctx, nl.ID)
 	}
+	// An approval card raised before this round is for work this round asks to change.
+	if err := m.withdraw(ctx, j); err != nil {
+		return nil, err
+	}
 	st := StatusChangesRequested
 	if _, err := m.st.update(ctx, id, Change{Status: &st}); err != nil {
 		return nil, err
@@ -350,6 +436,12 @@ func short(sha string) string { return sha[:min(len(sha), 7)] }
 // recorded, and when GitHub shows the branch at another commit (saying so on a notice), so the
 // owner never approves a commit they were not shown.
 func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*module.Card, error) {
+	defer m.lockJob(id)()
+	return m.ask(ctx, id, wait, byOwner)
+}
+
+// ask is askApproval with the job's lock held.
+func (m *mod) ask(ctx context.Context, id string, wait time.Duration, how askHow) (*module.Card, error) {
 	j, err := m.st.get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -364,13 +456,22 @@ func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*
 	if prNumberIn(j.PRURL, repo) == 0 {
 		return nil, fmt.Errorf("%w (recorded: %q)", errNoPR, j.PRURL)
 	}
-	p := m.gh.progress(ctx, repo, or(m.h.Config().String("base_branch"), "main"), j.Branch, prNumberIn(j.PRURL, repo), true)
-	if !p.stale && p.Exists && p.Head != "" && !strings.EqualFold(p.Head, j.HeadSHA) { // only a fresh read of the branch is compared
-		why := fmt.Sprintf("GitHub shows %s at %s, but the head the Designer named is %s. Nothing can be approved until the job is refreshed with a reply naming the branch's head.", j.Branch, short(p.Head), short(j.HeadSHA))
-		payload, _ := json.Marshal(map[string]any{"body": why, "tone": "warning"})
-		_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Not approvable yet: " + j.Title, Source: "design", Subject: ref(id), Payload: payload})
+	if p, ok := m.branchShows(ctx, repo, j, how); !ok {
+		why := fmt.Sprintf("GitHub does not show the commit the Designer named yet: it shows %s at %s, and the Designer named %s. GitHub can lag a push by a few seconds; you are asked to approve on your own once it shows %s. If it never does, the Designer named another commit than the branch's head: ask for a reply naming it.", j.Branch, short(p.Head), short(j.HeadSHA), short(j.HeadSHA))
+		if p.stale || !p.Exists || p.Head == "" || strings.EqualFold(p.Head, j.HeadSHA) { // GitHub could not say
+			why = fmt.Sprintf("GitHub cannot be read fresh right now (%s), so it is not known whether %s is at %s. You are asked to approve on your own once GitHub shows it.", p.Problem, j.Branch, short(j.HeadSHA))
+		}
+		m.notice(ctx, j, why)
+		if !j.ApprovalOwed {
+			if oweErr := m.st.owe(ctx, id, true); oweErr != nil {
+				return nil, oweErr
+			}
+			m.changed(id)
+		}
 		return nil, errors.New(why)
 	}
+	// Approvable: the notice no longer stands, and nothing is owed once the card is up.
+	m.endNotice(ctx, j, "superseded")
 	notes, _ := m.openNotes(ctx, id)
 	changes := []map[string]string{
 		{"label": "Status", "before": j.Status, "after": StatusApproved},
@@ -393,13 +494,105 @@ func (m *mod) askApproval(ctx context.Context, id string, wait time.Duration) (*
 	if err := m.st.pendApproval(ctx, id, card.ID, j.HeadSHA, j.PRURL); err != nil {
 		return nil, err
 	}
+	if j.ApprovalOwed {
+		if err := m.st.owe(ctx, id, false); err != nil {
+			return nil, err
+		}
+		m.changed(id)
+	}
 	return &card, nil
+}
+
+// branchShows reads the branch fresh and says whether GitHub shows the job's head there,
+// reading again after each wait in m.lag while it does not. A read that could not be made
+// fresh (GitHub refusing) is not compared: it says nothing about the branch now.
+func (m *mod) branchShows(ctx context.Context, repo string, j Job, how askHow) (Progress, bool) {
+	base := or(m.h.Config().String("base_branch"), "main")
+	lag := m.lag
+	if lag == nil {
+		lag = defaultLag
+	}
+	if !how.wait {
+		lag = []time.Duration{}
+	}
+	for i := 0; ; i++ {
+		p := m.gh.progress(ctx, repo, base, j.Branch, prNumberIn(j.PRURL, repo), true)
+		if p.stale {
+			return p, !how.fresh // an old read says nothing about the branch now
+		}
+		if strings.EqualFold(p.Head, j.HeadSHA) && p.Exists && p.Problem == "" {
+			return p, true
+		}
+		// A branch that cannot be read at all (not pushed, GitHub unreachable or failing) is not
+		// compared when the owner asks; the head they are shown is still the named one. An ask
+		// Surface makes on its own needs GitHub to show the head.
+		if how.fresh && (!p.Exists || p.Head == "" || p.Problem != "") {
+			return p, false
+		}
+		if !p.Exists || p.Head == "" {
+			return p, true
+		}
+		if i == len(lag) {
+			return p, false
+		}
+		select {
+		case <-ctx.Done():
+			return p, false
+		case <-time.After(lag[i]):
+		}
+	}
+}
+
+// notice shows (or replaces) the job's "not approvable yet" notice and records it, so it is
+// ended once it no longer stands.
+func (m *mod) notice(ctx context.Context, j Job, why string) {
+	payload, _ := json.Marshal(map[string]any{"body": why, "tone": "warning"})
+	// Asked again on every check while GitHub lags: the open notice is updated, not raised anew.
+	if j.noticeCard != "" {
+		if _, err := m.h.Cards().Update(ctx, j.noticeCard, "", payload); err == nil {
+			return
+		}
+	}
+	c, err := m.h.Cards().Show(ctx, module.Card{Kind: "info", Title: "Not approvable yet: " + j.Title, Source: "design", Subject: ref(j.ID) + ":approvable", Payload: payload})
+	if err != nil {
+		m.h.Log().Warn("design: the notice did not show", "job", j.ID, "err", err)
+		return
+	}
+	if err := m.st.setNotice(ctx, j.ID, c.ID); err != nil {
+		m.h.Log().Warn("design: recording the notice", "job", j.ID, "err", err)
+	}
+}
+
+// endNotice ends the job's open "not approvable yet" notice, if it has one.
+func (m *mod) endNotice(ctx context.Context, j Job, status string) {
+	if j.noticeCard == "" {
+		return
+	}
+	_, _ = m.h.Cards().End(ctx, j.noticeCard, status)
+	_ = m.st.dropNotice(ctx, j.ID, j.noticeCard)
+}
+
+// withdraw ends the job's open approval card and notice and what was owed: a feedback round
+// asks for new work, so nothing shown before it may be approved.
+func (m *mod) withdraw(ctx context.Context, j Job) error {
+	if j.approvalCard != "" {
+		_, _ = m.h.Cards().End(ctx, j.approvalCard, "canceled")
+		if err := m.st.dropApproval(ctx, j.ID, j.approvalCard); err != nil {
+			return err
+		}
+	}
+	m.endNotice(ctx, j, "canceled")
+	if j.ApprovalOwed {
+		return m.st.owe(ctx, j.ID, false)
+	}
+	return nil
 }
 
 // settle acts on the owner's answer to an approval card. The approval is recorded only for the
 // head on that card, only while that card is still the job's open approval and the job's head
 // is still that head (store.approve); then the Design team is told to merge that commit.
 func (m *mod) settle(ctx context.Context, id string, done module.Card) (map[string]any, error) {
+	defer m.lockJob(id)()
 	approved := false
 	if done.Status == "submitted" && done.Outcome != nil {
 		for _, d := range done.Outcome.Decisions {
@@ -456,21 +649,51 @@ func (m *mod) awaitSettle(id string, card module.Card) {
 // merged, closed), so no stale card is left to answer; or its head is no longer the job's, and
 // then the owner is asked again on the new head.
 func (m *mod) supersede(ctx context.Context, j Job) {
-	if j.approvalCard == "" || (j.approvalHead == j.HeadSHA && j.approvalPR == j.PRURL && !settled(j.Status)) {
+	defer m.lockJob(j.ID)()
+	j, err := m.st.get(ctx, j.ID) // as it is now, under the lock
+	if err != nil {
 		return
 	}
-	_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")
-	_ = m.st.dropApproval(ctx, j.ID, j.approvalCard)
+	if settled(j.Status) || !j.ApprovalOwed {
+		m.owedDone(j.ID)
+	}
 	if settled(j.Status) {
-		return
-	}
-	card, err := m.askApproval(ctx, j.ID, 30*time.Minute)
-	if err != nil || card == nil {
-		if err != nil {
-			m.h.Log().Warn("design: asking again on the new head", "job", j.ID, "err", err)
+		if j.approvalCard != "" {
+			_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")
+			_ = m.st.dropApproval(ctx, j.ID, j.approvalCard)
+		}
+		m.endNotice(ctx, j, "superseded")
+		if j.ApprovalOwed {
+			_ = m.st.owe(ctx, j.ID, false)
 		}
 		return
 	}
+	how := onNewHead
+	switch {
+	case j.approvalCard != "" && (j.approvalHead != j.HeadSHA || j.approvalPR != j.PRURL):
+		_, _ = m.h.Cards().End(ctx, j.approvalCard, "superseded")
+		_ = m.st.dropApproval(ctx, j.ID, j.approvalCard)
+	case j.approvalCard == "" && j.ApprovalOwed && m.owedDue(j.ID):
+		// Asked before GitHub showed the head: try again, once, now.
+		how = whenOwed
+	default:
+		return
+	}
+	card, err := m.ask(ctx, j.ID, 30*time.Minute, how)
+	switch {
+	case errors.Is(err, errNoHead) || errors.Is(err, errNoPR):
+		// Nothing to ask about until the Designer replies; their reply raises the ask.
+		_ = m.st.owe(ctx, j.ID, false)
+		m.owedDone(j.ID)
+		return
+	case err != nil:
+		m.owedFailed(j.ID)
+		m.h.Log().Debug("design: not asked again yet", "job", j.ID, "err", err)
+		return
+	case card == nil:
+		return
+	}
+	m.owedDone(j.ID)
 	m.awaitSettle(j.ID, *card)
 }
 

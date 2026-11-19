@@ -64,6 +64,13 @@ type Job struct {
 	UpdateReceived bool `json:"update_received"`
 	// MergeWarning says a pull request was merged on GitHub that is not the approved commit.
 	MergeWarning string `json:"merge_warning,omitempty"`
+	// ApprovalOwed says the owner is asked again on their own once GitHub shows the head the
+	// Designer named (GitHub can lag a push by seconds).
+	ApprovalOwed bool `json:"approval_owed"`
+	// ClosedReason is why a closed job was closed: the Designer's closed: line, or by hand.
+	ClosedReason string `json:"closed_reason,omitempty"`
+	// noticeCard is the open "not approvable yet" notice.
+	noticeCard string
 	// approvalCard is the open approval card; approvalHead and approvalPR what it shows.
 	approvalCard, approvalHead, approvalPR string
 	Rounds                                 []Round `json:"rounds"`
@@ -169,15 +176,16 @@ func (s *store) create(ctx context.Context, title, brief, refs string) (Job, err
 	return j, nil
 }
 
-const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, approval_card, approval_head, approved_head, approved_at, update_received, merge_warning, approval_pr, approved_pr, created_at, updated_at`
+const jobCols = `id, title, brief, refs, branch, pr_url, preview_url, base_url, status, task_id, head_sha, task_status, task_comment, task_checked_at, inbox_checked_at, preview_announced, approval_card, approval_head, approved_head, approved_at, update_received, merge_warning, approval_pr, approved_pr, notice_card, approval_owed, closed_reason, created_at, updated_at`
 
 func scanJob(sc interface{ Scan(...any) error }) (Job, error) {
 	var j Job
-	var announced, update int
+	var announced, update, owed int
 	err := sc.Scan(&j.ID, &j.Title, &j.Brief, &j.Refs, &j.Branch, &j.PRURL, &j.PreviewURL, &j.BaseURL, &j.Status, &j.TaskID,
 		&j.HeadSHA, &j.TaskStatus, &j.TaskComment, &j.TaskChecked, &j.InboxChecked, &announced,
-		&j.approvalCard, &j.approvalHead, &j.ApprovedHead, &j.ApprovedAt, &update, &j.MergeWarning, &j.approvalPR, &j.ApprovedPR, &j.Created, &j.Updated)
+		&j.approvalCard, &j.approvalHead, &j.ApprovedHead, &j.ApprovedAt, &update, &j.MergeWarning, &j.approvalPR, &j.ApprovedPR, &j.noticeCard, &owed, &j.ClosedReason, &j.Created, &j.Updated)
 	j.announced = announced == 1
+	j.ApprovalOwed = owed == 1
 	j.UpdateReceived = update == 1
 	return j, err
 }
@@ -347,6 +355,7 @@ type Change struct {
 	TaskComment  *string `json:"-"`
 	TaskChecked  *string `json:"-"`
 	InboxChecked *string `json:"-"`
+	ClosedReason *string `json:"-"`
 	Announced    *bool   `json:"-"`
 }
 
@@ -387,6 +396,7 @@ func (s *store) update(ctx context.Context, id string, c Change) (Job, error) {
 	text("task_comment", c.TaskComment)
 	text("task_checked_at", c.TaskChecked)
 	text("inbox_checked_at", c.InboxChecked)
+	text("closed_reason", c.ClosedReason)
 	if c.Announced != nil {
 		cols = append(cols, "preview_announced = ?")
 		args = append(args, boolInt(*c.Announced))
@@ -492,7 +502,7 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 			notes = append(notes, noteAfterApproval)
 		}
 		if status == StatusApproved {
-			to := ""
+			to, reason := "", ""
 			warn := ""
 			switch {
 			case r.Merged != "" && r.Merged != approved:
@@ -505,7 +515,7 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 				to = StatusMerged
 				notes = append(notes, "merged at the approved commit, "+approvedPR)
 			case r.Closed != "":
-				to = StatusClosed
+				to, reason = StatusClosed, r.Closed
 				notes = append(notes, "closed: "+r.Closed)
 			}
 			if warn != "" {
@@ -516,7 +526,7 @@ func (s *store) ingest(ctx context.Context, jobID string, r Reply) (isNew bool, 
 				}
 			}
 			if to != "" {
-				if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status = ?, updated_at = ? WHERE id = ? AND status = ?`, to, stamp(), jobID, StatusApproved); err != nil {
+				if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND status = ?`, to, reason, stamp(), jobID, StatusApproved); err != nil {
 					return false, err
 				}
 			}
@@ -634,5 +644,23 @@ func (s *store) warnMerge(ctx context.Context, id, warning string) (bool, error)
 // dropApproval clears the open approval card if it is still card.
 func (s *store) dropApproval(ctx context.Context, id, card string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET approval_card = '', approval_head = '', approval_pr = '' WHERE id = ? AND approval_card = ?`, id, card)
+	return err
+}
+
+// setNotice records the open "not approvable yet" notice.
+func (s *store) setNotice(ctx context.Context, id, card string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET notice_card = ? WHERE id = ?`, card, id)
+	return err
+}
+
+// dropNotice clears the recorded notice if it is still card.
+func (s *store) dropNotice(ctx context.Context, id, card string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET notice_card = '' WHERE id = ? AND notice_card = ?`, id, card)
+	return err
+}
+
+// owe records whether the owner is to be asked again once GitHub shows the named head.
+func (s *store) owe(ctx context.Context, id string, owed bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET approval_owed = ? WHERE id = ?`, boolInt(owed), id)
 	return err
 }

@@ -57,5 +57,17 @@
       "@xterm/addon-web-links": "0.12.0",
       "@xterm/addon-webgl": "0.19.0"
     }
+  },
+  "hover-card": {
+    "title": "Hover Card",
+    "description": "A card of more about something, shown while the pointer rests on it or it has the focus (Base UI's Preview Card)."
+  },
+  "cite-chip": {
+    "title": "Cite Chip",
+    "description": "A reference inline in text (a task id, a path, a link): an icon and a short label, drawn in the state it is given (loading, found, not found, error)."
+  },
+  "cite-card": {
+    "title": "Cite Card",
+    "description": "What a reference stands for: its kind, title, status, a short preview, a few fields and actions. One card for every kind of reference; the hover card of a cite chip, or a record's header."
   }
 }

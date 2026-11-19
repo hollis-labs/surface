@@ -9,7 +9,7 @@
     "build": "vite build --config web/vite.config.ts",
     "typecheck": "tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p packages/chat/tsconfig.json && tsc --noEmit -p packages/cards/tsconfig.json && tsc --noEmit -p packages/genui/tsconfig.json && tsc --noEmit -p packages/theme/tsconfig.json",
     "lint": "biome check web modules packages",
-    "test": "node --test packages/*/src/*.test.ts",
+    "test": "node --test packages/*/src/*.test.ts web/src/cite/*.test.ts web/src/cite/core/*.test.ts",
     "lint:fix": "biome check --write web modules packages",
     "build:packages": "for p in chat cards genui theme page; do npm run build --prefix packages/$p || exit 1; done",
     "pack-check": "node scripts/pack-check.mjs"

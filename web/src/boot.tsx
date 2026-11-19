@@ -7,6 +7,7 @@ import { StrictMode, useEffect, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
+import { initCite } from "./cite/store.ts"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
 import { moduleApi } from "./desk/moduleApi"
@@ -47,6 +48,7 @@ export function Page({ modules, core }: PageProps) {
       .then(() => {
         if (!live) return
         connect()
+        void initCite()
         setReady(true)
         void call("POST", "/api/events", { topic: "page.ready", data: {} }).catch(() => {})
       })

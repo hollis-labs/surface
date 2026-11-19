@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/surface/module"
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
@@ -33,5 +34,24 @@ func TestToolsThroughTheContract(t *testing.T) {
 	}
 	if n := strings.Count(strings.Join(h.Bus.Topics(), ","), "drafts.changed"); n != 2 {
 		t.Fatalf("events: %v", h.Bus.Topics())
+	}
+}
+
+func TestTheAgentDoesNotEditADraftTheOwnerIsTypingIn(t *testing.T) {
+	h := moduletest.Start(t, &mod{})
+	out, err := h.Tool("drafts_create", `{"title":"Pitch","body":"one\ntwo\n"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out
+	w, _ := h.DeskState.Focused(t.Context())
+	h.DeskState.SetWorking(w.ID, true, false)
+	if _, err = h.ToolAs(module.ActorAgent, "drafts_edit", `{"find":"two","replace":"2","expect_rev":1}`); err == nil || !strings.Contains(err.Error(), "editing this draft") {
+		t.Fatalf("an agent's edit over unsaved work: %v", err)
+	}
+	// Saved: the edit goes through.
+	h.DeskState.SetWorking(w.ID, false, false)
+	if _, err = h.ToolAs(module.ActorAgent, "drafts_edit", `{"find":"two","replace":"2","expect_rev":1}`); err != nil {
+		t.Fatal(err)
 	}
 }

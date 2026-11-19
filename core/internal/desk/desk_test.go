@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/hollis-labs/surface/core/internal/storage"
@@ -700,5 +701,88 @@ func TestReleasingClosesOnlyTransientWindowsNobodyKept(t *testing.T) {
 	}
 	if f := d.Snapshot().Focus; f != notes.ID {
 		t.Errorf("focus went to %s, want the owner's %s", f, notes.ID)
+	}
+}
+
+func TestADelegatesChangeWaitsWhileTheOwnerTypes(t *testing.T) {
+	d, rec := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	page := mustOpen(owner, t, d, "browser", module.OpenOptions{Args: map[string]any{"url": "https://a.example"}})
+	if _, err := d.Apply(owner, Action{Type: "composing", ID: page.ID, Composing: true}); err != nil {
+		t.Fatal(err)
+	}
+	// The agent navigates the window the owner is filling in: held, not applied.
+	_, err := d.Apply(agent, Action{Type: "args", ID: page.ID, Args: map[string]any{"url": "https://b.example"}})
+	if !errors.Is(err, ErrHeld) {
+		t.Fatalf("args while the owner types: %v, want ErrHeld", err)
+	}
+	w := d.Snapshot().Wins[0]
+	if w.Args["url"] != "https://a.example" || w.Held == nil || w.Held.Args["url"] != "https://b.example" || w.Held.By != "agent" {
+		t.Fatalf("held: %+v / %+v", w.Args, w.Held)
+	}
+	if !slices.Contains(rec.topics, "desk.held") {
+		t.Error("nothing announced the hold")
+	}
+	// The same through open, which brings the window forward with new args.
+	if _, err = d.Open(agent, "browser", module.OpenOptions{Key: "main", Args: map[string]any{"url": "https://c.example"}}); !errors.Is(err, ErrHeld) {
+		t.Fatalf("open while the owner types: %v, want ErrHeld", err)
+	}
+	if got := d.Snapshot().Wins[0].Held.Args["url"]; got != "https://c.example" {
+		t.Errorf("the newest change should be held, got %v", got)
+	}
+	// The owner is done: the held change applies.
+	if _, err = d.Apply(owner, Action{Type: "composing", ID: page.ID, Composing: false}); err != nil {
+		t.Fatal(err)
+	}
+	w = d.Snapshot().Wins[0]
+	if w.Args["url"] != "https://c.example" || w.Held != nil {
+		t.Errorf("after the owner finished: %+v held %+v", w.Args, w.Held)
+	}
+	// The owner's own change is never held.
+	if _, err = d.Apply(owner, Action{Type: "composing", ID: page.ID, Composing: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.Apply(owner, Action{Type: "args", ID: page.ID, Args: map[string]any{"url": "https://d.example"}}); err != nil {
+		t.Errorf("the owner's own change: %v", err)
+	}
+}
+
+func TestAHeldChangeWaitsForUnsavedWorkAndTheOwnerCanDropIt(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{Args: map[string]any{"path": "a.md"}})
+	if _, err := d.Apply(owner, Action{Type: "dirty", ID: notes.ID, Dirty: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetArgs(agent, notes.ID, map[string]any{"path": "b.md"}); !errors.Is(err, ErrHeld) {
+		t.Fatalf("set args over unsaved work: %v", err)
+	}
+	if _, err := d.Apply(agent, Action{Type: "held", ID: notes.ID, Do: "apply"}); err == nil {
+		t.Error("the agent applied its own held change")
+	}
+	if _, err := d.Apply(owner, Action{Type: "held", ID: notes.ID, Do: "drop"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Apply(owner, Action{Type: "dirty", ID: notes.ID, Dirty: false}); err != nil {
+		t.Fatal(err)
+	}
+	if w := d.Snapshot().Wins[0]; w.Args["path"] != "a.md" || w.Held != nil {
+		t.Errorf("a dropped change applied: %+v", w)
+	}
+}
+
+func TestTypingInThePanelKeepsTheFocusWhereItIs(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	if _, err := d.Apply(owner, Action{Type: "composing", Composing: true}); err != nil {
+		t.Fatal(err)
+	}
+	mustOpen(agent, t, d, "scratch", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Errorf("the agent's window took the focus while the owner typed in the panel: %s", f)
+	}
+	if _, err := d.Apply(agent, Action{Type: "composing", Composing: false}); err == nil {
+		t.Error("the agent cleared the owner's composing")
 	}
 }

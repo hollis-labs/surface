@@ -170,3 +170,23 @@ func TestTheAgentsRunIsWorkingThenUnreadOrFailed(t *testing.T) {
 		t.Errorf("a canceled run left %v", states(s))
 	}
 }
+
+func TestAHeldChangeIsListedUntilItApplies(t *testing.T) {
+	wins := []module.Window{{ID: "b1", View: "browser", Title: "Form"}}
+	s, _ := open(t, filepath.Join(t.TempDir(), "a.db"), &wins)
+	ctx := context.Background()
+	s.on(ctx, ev("desk.held", map[string]any{"window": "b1", "by": "agent"}))
+	if got := states(s)["held:b1"]; got != Unseen {
+		t.Fatalf("held: %v", states(s))
+	}
+	// The owner looking at the window does not make the waiting change go away.
+	s.on(ctx, ev("desk.focus", map[string]any{"window": "b1", "by": "owner"}))
+	s.on(ctx, ev("desk.changed", map[string]any{"wins": []map[string]any{{"id": "b1", "held": map[string]any{"by": "agent"}}}}))
+	if states(s)["held:b1"] != Unseen {
+		t.Fatalf("cleared while still held: %v", states(s))
+	}
+	s.on(ctx, ev("desk.changed", map[string]any{"wins": []map[string]any{{"id": "b1"}}}))
+	if len(s.List()) != 0 {
+		t.Errorf("after it applied: %v", states(s))
+	}
+}

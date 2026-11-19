@@ -126,6 +126,15 @@ hold everything at once. `Views` (and later `Modes`) say when it applies; `Tools
 - `h.Marks()` pins notes to a part of something (`Ref`, `Quote`, `Anchor`). Do not build your own comments.
 - `h.Desk()` opens, focuses and arranges windows. `h.RunCommand` runs any command.
 
+### When the owner is working in a window
+
+`Host.Desk().Windows` reports, for each window, whether the owner has unsaved work in it (`Dirty`) or unsent input
+(`Composing`). A tool that would change the document a window shows, called by a delegate
+(`module.ActorOf(ctx).Delegate()`), should refuse with a message that says to wait or ask. It should not overwrite
+the owner's text. Drafts and Notes do this. A change to what the window shows (`Desk().Open` or `SetArgs` with new
+args) is held by the desk for you, and returns `desk.ErrHeld`'s message (docs/desk-rules.md, rule 7). In tests,
+`moduletest`'s `DeskState.SetWorking` and `ToolAs` set this up.
+
 ## The web side
 
 ```tsx

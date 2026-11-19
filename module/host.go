@@ -66,6 +66,12 @@ type Window struct {
 	// Kept marks the owner's window: one they opened, or one they took over by working in
 	// it. A delegate may not close it.
 	Kept bool `json:"kept,omitempty"`
+	// Dirty: the owner has unsaved work in it. Composing: the owner has unsent input in it.
+	// A module about to change what such a window shows on a delegate's behalf should wait
+	// or ask (docs/desk-rules.md, rule 7). Held: a delegate's change is waiting for them.
+	Dirty     bool `json:"dirty,omitempty"`
+	Composing bool `json:"composing,omitempty"`
+	Held      bool `json:"held,omitempty"`
 }
 
 // WindowContext is what a window is showing, as far as its module can say. It is small and

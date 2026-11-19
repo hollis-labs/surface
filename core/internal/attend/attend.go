@@ -220,25 +220,50 @@ func (s *Service) on(ctx context.Context, ev module.Event) {
 		}
 		// In front, by the owner's own move: what it was waiting to show has been seen.
 		for _, it := range s.List() {
-			if it.Window == f.Window && it.State != NeedsYou {
+			if it.Window == f.Window && it.State != NeedsYou && !strings.HasPrefix(it.Subject, "held:") {
 				s.drop(ctx, it.Subject)
 				changed = true
 			}
 		}
+	case "desk.held":
+		var h struct {
+			Window string `json:"window"`
+			By     string `json:"by"`
+		}
+		if json.Unmarshal(ev.Data, &h) != nil || h.Window == "" {
+			return
+		}
+		title := h.Window
+		for _, w := range s.windows(ctx) {
+			if w.ID == h.Window {
+				title = w.Title
+			}
+		}
+		changed = s.put(ctx, Item{Subject: "held:" + h.Window, State: Unseen, Title: title, Window: h.Window, By: h.By,
+			Reason: who(h.By) + " has a change for this window, waiting until you are done in it"})
 	case "desk.changed":
 		var st struct {
 			Wins []struct {
-				ID string `json:"id"`
+				ID   string          `json:"id"`
+				Held json.RawMessage `json:"held"`
 			} `json:"wins"`
 		}
 		if json.Unmarshal(ev.Data, &st) != nil {
 			return
 		}
-		open := map[string]bool{}
+		open, held := map[string]bool{}, map[string]bool{}
 		for _, w := range st.Wins {
 			open[w.ID] = true
+			held[w.ID] = len(w.Held) > 0 && string(w.Held) != "null"
 		}
 		changed = s.prune(ctx, open)
+		// A held change applied or dropped: nothing waits any more.
+		for _, it := range s.List() {
+			if strings.HasPrefix(it.Subject, "held:") && open[it.Window] && !held[it.Window] {
+				s.drop(ctx, it.Subject)
+				changed = true
+			}
+		}
 	case "agent.run.started":
 		changed = s.put(ctx, Item{Subject: AgentSubject, State: Working, Title: "The agent", By: "agent", Reason: "working on your message"})
 	case "agent.run.ended":

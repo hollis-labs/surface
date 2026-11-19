@@ -8,7 +8,7 @@ list, so "waiting for you" means the same thing wherever it comes from.
 |---|---|---|
 | `needs_you` | an open card waits on the owner's answer: `confirm`, `prompt`, `choice`, `form`, `approval`, `plan`, or any blocking card | the card is answered or closed. Looking at it does not clear it. |
 | `failed` | an `error` card the owner has not dealt with | the card is closed, or the owner marks it seen |
-| `unseen` | a window a delegate opened while the owner was in another window; a question that **expired before anyone answered**; or the agent's answer, finished and not yet read (subject `agent`) | the owner brings the window in front, or marks it seen |
+| `unseen` | a window a delegate opened while the owner was in another window; a question that **expired before anyone answered**; the agent's answer, finished and not yet read (subject `agent`); or a delegate's change held while the owner works in a window (subject `held:<window>`, cleared when it applies or is dropped, not by looking) | the owner brings the window in front, or marks it seen |
 | `working` | the agent is on the owner's message (subject `agent`): nothing to do but know | the run ends: finished becomes `unseen`, failed becomes `failed`, canceled clears it |
 
 The list is ordered with `needs_you` first, then `failed`, then `unseen`, then `working`, and the oldest first within
@@ -17,7 +17,7 @@ each.
 ## Rules
 
 - **Items come from what happens, never from a claim.** They are derived from the bus (`desk.opened`,
-  `desk.focus`, `desk.changed`, `cards.changed`, `agent.run.started`, `agent.run.ended`). There is no tool for an agent to raise an item: an agent that
+  `desk.focus`, `desk.changed`, `desk.held`, `cards.changed`, `agent.run.started`, `agent.run.ended`). There is no tool for an agent to raise an item: an agent that
   wants an answer shows a card.
 - **Only the owner sees.** A window counts as seen when the owner brings it in front. The agent bringing it in
   front does not count. `POST /api/attend/seen` refuses a delegate.

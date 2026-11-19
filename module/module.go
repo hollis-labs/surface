@@ -69,6 +69,10 @@ type Manifest struct {
 	// every message, so it reads what the module already holds; the core bounds its time and
 	// caps it at 1500 characters. Optional.
 	Around func(ctx context.Context, h Host) (string, error) `json:"-"`
+	// Refs are the kinds of reference the module resolves: the records it owns that may be
+	// named in any text (a task id, a path) and shown there as a chip with a preview. Each
+	// kind is declared by one module. Optional.
+	Refs []RefKind `json:"refs,omitempty"`
 }
 
 // Base gives a module no-op Start and Stop, for one that needs neither.

@@ -5,8 +5,11 @@
  */
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
+import { MarkdownExtensions } from "@/components/ui/markdown"
 import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
+import { initCite } from "./cite/store.ts"
+import { citeMarkdownExtensions } from "./cite/ui.tsx"
 import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
 import { moduleApi } from "./desk/moduleApi"
@@ -47,6 +50,7 @@ export function Page({ modules, core }: PageProps) {
       .then(() => {
         if (!live) return
         connect()
+        void initCite()
         setReady(true)
         void call("POST", "/api/events", { topic: "page.ready", data: {} }).catch(() => {})
       })
@@ -62,11 +66,13 @@ export function Page({ modules, core }: PageProps) {
       </div>
     )
   if (!ready) return <div className="grid h-full place-items-center text-muted-foreground">…</div>
+  // References in every Markdown on the page are chips (web/src/cite). The value is a
+  // module-level constant, so the blocks are not redrawn.
   return (
-    <>
+    <MarkdownExtensions value={citeMarkdownExtensions}>
       <Desktop modules={{ ...modules, surface: { ...coreWeb, views: { ...coreWeb.views, ...core } } }} />
       <CardHost />
-    </>
+    </MarkdownExtensions>
   )
 }
 

@@ -82,6 +82,7 @@ func (m *Mod) Manifest() module.Manifest {
 				}},
 		},
 		Tools: m.tools(),
+		Refs:  m.refs(),
 		Store: &module.Store{Migrations: migrations, Dir: "migrations"},
 		Settings: []module.Setting{
 			{Key: "delivery", Title: "Deliver captures to Fragments Engine", About: "Off: captures are queued here and wait. On: the worker sends them, once the address and key file are set.", Type: module.SettingBool, Default: false},

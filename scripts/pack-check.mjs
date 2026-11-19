@@ -9,8 +9,8 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
-// Dependency order: the page needs the three behaviour packages.
-const packages = ["chat", "cards", "genui", "page", "ui"]
+// Dependency order: the page needs the behaviour packages and the theme.
+const packages = ["chat", "cards", "genui", "theme", "page", "ui"]
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: ["ignore", "pipe", "inherit"] }).toString()
 
 // One version line: every package carries the same version (scripts/version.mjs).
@@ -26,7 +26,7 @@ const tarballs = readdirSync(dir).filter((f) => f.endsWith(".tgz")).map((f) => `
 const pin = (name) => `${name}@${JSON.parse(run("node", ["-p", `JSON.stringify(require('./package.json').dependencies)`], root))[name]}`
 run("npm", ["install", "--silent", "--no-audit", "--no-fund", ...tarballs, pin("react"), pin("react-dom"), pin("lucide-react")], dir)
 
-for (const p of ["chat", "cards", "genui"]) {
+for (const p of ["chat", "cards", "genui", "theme"]) {
   const n = run("node", ["-e", `import("@hollis-labs/surface-${p}").then((m) => console.log(Object.keys(m).length))`], dir).trim()
   console.log(`@hollis-labs/surface-${p}: imports under Node, ${n} exports`)
 }

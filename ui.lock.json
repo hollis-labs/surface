@@ -280,7 +280,7 @@
     "window-manager": {
       "files": {
         "web/src/components/ui/window-manager.tsx": "c65da3273b72b0bcf0ccd49a4e3ae4015032789b9725b1370f58c249fe04907a",
-        "web/src/components/ui/window-manager.css": "9ba9a3ff0f655313037669008f0d406a59d7e2473623f70c0e377f2bb3d93fcf"
+        "web/src/components/ui/window-manager.css": "74427a82c02129a4a3afefce3391a66f8b844c3eff7606f9ef9da954fe69f82b"
       }
     }
   }

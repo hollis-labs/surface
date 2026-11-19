@@ -102,7 +102,7 @@ interface Probe {
 }
 
 /** The gallery's sections, as the standalone page names them in its hash. */
-const SECTIONS = ["draft", "controls", "display", "overlays", "chat", "cards", "genui", "ade", "windows"]
+const SECTIONS = ["draft", "theme", "controls", "display", "overlays", "chat", "cards", "genui", "ade", "windows"]
 
 const STATUS_VARIANT: Record<Status, "default" | "secondary" | "outline" | "destructive"> = {
   requested: "outline",

@@ -64,6 +64,7 @@
 [data-slot="window-manager"] .flexlayout__tabset:has(> .flexlayout__tabset-selected),
 [data-slot="window-manager"] .flexlayout__tabset:has(.flexlayout__tabset_tabbar_outer.flexlayout__tabset-selected) {
   border-color: var(--ring);
+  box-shadow: var(--glow, none);
 }
 [data-slot="window-manager"] .flexlayout__tabset_tabbar_outer:not(.flexlayout__tabset-selected) {
   color: var(--muted-foreground);
@@ -71,6 +72,7 @@
 [data-slot="window-manager"] .flexlayout__tabset_tabbar_outer {
   min-height: 2rem;
   font-size: var(--text-xs, 0.75rem);
+  font-family: var(--type-ui, inherit);
 }
 [data-slot="window-manager"] .flexlayout__tab_button,
 [data-slot="window-manager"] .flexlayout__tab_button_stretch {

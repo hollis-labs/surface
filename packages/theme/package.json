@@ -1,0 +1,38 @@
+{
+  "name": "@hollis-labs/surface-theme",
+  "version": "0.1.0",
+  "description": "Surface's palettes: the shape a Linux theme reduces to, the palettes Surface ships (Blade Runner, Basalisk's, Omarchy's), readers for Omarchy colors.toml, base16 and pywal, a contrast check, and applyPalette, which sets the theme's --p-* properties so every token follows.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-labs/surface.git",
+    "directory": "packages/theme"
+  },
+  "homepage": "https://github.com/hollis-labs/surface/tree/main/packages/theme#readme",
+  "bugs": {
+    "url": "https://github.com/hollis-labs/surface/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  }
+}

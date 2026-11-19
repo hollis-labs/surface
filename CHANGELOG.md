@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The desk knows who opened each window, and gives the focus back to the owner** (`docs/desk-rules.md`).
+  Each window records `opened_by`, `opener`, `reason`, `retention` and `kept`. When the window in front
+  closes, the focus returns to the newest window the owner had there, not to wherever the agent last
+  looked. The agent, reflexes and outside clients may not take the focus from unsaved work or close the
+  owner's windows. `desk_open` takes `reason` and `retention`. `module.Actor` names who is acting.
+  A request without an `Origin` (MCP, the CLI) acts as `outside`.
+
 - **The agent can run as a Nanite agent on the conversation wire** (`SURFACE_AGENT_RUNNER=nanite`): the
   app's tools with their levels, ask-first routing rules, standing approvals that hold across restarts,
   and an agent directory beside the agent config (`docs/agent.md`). Off by default.

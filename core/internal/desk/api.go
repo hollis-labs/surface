@@ -14,12 +14,13 @@ import (
 // The methods below make *Desk a module.Desk.
 
 func (w Win) public(focus string) module.Window {
-	return module.Window{ID: w.ID, View: w.View, Module: w.Module, Title: w.Title, Key: w.Key, Args: w.Args, State: w.State, Focused: w.ID == focus}
+	return module.Window{ID: w.ID, View: w.View, Module: w.Module, Title: w.Title, Key: w.Key, Args: w.Args, State: w.State, Focused: w.ID == focus,
+		OpenedBy: w.OpenedBy, Opener: w.Opener, Reason: w.Reason, Retention: w.Retention, Kept: w.Kept}
 }
 
 // Open opens a window of a view, or brings the matching one forward.
 func (d *Desk) Open(ctx context.Context, view string, opts module.OpenOptions) (module.Window, error) {
-	w, err := d.Apply(ctx, Action{Type: "open", View: view, Key: opts.Key, Title: opts.Title, Args: opts.Args, Background: opts.Background})
+	w, err := d.Apply(ctx, Action{Type: "open", View: view, Key: opts.Key, Title: opts.Title, Args: opts.Args, Background: opts.Background, Reason: opts.Reason, Retention: opts.Retention})
 	if err != nil {
 		return module.Window{}, err
 	}
@@ -175,6 +176,7 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 			return fmt.Errorf("desk: layout %q names a view this app does not have: %q", l.Name, lw.View)
 		}
 	}
+	by := module.ActorOf(ctx)
 	d.mu.Lock()
 	kept := d.st.Wins[:0]
 	for _, w := range d.st.Wins {
@@ -184,6 +186,7 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 	}
 	d.st.Wins = append([]Win{}, kept...)
 	d.st.Trail = nil
+	d.st.Owned = nil
 	d.st.Focus = ""
 	d.st.Tree = newTree()
 	if l.Mode == "tile" || l.Mode == "float" {
@@ -206,10 +209,14 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 	var order []string
 	floats := map[string]module.Rect{}
 	for i, lw := range l.Windows {
-		w, _, _, err := d.reduce(Action{Type: "open", View: lw.View, Key: lw.Key, Title: lw.Title, Args: lw.Args, Background: true})
+		w, _, _, err := d.reduce(Action{Type: "open", View: lw.View, Key: lw.Key, Title: lw.Title, Args: lw.Args, Background: true, Actor: by})
 		if err != nil {
 			firstErr = err
 			continue
+		}
+		// A layout is the owner's way of working, whoever arranged it: its windows are theirs.
+		if j := d.find(w.ID); j >= 0 {
+			d.st.Wins[j].Kept = true
 		}
 		ids[i] = w.ID
 		order = append(order, w.ID)
@@ -237,6 +244,7 @@ func (d *Desk) Arrange(ctx context.Context, l module.Layout) error {
 	d.st.Tree = tree
 	if focus != "" {
 		d.st.Trail = nil
+		d.st.Owned = []string{focus}
 		d.st.Focus = focus
 		d.st.Tree.show(focus)
 	}

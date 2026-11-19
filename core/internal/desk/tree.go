@@ -459,3 +459,72 @@ func (t *Tree) instantiate(ids []string) {
 		walk(f.Root, rename)
 	}
 }
+
+// deskAspect is the width-to-height ratio the server assumes for the desk when it judges
+// whether a window is wide. The page has the real size; the server only needs the shape.
+const deskAspect = 1.6
+
+// beside tiles a window next to another one (its opener): to its right when that window is
+// wide, below it when it is narrow (docs/desk-rules.md, rule 13). The two share the space
+// the opener had. It reports false, and changes nothing, when the opener is not tiled.
+func (t *Tree) beside(id, stackID, opener string) bool {
+	at, f, _ := t.locate(opener)
+	if at == nil || f != nil {
+		return false
+	}
+	parent, depth := parentOf(t.Root, at, 0)
+	if parent == nil {
+		return false
+	}
+	w, h := extent(t.Root, at, 0)
+	acrossWanted := w*deskAspect >= h
+	across := depth%2 == 0 // the root and every second row below it run left to right
+	s := &Node{Type: "stack", ID: stackID, Wins: []string{id}}
+	for i, c := range parent.Children {
+		if c != at {
+			continue
+		}
+		if across == acrossWanted {
+			// The parent already runs the right way: the opener's share is split in two.
+			if at.Weight > 0 {
+				at.Weight /= 2
+				s.Weight = at.Weight
+			}
+			parent.Children = append(parent.Children[:i+1], append([]*Node{s}, parent.Children[i+1:]...)...)
+			return true
+		}
+		// Otherwise the opener becomes a row of two, turned the way wanted.
+		pair := &Node{Type: "row", Weight: at.Weight, Children: []*Node{at, s}}
+		at.Weight = 0
+		parent.Children[i] = pair
+		return true
+	}
+	return false
+}
+
+// extent is a node's share of the desk's width and height, from the weights of the rows it
+// sits in. It is (0, 0) when target is not under n.
+func extent(n, target *Node, depth int) (w, h float64) {
+	if n == target {
+		return 1, 1
+	}
+	total := 0.0
+	for _, c := range n.Children {
+		total += c.Weight
+	}
+	for _, c := range n.Children {
+		cw, ch := extent(c, target, depth+1)
+		if cw == 0 {
+			continue
+		}
+		frac := 1 / float64(len(n.Children))
+		if total > 0 && c.Weight > 0 {
+			frac = c.Weight / total
+		}
+		if depth%2 == 0 {
+			return cw * frac, ch
+		}
+		return cw, ch * frac
+	}
+	return 0, 0
+}

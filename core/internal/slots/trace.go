@@ -135,6 +135,14 @@ func (t *Trace) Record(ctx context.Context, turn TraceTurn) (int64, error) {
 	return id, nil
 }
 
+// TurnsSince counts the turns kept for a slot since a time (the owner's, not halted).
+func (t *Trace) TurnsSince(ctx context.Context, slot string, since time.Time) int {
+	var n int
+	_ = t.db.QueryRowContext(ctx, `SELECT count(*) FROM context_turns WHERE slot = ? AND halted = 0 AND at > ?`,
+		slot, since.UTC().Format(time.RFC3339Nano)).Scan(&n)
+	return n
+}
+
 // SetRun names the run a recorded turn started, once the engine has said.
 func (t *Trace) SetRun(ctx context.Context, id int64, runID string) {
 	_, _ = t.db.ExecContext(context.WithoutCancel(ctx), `UPDATE context_turns SET run_id=? WHERE id=?`, runID, id)

@@ -36,8 +36,7 @@ import (
 // It is on when a runner for it is chosen (SURFACE_AGENT_RUNNER): "host", the app's agent on
 // libs agent/host with the app's tools (hostwire.go); "nanite", the app's agent as a Nanite
 // agent with the app's tools (nanite.go); or "scripted", the library's test runner, which
-// plays fixed scripts and runs no tools. With no runner chosen, the agent runs
-// on the engine and the run-at-a-time wire as before.
+// plays fixed scripts and runs no tools. With no runner chosen, Nanite is the default.
 
 // RunnerScripted names the library's scripted test runner.
 const RunnerScripted = "scripted"
@@ -57,9 +56,13 @@ type wire struct {
 	runner string
 }
 
-// runnerChoice is the runner named for the conversation wire, or "".
+// runnerChoice selects Nanite unless an explicit runner is named.
 func runnerChoice() string {
-	return strings.ToLower(strings.TrimSpace(os.Getenv("SURFACE_AGENT_RUNNER")))
+	choice := strings.ToLower(strings.TrimSpace(os.Getenv("SURFACE_AGENT_RUNNER")))
+	if choice == "" {
+		return RunnerNanite
+	}
+	return choice
 }
 
 // openWire builds the conversation wire for a chosen runner.
@@ -103,7 +106,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 	}
 	replaced := make(chan string, 4)
 	mergeReplaced(context.WithoutCancel(ctx), run.Replaced(), replaced)
-	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model, replaced: replaced}
+	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model, event: s.wireEvent, replaced: replaced}
 	w.svc, err = chat.NewService(chat.Config{
 		Runner:  run,
 		Log:     st,
@@ -140,6 +143,12 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 	// not find a window that is gone holding the input.
 	if view, verr := w.svc.EnsureConversation(ctx, w.agent); verr == nil {
 		replaced <- view.ConversationID
+	}
+	if w.nanite != nil {
+		if _, err := w.nanite.RecoverTurns(ctx); err != nil {
+			w.close(ctx)
+			return nil, fmt.Errorf("agent: recover turns: %w", err)
+		}
 	}
 	return w, nil
 }
@@ -266,7 +275,10 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	if debug {
 		s.log.Info("turn intercepted", "run_id", turn.RunID, "prior_messages", len(prior), "ask_first", askFirst)
 	}
-	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
+	var out reflex.Outcome
+	if s.wire == nil || s.wire.nanite == nil {
+		out = s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
+	}
 	if out.Halt != "" {
 		if errandOf(turn.Meta) == "" {
 			s.record(ctx, sit, slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra), routed, out.Fired, true)
@@ -441,10 +453,11 @@ func listGrants(ctx context.Context, db *sql.DB) ([]StandingGrant, error) {
 	return out, rows.Err()
 }
 
-// naniteContextBytes is the room Nanite gives the turn's context: its user-context slot
+// naniteContextBytes is the room Surface gives the turn's protected Context slot:
 // holds 2,000 tokens, counted as bytes/4, and a block over that is left out whole, not cut.
 // A little is kept back for how the slot is rendered.
-const naniteContextBytes = 2000*4 - 200
+const naniteContextTokens = 2000
+const naniteContextBytes = naniteContextTokens*4 - 200
 
 // contextLimit is the hard cap, in bytes, on the context block for this agent's runner, or
 // 0 when the runner has no fixed room for it. The config's extra standing instructions go

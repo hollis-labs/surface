@@ -5,6 +5,17 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.5.0] - 2026-11-20
+
+- **Nanite v0.8.0.** Conversations are created atomically by Nanite (`Agent.EnsureConversation`); Surface's own
+  initialization lock is gone. Tool-package approvals and runtime state live in the app's data directory
+  (`<data dir>/agents/<app>/`), no longer in the agent directory: approvals granted before this release are asked
+  again once. Also from Nanite: Warden waits survive restarts, optional `runtime.cache_ttl`.
+- **Compaction settings come from the agent's host.yaml** (`runtime.compact_at`, `runtime.compact_keep_tokens`),
+  read by Nanite. Surface fills in 110000 and 22000 only for a value the file leaves out; the startup log shows the
+  effective values.
+- **Substrate BOM 3b89e9c**: libs agentdir v0.4.0, llm/core v0.5.0.
+
 ## [0.4.1] - 2026-11-20
 
 - **The npm packages carry the version.** 0.4.0 was tagged without the package version bump, so its npm packages

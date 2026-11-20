@@ -270,8 +270,12 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 		return chat.Answer(out.Halt)
 	}
 	extra.Reminders = out.Reminders
+	extra.Limit = s.contextLimit()
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
+	if len(asm.Trimmed) > 0 {
+		s.log.Info("the context block was trimmed to fit", "run_id", turn.RunID, "trimmed", asm.Trimmed, "bytes", len(asm.Block))
+	}
 	// A module's errand is not the owner speaking: it stays out of the trace.
 	if errandOf(turn.Meta) == "" {
 		if traced := s.record(ctx, sit, asm, routed, out.Fired, false); traced != 0 && turn.RunID != "" {
@@ -417,4 +421,23 @@ func listGrants(ctx context.Context, db *sql.DB) ([]StandingGrant, error) {
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// naniteContextBytes is the room Nanite gives the turn's context: its user-context slot
+// holds 2,000 tokens, counted as bytes/4, and a block over that is left out whole, not cut.
+// A little is kept back for how the slot is rendered.
+const naniteContextBytes = 2000*4 - 200
+
+// contextLimit is the hard cap, in bytes, on the context block for this agent's runner, or
+// 0 when the runner has no fixed room for it. The config's extra standing instructions go
+// in front of the block, in the same slot, so they come out of the room.
+func (s *Service) contextLimit() int {
+	if s.wire == nil || s.wire.nanite == nil {
+		return 0
+	}
+	room := naniteContextBytes
+	if extra := strings.TrimSpace(s.cfg.System); extra != "" {
+		room -= len(extra) + 2
+	}
+	return max(room, 1000)
 }

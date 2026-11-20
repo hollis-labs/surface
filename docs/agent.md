@@ -54,7 +54,9 @@ printf '%s' "$YOUR_KEY" > ~/.config/desk/agent-key && chmod 600 ~/.config/desk/a
 
 Then restart the app. `system` adds standing instructions. Nanite runtime settings belong in the agent directory's
 `host.yaml`, including `runtime.max_output_tokens`, `max_steps`, and `compact_at` (tokens before older turns are
-summarised).
+summarised). Positive `max_tokens` and `max_steps` in `agent.json` override Nanite's output-token and step limits; zero leaves the authored/default runtime limits in effect.
+
+Surface reserves 2,000 tokens for its per-turn context block, plus room for the seat's context files and the largest loaded module profile. Profile facts do not compete with the turn block for that allowance.
 
 - `gateway_url` is an Anthropic-compatible endpoint. Nanite posts to `<gateway_url>/v1/messages`.
 - `key_file` holds the bearer key. It is read on every request, so it can be rotated without a restart. The key

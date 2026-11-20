@@ -21,3 +21,4 @@ modules:
   - work
   - frag
   - approvals
+  - registry

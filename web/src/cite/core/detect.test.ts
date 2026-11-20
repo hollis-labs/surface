@@ -152,6 +152,14 @@ describe("surface kinds", () => {
     ])
     eq(refs("work:portfolio/ab12cd345 work:Portfolio/ab12cd34"), [])
   })
+  it("registry records", () => {
+    eq(refs("see registry:project:surface, and registry:tool:mcp/tether/torque_task_get."), [
+      ["registry.record", "project:surface"],
+      ["registry.record", "tool:mcp/tether/torque_task_get"],
+    ])
+    eq(refs("(registry:document:guide/operations)"), [["registry.record", "document:guide/operations"]])
+    eq(refs("project:surface registry:project: registry:Project:x xregistry:project:surface"), [])
+  })
   it("tach links name every service", () => {
     eq(parseTachHref("tach:torque/cw-20261019-0028"), { kind: "torque.task", canonical: "CW-20261019-0028" })
     eq(parseTachHref("tach:tesseract/01M4SCJHDM8FV6MDPSDTMZ0X44"), {

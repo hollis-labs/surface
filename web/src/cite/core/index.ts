@@ -7,6 +7,7 @@
 import { createCasterKind } from "./kinds/caster.ts"
 import { createFragmentKind } from "./kinds/fragment.ts"
 import { createPathKinds } from "./kinds/path.ts"
+import { createRegistryKind } from "./kinds/registry.ts"
 import { createTesseractKinds } from "./kinds/tesseract.ts"
 import { createTetherKinds } from "./kinds/tether.ts"
 import { createTorqueKinds } from "./kinds/torque.ts"
@@ -18,6 +19,7 @@ export { codeRanges, detect, detectRefs, refKey, uniqueRefs } from "./detect.ts"
 export { CASTER_KIND } from "./kinds/caster.ts"
 export { FRAGMENT_KIND } from "./kinds/fragment.ts"
 export { PATH_KIND, RELATIVE_PATH_KIND } from "./kinds/path.ts"
+export { REGISTRY_RECORD_KIND } from "./kinds/registry.ts"
 export { TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND } from "./kinds/tesseract.ts"
 export { TETHER_AGENT_KIND, TETHER_MESSAGE_KIND } from "./kinds/tether.ts"
 export { WORK_ITEM_KIND } from "./kinds/work.ts"
@@ -38,6 +40,7 @@ export function createDefaultRefRegistry(): RefRegistry {
     ...createTetherKinds(),
     createCasterKind(),
     createWorkKind(),
+    createRegistryKind(),
     ...createPathKinds(),
   ]) {
     r.register(k)

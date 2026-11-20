@@ -9,7 +9,6 @@ import (
 
 	"github.com/hollis-labs/libs/agent/chat"
 	chatstream "github.com/hollis-labs/libs/ui/ui-go/chatstream"
-	nanite "github.com/hollis-labs/nanite/agent"
 	"github.com/hollis-labs/nanite/chatrunner"
 )
 
@@ -36,19 +35,6 @@ func (w *wire) naniteChatID(ctx context.Context, id string) (string, error) {
 	return id, nil
 }
 
-// ensureNaniteConversation closes the creation journal before any caller can
-// start a turn or steer an event. Nanite's check-then-create path is not atomic;
-// concurrent first use otherwise competes for the transcript's exclusive writer.
-func (w *wire) ensureNaniteConversation(ctx context.Context, id string) error {
-	w.naniteInitMu.Lock()
-	defer w.naniteInitMu.Unlock()
-	_, err := w.nanite.Agent().Conversation(ctx, chatrunner.ConversationID(id))
-	if errors.Is(err, nanite.ErrNoConversation) {
-		_, err = w.nanite.Agent().NewConversation(ctx, func(info *nanite.ConversationInfo) { info.ID = chatrunner.ConversationID(id) })
-	}
-	return err
-}
-
 type naniteWireRunner struct {
 	*chatrunner.Runner
 	wire *wire
@@ -68,22 +54,17 @@ func (r naniteWireRunner) prepare(ctx context.Context, turn chat.Turn) (chat.Tur
 	if err != nil {
 		return turn, err
 	}
-	if err = r.wire.ensureNaniteConversation(ctx, id); err != nil {
+	c, err := r.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id))
+	if err != nil {
 		return turn, err
 	}
 	turn.ConversationID = id
-	c, err := r.Agent().Conversation(ctx, chatrunner.ConversationID(id))
-	if err == nil {
-		history, herr := c.History(ctx)
-		if herr != nil {
-			return turn, herr
-		}
-		if len(history) > 0 {
-			return turn, nil
-		}
-	}
-	if err != nil && !errors.Is(err, nanite.ErrNoConversation) {
+	history, err := c.History(ctx)
+	if err != nil {
 		return turn, err
+	}
+	if len(history) > 0 {
+		return turn, nil
 	}
 	// No model history yet: seed only when there is an earlier transcript.
 	prior := id != original // a legacy thread may predate chat run records

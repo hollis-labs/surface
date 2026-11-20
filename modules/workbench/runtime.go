@@ -216,6 +216,8 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 		states[c.ID] = st
 		graders := c.Graders
 		hook := func(o *nanite.Options) {
+			// Eval state and tool approvals belong to this isolated run, outside its agent files.
+			o.DataDir = filepath.Join(staging, c.ID, "state", filepath.Base(o.Dir))
 			o.Steering = steering
 			prev := o.TraceSink
 			o.TraceSink = func(ctx context.Context, rec nanite.TraceRecord) {
@@ -403,7 +405,7 @@ func (r *naniteRuntime) Preview(ctx context.Context, t Tree) (Preview, error) {
 		return Preview{}, err
 	}
 	defer func() { _ = a.Close() }()
-	conv, err := a.NewConversation(ctx)
+	conv, err := a.EnsureConversation(ctx, "preview")
 	if err != nil {
 		return Preview{}, err
 	}

@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.7.0] - 2026-11-20
+
+- **Nanite v0.10.0 and an opt-in auto mode.** `"auto_approve": true` in the agent config turns on Nanite's
+  AutoApprove (off by default; for testing): tool calls that would ask are allowed and logged, explicit denies still
+  deny, a missing Warden grant fails the call at once instead of holding the chat. The startup log and
+  `/api/agent/setup` show it.
+- **A warning at start when the agent's authored context outgrows its Context budget**, and the budget in the
+  startup log (`context_tokens`); a regression test with a large seat's context.
+
 ## [0.6.0] - 2026-11-20
 
 - **The agent's context files arrive whole.** The Context slot's budget is the per-turn block Surface assembles

@@ -56,6 +56,14 @@ func TestPlantSeatWritesAStarterNaniteOpensAndNeverOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nanite does not open the starter: %v", err)
 	}
+	info, err := a.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := info.Definition.Profile.Runtime
+	if runtime.CompactAt != 110000 || runtime.CompactKeepTokens != 22000 {
+		t.Fatalf("starter compaction: got %d/%d, want 110000/22000", runtime.CompactAt, runtime.CompactKeepTokens)
+	}
 	_ = a.Close()
 
 	if err = os.WriteFile(filepath.Join(dir, "agent.md"), []byte("mine"), 0o600); err != nil {

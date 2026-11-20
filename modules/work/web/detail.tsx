@@ -3,7 +3,7 @@
  * place, tags, the Torque link, links both ways, material and the publication log, the review
  * (notes, rounds, sign-off), and the item's revisions with a word diff against any of them.
  */
-import { type Desk, Icon } from "@hollis-labs/surface-page/sdk"
+import { CiteText, type Desk, Icon } from "@hollis-labs/surface-page/sdk"
 import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,18 +29,12 @@ import { Review } from "./review"
 import { ago, diffWords, label, message, ymd } from "./util"
 
 /** A reference shown as a link when it is one, else as text. */
+/** A material reference as its Cite chip (a Caster doc, a fragment, a Tesseract item, a link), as Basalisk shows it. */
 function Ref({ text }: { text: string }) {
-  return /^https?:\/\//.test(text) ? (
-    <a
-      href={text}
-      target="_blank"
-      rel="noreferrer"
-      className="truncate text-primary underline-offset-4 hover:underline"
-    >
-      {text}
-    </a>
-  ) : (
-    <code className="truncate text-xs">{text}</code>
+  return (
+    <span className="min-w-0 truncate">
+      <CiteText text={text} />
+    </span>
   )
 }
 

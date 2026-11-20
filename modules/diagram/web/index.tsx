@@ -61,6 +61,9 @@ import { TEMPLATES, type Template, templateBody } from "./templates"
 import { paletteFor } from "./theme"
 import "./diagram.css"
 
+/** A diagram kept in Caster (caster://collab/diagram.<name>), shared with Basalisk. */
+const inCaster = (id: string) => id.startsWith("diagram.")
+
 interface Summary {
   id: string
   title: string
@@ -602,7 +605,12 @@ function DiagramWindow({ win, desk, api }: ViewProps) {
                   onClick={() => open(d.id)}
                 >
                   <span className="truncate">{d.title}</span>
-                  <span className="text-xs text-muted-foreground">r{d.rev}</span>
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={inCaster(d.id) ? `caster://collab/${d.id}` : undefined}
+                  >
+                    {inCaster(d.id) ? "Caster · " : ""}r{d.rev}
+                  </span>
                 </Button>
                 <Button
                   variant="ghost"

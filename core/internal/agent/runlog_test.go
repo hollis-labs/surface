@@ -24,7 +24,7 @@ func TestTheRunLogFollowsARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.turn("r1", "errand:assist", "messaging")
+	l.turn("r1", "errand:assist", "messaging", "default")
 	c := l.begin("r1", "anthropic-opus")
 	name, _ := json.Marshal("project_list")
 	c.see(chatstream.Event{Verb: chatstream.VerbRunStart, Provider: "anthropic"})

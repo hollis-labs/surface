@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 
 	"github.com/hollis-labs/surface/module"
@@ -36,6 +37,8 @@ type Kernel interface {
 	Slots() []BoundSlot
 	// Arounds is every module's Around, bound likewise, in module order.
 	Arounds() []BoundAround
+	// Profiles is every module's agent profile (Manifest.Profile), in module order.
+	Profiles() []BoundProfile
 	// Situation is what is happening now: the window in front, the open windows, the
 	// user's mode and the layout in use.
 	Situation(ctx context.Context) module.Situation
@@ -50,6 +53,14 @@ type BoundTool struct {
 	module.Tool
 	Module string
 	Call   func(ctx context.Context, input json.RawMessage) (any, error)
+}
+
+// BoundProfile is a module's agent profile: the module and its title, and the profile's
+// files (a Nanite agent directory without host.yaml or .mcp.json).
+type BoundProfile struct {
+	Module string
+	Title  string
+	Files  fs.FS
 }
 
 // BoundAround is a module's Around bound to its Host.

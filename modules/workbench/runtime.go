@@ -22,7 +22,7 @@ import (
 
 // The seam to Nanite. Everything the Workbench asks of the runtime goes through Runtime, so
 // a change in Nanite's API is an edit here. The implementation runs suites with Nanite's own
-// eval harness (nanite/evals, experimental in v0.6.0) and assembles prompts with the
+// eval harness (nanite/evals, with isolated workspaces) and assembles prompts with the
 // embedded agent API (nanite/agent); it imports nothing internal to Nanite.
 
 // Runtime is what the Workbench needs from the agent runtime.
@@ -66,9 +66,10 @@ type RunOutput struct {
 
 // CaseOutput is one case's run, before the rubric graders.
 type CaseOutput struct {
-	ID      string
-	Answer  string
-	Graders []GraderResult
+	StubCalls map[string]int
+	ID        string
+	Answer    string
+	Graders   []GraderResult
 	// Ran: the case reached grading. Why says why it did not, or why it failed.
 	Ran     bool
 	Why     string
@@ -95,12 +96,8 @@ type PreviewSlot struct {
 	ReadOnly bool   `json:"read_only"` // engine-owned (the base prompt): shown, not edited
 }
 
-// naniteRuntime is Runtime on Nanite v0.6.0.
-type naniteRuntime struct {
-	// mu: nanite/evals.Run changes the process's working directory for each case and must
-	// not run concurrently, so one suite runs at a time in the whole process.
-	mu sync.Mutex
-}
+// naniteRuntime runs Nanite evals in process. Each case owns its WorkDir.
+type naniteRuntime struct{ tmpBase string }
 
 var _ Runtime = (*naniteRuntime)(nil)
 
@@ -199,9 +196,13 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 		}
 		opts = o
 	}
+	steering, err := evalSteering(spec.Tree[steeringFile])
+	if err != nil {
+		return RunOutput{}, err
+	}
 	states := map[string]*caseState{}
 	var scenarios []evals.Scenario
-	staging, err := os.MkdirTemp("", "workbench-scenarios-")
+	staging, err := os.MkdirTemp(r.tmpBase, "workbench-scenarios-")
 	if err != nil {
 		return RunOutput{}, err
 	}
@@ -215,6 +216,7 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 		states[c.ID] = st
 		graders := c.Graders
 		hook := func(o *nanite.Options) {
+			o.Steering = steering
 			prev := o.TraceSink
 			o.TraceSink = func(ctx context.Context, rec nanite.TraceRecord) {
 				if prev != nil {
@@ -229,7 +231,7 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 			}
 		}
 		scenarios = append(scenarios, evals.Scenario{
-			Name: c.ID, Files: files, Writes: c.Writes,
+			Name: c.ID, Files: files, Writes: c.Writes, Stubs: c.naniteStubs(),
 			Arms: []evals.Arm{
 				{Name: string(evals.Direct), Mode: evals.Direct, Options: hook},
 				{Name: string(evals.Subtask), Mode: evals.Subtask, Options: hook},
@@ -276,7 +278,12 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 	if spec.Suite.Mode == "subtask" {
 		mode = evals.Subtask
 	}
+	runDir := filepath.Join(staging, "runs")
+	if err := os.Mkdir(runDir, 0o700); err != nil {
+		return RunOutput{}, err
+	}
 	cfg := evals.Config{
+		Dir:        runDir,
 		Provider:   func(s evals.Scenario, _ evals.Arm) (llmcontracts.Provider, error) { return spec.Provider(s.Name), nil },
 		Model:      spec.Model,
 		Modes:      []evals.Mode{mode},
@@ -284,9 +291,7 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 		MaxUSD:     spec.MaxUSD,
 		Timeout:    spec.Timeout,
 	}
-	r.mu.Lock()
 	rep, runErr := evals.Run(ctx, cfg, scenarios)
-	r.mu.Unlock()
 	out := RunOutput{Model: rep.Model, SpentUSD: rep.SpentUSD, Stopped: rep.Stopped}
 	byID := map[string]evals.Result{}
 	for _, res := range rep.Results {
@@ -299,11 +304,12 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 		st.mu.Unlock()
 		if res, ok := byID[c.ID]; ok {
 			co.Skipped, co.WallMS, co.CostUSD = res.Skipped, res.WallMS, res.CostUSD
+			co.StubCalls = res.StubCalls
 			if res.TotalTokens > co.Tokens {
 				co.Tokens = res.TotalTokens
 			}
 			if !co.Ran || !res.Success {
-				co.Why = res.Why
+				co.Why = scrub(res.Why)
 			}
 		} else {
 			co.Skipped = "not run"

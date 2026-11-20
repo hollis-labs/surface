@@ -233,11 +233,15 @@ func (x *Runner) Propose(ctx context.Context, agent, runID string) (Proposal, er
 	}
 	model := runModel(t, gw)
 	meter := &usageMeter{budget: caps.RunTokens}
-	p := &budgeted{Provider: newGatewayProvider(gw.URL, gw.KeyFile), meter: meter}
+	base, err := newGatewayProvider(t, gw)
+	if err != nil {
+		return Proposal{}, err
+	}
+	p := &budgeted{Provider: base, meter: meter}
 	text, err := p.Complete(ctx, llmtypes.ChatRequest{Model: model, MaxTokens: proposeMaxOut, SystemPrompt: metaPrompt,
 		Messages: []llmtypes.ChatMessage{{Role: "user", Content: input}}})
 	if err != nil {
-		return Proposal{}, err
+		return Proposal{}, errors.New(scrub(err.Error()))
 	}
 	used, _ := meter.state()
 	prop := Proposal{ID: newID(), Agent: agent, Run: runID, Digest: t.Digest(), Created: x.now().UTC().Format(time.RFC3339), Model: model, Tokens: used, Items: []Edit{}}

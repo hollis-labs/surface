@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,8 +77,13 @@ func (f *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		text("Noted.")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(reply)
+	if !req.Stream {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(reply)
+		return
+	}
+	writeAnthropicStream(w, reply)
+
 }
 
 const loopSuite = `name: loop
@@ -309,4 +315,31 @@ func TestOfflineRunNeedsNoGatewayAndSpendsNothing(t *testing.T) {
 	if code, _ = h.Do("POST", "/agents/off/suites/basics/run", `{"mode":"live","confirm":true}`); code == 202 {
 		t.Fatal("live run with no gateway")
 	}
+}
+
+func writeAnthropicStream(w http.ResponseWriter, reply map[string]any) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	emit := func(kind string, data map[string]any) {
+		data["type"] = kind
+		raw, _ := json.Marshal(data)
+		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, raw)
+	}
+	emit("message_start", map[string]any{"message": map[string]any{"id": "fake", "type": "message", "role": "assistant", "model": "claude-test-1", "content": []any{}, "usage": reply["usage"]}})
+	for i, block := range reply["content"].([]map[string]any) {
+		start := map[string]any{"type": block["type"]}
+		delta := map[string]any{}
+		if block["type"] == "text" {
+			start["text"] = ""
+			delta["type"], delta["text"] = "text_delta", block["text"]
+		} else {
+			start["id"], start["name"], start["input"] = block["id"], block["name"], map[string]any{}
+			input, _ := json.Marshal(block["input"])
+			delta["type"], delta["partial_json"] = "input_json_delta", string(input)
+		}
+		emit("content_block_start", map[string]any{"index": i, "content_block": start})
+		emit("content_block_delta", map[string]any{"index": i, "delta": delta})
+		emit("content_block_stop", map[string]any{"index": i})
+	}
+	emit("message_delta", map[string]any{"delta": map[string]any{"stop_reason": reply["stop_reason"]}, "usage": reply["usage"]})
+	emit("message_stop", map[string]any{})
 }

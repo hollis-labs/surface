@@ -37,7 +37,8 @@ type Case struct {
 	// Fixtures are workspace files the agent can read (path: content).
 	Fixtures map[string]string `yaml:"fixtures,omitempty" json:"fixtures,omitempty"`
 	// Writes offers the file-writing tools (the case changes the workspace).
-	Writes bool `yaml:"writes,omitempty" json:"writes,omitempty"`
+	Writes bool   `yaml:"writes,omitempty" json:"writes,omitempty"`
+	Stubs  []Stub `yaml:"stubs,omitempty" json:"stubs,omitempty"`
 	// Script is what the stand-in model does in an offline run, step by step, for the last
 	// turn (earlier turns are answered "Noted."). Without one, an offline run answers once
 	// and stops. It is a harness check, not evidence about a model.
@@ -208,6 +209,9 @@ func (s Suite) Validate() error {
 			if !safeRel(p) || p == "task.md" || p == "prelude.txt" || topFiles[p] || strings.HasPrefix(p, "skills/") || strings.HasPrefix(p, "context/") || strings.HasPrefix(p, "variants/") || strings.HasPrefix(p, ".") {
 				errs = append(errs, fmt.Errorf("%s: fixture %q: a relative workspace path that is not one of the agent's own files", where, p))
 			}
+		}
+		if err := validateStubs(c.Stubs); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", where, err))
 		}
 		for j, st := range c.Script {
 			if (st.Say == "") == (len(st.Calls) == 0) {

@@ -60,6 +60,7 @@ type Caps struct {
 
 // CaseResult is one case's outcome.
 type CaseResult struct {
+	StubCalls  map[string]int `json:"stub_calls,omitempty"`
 	ID         string         `json:"id"`
 	Pass       bool           `json:"pass"`
 	Why        string         `json:"why,omitempty"`
@@ -91,6 +92,50 @@ type recorder struct {
 	mu        sync.Mutex
 	exchanges []Exchange
 	calls     []ToolUse
+}
+
+// StreamChat records the public provider events, independent of the wire format.
+func (r *recorder) StreamChat(ctx context.Context, req llmtypes.ChatRequest) (<-chan llmtypes.StreamEvent, error) {
+	in, err := r.Provider.StreamChat(ctx, req)
+	if err != nil {
+		return nil, errors.New(scrub(err.Error()))
+	}
+	out := make(chan llmtypes.StreamEvent, 16)
+	go func() {
+		defer close(out)
+		var reply anthropicReply
+		defer func() { r.see(req, reply) }()
+		for ev := range in {
+			switch ev.Type {
+			case llmtypes.EventDelta:
+				reply.Content = append(reply.Content, anthropicBlock{Type: "text", Text: ev.Content})
+			case llmtypes.EventToolUse:
+				if ev.ToolUse != nil {
+					raw, _ := json.Marshal(ev.ToolUse.Input)
+					reply.Content = append(reply.Content, anthropicBlock{Type: "tool_use", Name: ev.ToolUse.Name, ID: ev.ToolUse.ID, Input: raw})
+				}
+			case llmtypes.EventDone, llmtypes.EventSessionID, llmtypes.EventThinking:
+				// Forward lifecycle/thinking events without adding them to the answer.
+			case llmtypes.EventError:
+				ev.Error = scrub(ev.Error)
+			case llmtypes.EventUsage:
+				if ev.Usage != nil {
+					reply.Usage.InputTokens += ev.Usage.InputTokens
+					reply.Usage.OutputTokens += ev.Usage.OutputTokens
+					reply.Usage.CacheCreationTokens += ev.Usage.CacheCreationTokens
+					reply.Usage.CacheReadTokens += ev.Usage.CacheReadTokens
+				}
+			}
+			select {
+			case out <- ev:
+			case <-ctx.Done():
+				for range in {
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
 }
 
 func (r *recorder) Calls() []ToolUse {
@@ -159,7 +204,7 @@ func (r *recorder) see(req llmtypes.ChatRequest, reply anthropicReply) {
 			ex.Calls = append(ex.Calls, ToolUse{Name: b.Name, Input: in})
 		}
 	}
-	ex.Reply = strings.Join(text, "\n")
+	ex.Reply = strings.Join(text, "")
 	r.mu.Lock()
 	r.exchanges = append(r.exchanges, ex)
 	r.calls = append(r.calls, ex.Calls...)
@@ -175,15 +220,9 @@ type Runner struct {
 	gateway func(ctx context.Context) (module.Gateway, error)
 	now     func() time.Time
 
-	// childExe is the binary eval children are started from; empty: this process's own.
-	childExe string
-
-	mu       sync.Mutex
-	running  map[string]context.CancelFunc
-	children map[string]int    // run id -> eval child's pid
-	modes    map[string]string // run id -> mode, for the runs going now
-	// tmpBase is where eval children's temporary roots are made; empty: the system's.
-	tmpBase string
+	mu      sync.Mutex
+	running map[string]context.CancelFunc
+	modes   map[string]string
 	// wg tracks runs in progress, so a test (or Stop) can wait for them.
 	wg sync.WaitGroup
 }
@@ -630,22 +669,28 @@ func (x *Runner) Cancel(runID string) bool {
 // Wait waits for every run in progress.
 func (x *Runner) Wait() { x.wg.Wait() }
 
-// executeSuite runs a suite and grades it. It runs in the eval child process only
-// (child.go): nanite/evals changes the working directory for each case.
+// executeSuite runs and grades a suite in process, in isolated workspaces.
 func executeSuite(ctx context.Context, rt Runtime, run Run, s Suite, t Tree, gw module.Gateway, progress func(caseID string)) Run {
 	meter := &usageMeter{budget: run.Caps.RunTokens}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	meter.cancel = cancel
+	var live llmcontracts.Provider
+	if run.Mode == "live" {
+		var err error
+		live, err = newGatewayProvider(t, gw)
+		if err != nil {
+			run.Status, run.Stopped, run.Finished = "failed", scrub(err.Error()), time.Now().UTC().Format(time.RFC3339)
+			return run
+		}
+	}
 	recorders := map[string]*recorder{}
 	for _, c := range s.Cases {
 		rec := &recorder{}
 		if run.Mode == "live" {
-			base := newGatewayProvider(gw.URL, gw.KeyFile)
-			base.record = rec.see
-			rec.Provider = &budgeted{Provider: base, meter: meter}
+			rec.Provider = &budgeted{Provider: live, meter: meter}
 		} else {
-			rec.Provider = &budgeted{Provider: &offlineProvider{c: c, record: rec.see}, meter: meter}
+			rec.Provider = &budgeted{Provider: &offlineProvider{c: c}, meter: meter}
 		}
 		recorders[c.ID] = rec
 	}
@@ -660,7 +705,7 @@ func executeSuite(ctx context.Context, rt Runtime, run Run, s Suite, t Tree, gw 
 	// Rubric graders ask the model through a provider of their own: counted against the
 	// run's token budget, kept out of the case's transcript, and skipped once the dollar cap
 	// would be passed (priced as nanite/evals prices, conservatively).
-	judge := &budgeted{Provider: newGatewayProvider(gw.URL, gw.KeyFile), meter: meter}
+	judge := &budgeted{Provider: live, meter: meter}
 	spent := out.SpentUSD
 	if run.Mode != "live" {
 		spent = 0 // the stand-in model costs nothing; nanite/evals priced its estimated usage
@@ -672,7 +717,7 @@ func executeSuite(ctx context.Context, rt Runtime, run Run, s Suite, t Tree, gw 
 	for _, c := range s.Cases {
 		co := byID[c.ID]
 		rec := recorders[c.ID]
-		cr := CaseResult{ID: c.ID, Answer: co.Answer, Graders: co.Graders, Steps: co.Steps, Tokens: co.Tokens, CostUSD: co.CostUSD, WallMS: co.WallMS,
+		cr := CaseResult{StubCalls: co.StubCalls, ID: c.ID, Answer: co.Answer, Graders: co.Graders, Steps: co.Steps, Tokens: co.Tokens, CostUSD: co.CostUSD, WallMS: co.WallMS,
 			Skipped: co.Skipped, Transcript: rec.transcript()}
 		if cr.Graders == nil {
 			cr.Graders = []GraderResult{}
@@ -739,7 +784,7 @@ func executeSuite(ctx context.Context, rt Runtime, run Run, s Suite, t Tree, gw 
 	case over:
 		run.Status, run.Stopped = "stopped", fmt.Sprintf("the run's token budget (%d) was spent", run.Caps.RunTokens)
 	case out.Stopped != "":
-		run.Status, run.Stopped = "stopped", out.Stopped
+		run.Status, run.Stopped = "stopped", scrub(out.Stopped)
 	}
 	return run
 }

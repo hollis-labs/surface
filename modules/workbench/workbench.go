@@ -26,9 +26,6 @@ import (
 )
 
 func init() {
-	// Started as an eval child (child.go), this process runs the eval and exits; it never
-	// becomes the app.
-	_ = runChildIfAsked()
 	module.Register(&mod{})
 }
 

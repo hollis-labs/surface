@@ -85,8 +85,8 @@ github.com/hollis-labs/libs/security/secrets v0.1.0 h1:/wrYAM5viUnYMpDhvbQmPlTMe
 github.com/hollis-labs/libs/security/secrets v0.1.0/go.mod h1:Krd1kgmisOVmeN1G/ltaLMva58tIBki9xShsySqd86Y=
 github.com/hollis-labs/libs/ui/ui-go v0.4.0 h1:3TydDJElqD1ilgfY1FY+ei+joAuRcwMyuorGTDD1qIw=
 github.com/hollis-labs/libs/ui/ui-go v0.4.0/go.mod h1:MBO41Mrbgo6YfRbm8MI50qQXjDfwhkvA/WxRdtOiL38=
-github.com/hollis-labs/nanite v0.8.0 h1:IlLsPmPKhS+bm6xMZfDzWt41ISAMLj8ymTIqNbh2ShE=
-github.com/hollis-labs/nanite v0.8.0/go.mod h1:Z/ZlwCVn4Tl759GYVJi+Lcll52Z+R0ddrDkgcyZlcbs=
+github.com/hollis-labs/nanite v0.9.0 h1:Vzpngubivie9QkXdqHc6rBrxvEhqStHl8lt4z2x9s3Q=
+github.com/hollis-labs/nanite v0.9.0/go.mod h1:Z/ZlwCVn4Tl759GYVJi+Lcll52Z+R0ddrDkgcyZlcbs=
 github.com/hollis-labs/substrate v0.1.1-0.20261120212928-3b89e9c9ff54 h1:uHgO0eE6JMnQOP/8uLVHUUGm2CRoAACyfkRo3IshP9g=
 github.com/hollis-labs/substrate v0.1.1-0.20261120212928-3b89e9c9ff54/go.mod h1:LNK7DIqGyVnvvKGYJIhnVKIdF1yIfNP9MtE252Y8G80=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=

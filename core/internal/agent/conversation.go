@@ -407,8 +407,8 @@ func listGrants(ctx context.Context, db *sql.DB) ([]StandingGrant, error) {
 	return out, rows.Err()
 }
 
-// naniteContextBytes is the room Surface gives the turn's protected Context slot:
-// holds 2,000 tokens, counted as bytes/4, and a block over that is left out whole, not cut.
+// naniteContextBytes is the room Surface gives its turn block in the protected Context slot:
+// 2,000 tokens, counted as bytes/4. Authored context files have additional reserved room.
 // A little is kept back for how the slot is rendered.
 const naniteContextTokens = 2000
 const naniteContextBytes = naniteContextTokens*4 - 200

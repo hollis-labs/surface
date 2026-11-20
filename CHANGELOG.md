@@ -10,18 +10,22 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   a trash, imported (a `.tar.gz` or `.zip` archive checked for unsafe paths, links and size, or a directory copied in
   read-only) and exported (the directory, a `workbench.json` manifest and the Workbench's sidecar; never `.nanite/`).
   Tabs for the prompt (agent.md, with Nanite's base prompt shown read-only), skills, tools (.mcp.json,
-  permissions.yaml), subtask variants, providers.yaml, reflexes and triggers (a steer-shaped draft in the sidecar, not
-  yet run by Nanite), context (host.yaml runtime knobs, `compact_at` as a runtime option, context files), history
+  permissions.yaml), subtask variants, providers.yaml, reflexes and triggers (libs agent/steer v0.1.0 config in the
+  sidecar; Nanite applies it from its next release), context (host.yaml runtime knobs, `compact_at` as a runtime option, context files), history
   (every save a version with a digest and a note; diff and rollback), evals and the assembled prompt. Every save is
   validated as Nanite reads the files, literal credentials refused. Eval suites run through Nanite's eval harness:
   offline by default (each case's script stands in for the model), live only on the owner's confirmation, through the
   app's gateway within a dollar cap and token budgets; graders for text, regex, the ANSWER line, JSON paths, tool
   calls with arguments, steps, tokens, workspace files and a model-graded rubric; runs kept by digest and compared.
   From a run's failures a model proposes edits (file, diff, rationale) that the owner accepts or rejects one by one;
-  accepting saves a version. `workbench_*` agent tools; none accepts a proposal. See modules/workbench/README.md.
+  accepting saves a version. Saves change only authored files, in place (Nanite's `.nanite/` state is never
+  touched); eval runs happen in a child process so the server never changes directory; spending, accepting,
+  rollback, delete and directory import are the owner's at the page only. `workbench_*` agent tools; none accepts a
+  proposal, and the configuration files go through a confirm-level tool. See modules/workbench/README.md.
 - **`Host.Agent().Gateway`** gives a module the model gateway the app's agent config names (model, URL, the key
-  file's path; never the key), read at the moment of use, for a module that calls a model on the owner's action.
-- **Nanite v0.6.0.**
+  file's path, never the key and never marshaled), read at the moment of use, for a module that calls a model on the
+  owner's action. Only a module whose manifest sets `Gateway: true` gets it.
+- **Nanite v0.6.0; Substrate's BOM 768e5f7; libs agent/steer v0.1.0.**
 
 - **The agent can run on libs agent/host on the conversation wire** (`SURFACE_AGENT_RUNNER=host`): Basalisk's
   runtime, with every feature of the wire (late answers, module errands, the input lease, the run log, approvals in

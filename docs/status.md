@@ -42,8 +42,8 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 
 `modules/workbench`, in Studio. Real today: the library, templates, import and export, validation on every save,
 versions, the editors for every file Nanite reads, offline and live eval runs through nanite/evals with the cost
-guard, run comparison, and improvement proposals the owner accepts. Recorded for later: reflexes and triggers (a
-steer-shaped draft in the sidecar until Nanite runs them), `compact_at` as a runtime option until agentdir has the
+guard, run comparison, and improvement proposals the owner accepts. Recorded for later: reflexes and triggers (libs
+agent/steer v0.1.0 config in the sidecar, applied once Nanite 0.7.0 is tagged), `compact_at` as a runtime option until agentdir has the
 key, stub tools in evals (nanite/evals has no hook), a live provider from Nanite itself. Checked by
 `modules/workbench` tests against a fake gateway. See [modules/workbench/README.md](../modules/workbench/README.md).
 

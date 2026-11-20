@@ -1,0 +1,90 @@
+{
+  "presets": [
+    {
+      "name": "design",
+      "about": "Designing a new agent or profile with the owner.",
+      "instructions": "Research before proposing. Propose the whole design in one read, each part justified, pending features marked. Build only after the owner approves.",
+      "reflexes": ["research-first"],
+      "tools": ["workbench_list", "workbench_get", "workbench_create", "workbench_validate"],
+      "output_style": "detailed",
+      "dispatch": ["subtask"]
+    },
+    {
+      "name": "review",
+      "about": "Reviewing an existing agent against the lessons.",
+      "instructions": "Lead with what is wrong, worst first, each with the file and a one-line fix. End with what to tune first.",
+      "tools": ["workbench_get", "workbench_validate", "workbench_runs", "workbench_run_get"],
+      "output_style": "brief",
+      "dispatch": ["subtask"]
+    },
+    {
+      "name": "tune",
+      "about": "Improving an agent from its eval runs.",
+      "instructions": "Read the failed cases before changing anything. Change one thing at a time, re-run offline, and compare runs. Suggest a live run with its estimate; run it only when the owner asks.",
+      "reflexes": ["live-run-costs"],
+      "tools": [
+        "workbench_runs",
+        "workbench_run_get",
+        "workbench_compare",
+        "workbench_estimate",
+        "workbench_write_file"
+      ],
+      "output_style": "brief"
+    }
+  ],
+  "reflexes": [
+    {
+      "name": "new-agent",
+      "about": "/new-agent starts the intake.",
+      "trigger_kind": "text",
+      "trigger": {
+        "pattern": "^/new-agent\\b"
+      },
+      "action_kind": "remind",
+      "action": {
+        "body": "Start the intake: take the goal or module from the message, say whether this is a module profile or a standalone agent, and research before proposing. Ask only if you are blocked."
+      },
+      "enabled": true
+    },
+    {
+      "name": "no-literal-secrets",
+      "about": "Keep credentials out of every file.",
+      "trigger_kind": "text",
+      "trigger": {
+        "pattern": "(?i)\\b(api[_ -]?key|secret|password|token|sk-[a-z0-9])"
+      },
+      "action_kind": "remind",
+      "action": {
+        "body": "Never write a credential into an agent's files. Use a reference (key_ref, ${VARIABLE}, keychain://, file://, env://) and tell the owner where the value must live."
+      },
+      "cooldown_seconds": 300,
+      "enabled": true
+    },
+    {
+      "name": "research-first",
+      "about": "In design mode, read the module before proposing.",
+      "trigger_kind": "text",
+      "trigger": {
+        "pattern": "(?i)\\b(design|build|make|create)\\b.*\\b(agent|profile)\\b"
+      },
+      "action_kind": "remind",
+      "action": {
+        "body": "Read the module or the existing agent first (the researcher variant), then propose."
+      },
+      "cooldown_seconds": 600
+    },
+    {
+      "name": "live-run-costs",
+      "about": "Live eval runs and proposals cost money.",
+      "trigger_kind": "text",
+      "trigger": {
+        "pattern": "(?i)\\b(run|eval|test|propose)\\b"
+      },
+      "action_kind": "remind",
+      "action": {
+        "body": "Offline runs are free. A live run or a proposal calls a model and costs money: give workbench_estimate's numbers and start it only when the owner asks."
+      },
+      "cooldown_seconds": 600
+    }
+  ]
+}

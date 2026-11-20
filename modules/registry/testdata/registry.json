@@ -1,0 +1,1031 @@
+{
+  "kinds": {
+    "edges": [
+      {
+        "Type": "deployed_as",
+        "Inverse": "",
+        "SourceKinds": ["project"],
+        "TargetKinds": ["service"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "configures",
+        "Inverse": "",
+        "SourceKinds": ["config"],
+        "TargetKinds": ["project", "service", "agent", "agency"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "owned_by",
+        "Inverse": "owns",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "operated_by",
+        "Inverse": "operates",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "responsible_for",
+        "Inverse": "has_responsible",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "answers_to",
+        "Inverse": "oversees",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "consumes",
+        "Inverse": "consumed_by",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": true
+      },
+      {
+        "Type": "part_of",
+        "Inverse": "contains",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "supersedes",
+        "Inverse": "superseded_by",
+        "SourceKinds": null,
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "composes_with",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["tool"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "use_instead",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["tool"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "requires",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": null,
+        "AllowsCycle": false
+      },
+      {
+        "Type": "related_skill",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["skill"],
+        "AllowsCycle": true
+      },
+      {
+        "Type": "related_doc",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["document"],
+        "AllowsCycle": true
+      },
+      {
+        "Type": "alternative_for",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["tool"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "precedes",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["tool"],
+        "AllowsCycle": false
+      },
+      {
+        "Type": "conflicts_with",
+        "Inverse": "",
+        "SourceKinds": ["tool"],
+        "TargetKinds": ["tool"],
+        "AllowsCycle": true
+      }
+    ],
+    "schemas": [
+      "project/1",
+      "project/2",
+      "tool/1",
+      "relation/1",
+      "classification/1",
+      "agent/1",
+      "agency/1",
+      "skill/1",
+      "document/1",
+      "workstream/1",
+      "correlation/1",
+      "service/1",
+      "config/1",
+      "knowledge/1",
+      "mcp_server/1",
+      "launch_profile/1"
+    ]
+  },
+  "diagnostics": {
+    "ready": true,
+    "schemas": [
+      "project/1",
+      "project/2",
+      "tool/1",
+      "relation/1",
+      "classification/1",
+      "agent/1",
+      "agency/1",
+      "skill/1",
+      "document/1",
+      "workstream/1",
+      "correlation/1",
+      "service/1",
+      "config/1",
+      "knowledge/1",
+      "mcp_server/1",
+      "launch_profile/1"
+    ],
+    "storage": "sqlite"
+  },
+  "schemas": {
+    "project/2": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "lib"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "interfaces": {
+                "items": {
+                  "properties": {
+                    "type": {
+                      "const": "lib"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": ["service", "app", "tool"]
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["class"]
+          }
+        }
+      ],
+      "properties": {
+        "class": {
+          "enum": [1, 2, 3]
+        },
+        "deploy": {
+          "additionalProperties": false,
+          "properties": {
+            "cerberus": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "fleet": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "disposition": {
+          "enum": ["continue", "tbd", "experiment", "decompose", "dissolve", "retire", "parked", "harvested"]
+        },
+        "edges": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "to": {
+                "pattern": "^(user|agency|agent|project|tool):[A-Za-z0-9][A-Za-z0-9._/-]*$",
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "owned_by",
+                  "operated_by",
+                  "responsible_for",
+                  "answers_to",
+                  "consumes",
+                  "part_of",
+                  "supersedes"
+                ]
+              }
+            },
+            "required": ["type", "to"],
+            "type": "object"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "interfaces": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "auth": {
+                "enum": ["enforce", "loopback_open", "policy_gated", "none"]
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": ["cli", "api", "mcp", "daemon", "gui", "lib", "plugin"]
+              }
+            },
+            "required": ["type"],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "lifecycle": {
+          "enum": ["experimental", "active", "deprecated", "retired"]
+        },
+        "location": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "operator": {
+          "pattern": "^(user|agency|agent|project|tool):[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "type": "string"
+        },
+        "org": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "owner": {
+          "pattern": "^(user|agency|agent|project|tool):[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "type": "string"
+        },
+        "release": {
+          "additionalProperties": false,
+          "properties": {
+            "tagging": {
+              "enum": ["semver", "ci-artifact-only"]
+            }
+          },
+          "required": ["tagging"],
+          "type": "object"
+        },
+        "repo": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "schema": {
+          "const": "project/2"
+        },
+        "settings": {
+          "type": "object"
+        },
+        "substrate": {
+          "additionalProperties": false,
+          "properties": {
+            "profile": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "variant": {
+              "enum": ["service", "app-host", "headless", "cli", "microservice"]
+            },
+            "version": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": ["variant", "profile", "version"],
+          "type": "object"
+        },
+        "type": {
+          "enum": ["framework", "monorepo", "lib", "service", "app", "tool"]
+        },
+        "visibility": {
+          "enum": ["public", "private"]
+        }
+      },
+      "required": ["schema", "id", "name", "lifecycle", "visibility", "owner", "interfaces", "type", "disposition"],
+      "type": "object"
+    }
+  },
+  "records": [
+    {
+      "publication": "draft",
+      "id": "project:surface",
+      "kind": "project",
+      "schema": "project/2",
+      "key": "surface",
+      "name": "Surface",
+      "summary": "Framework for agent development environments; Desk is its first app.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "project/2",
+        "id": "surface",
+        "name": "Surface",
+        "description": "A framework for agent development environments: the core plus modules, compiled into an app binary.",
+        "lifecycle": "active",
+        "visibility": "public",
+        "owner": "user:owner",
+        "type": "framework",
+        "disposition": "continue",
+        "class": 2,
+        "org": "hollis-labs",
+        "repo": "hollis-labs/surface",
+        "interfaces": [
+          {
+            "type": "gui",
+            "name": "desk"
+          },
+          {
+            "type": "mcp",
+            "auth": "loopback_open"
+          },
+          {
+            "type": "cli"
+          }
+        ],
+        "release": {
+          "tagging": "semver"
+        },
+        "edges": [
+          {
+            "type": "consumes",
+            "to": "project:tether"
+          },
+          {
+            "type": "owned_by",
+            "to": "agency:hollis-labs"
+          }
+        ]
+      },
+      "revision_id": "rev-project-1",
+      "version_token": "vt-1",
+      "sequence": 1,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-20T09:30:00Z",
+      "edges": [
+        {
+          "hash": "sha256:e1",
+          "id": "edge-1",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "consumes",
+            "from": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:surface"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:tether"
+            },
+            "source": "authored",
+            "status": "reviewed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        },
+        {
+          "hash": "sha256:e2",
+          "id": "edge-2",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "owned_by",
+            "from": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:surface"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "agency",
+              "id": "agency:hollis-labs"
+            },
+            "source": "authored",
+            "status": "proposed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        }
+      ],
+      "owner": "user:owner"
+    },
+    {
+      "publication": "draft",
+      "id": "project:tether",
+      "kind": "project",
+      "schema": "project/2",
+      "key": "tether",
+      "name": "Tether",
+      "summary": "Agent messaging, sessions and the MCP gateway.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "project/2",
+        "id": "tether",
+        "name": "Tether",
+        "lifecycle": "active",
+        "visibility": "private",
+        "owner": "user:owner",
+        "type": "service",
+        "class": 1,
+        "disposition": "continue",
+        "interfaces": [
+          {
+            "type": "mcp"
+          },
+          {
+            "type": "api"
+          }
+        ]
+      },
+      "revision_id": "rev-project-2",
+      "version_token": "vt-2",
+      "sequence": 2,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [
+        {
+          "hash": "sha256:e3",
+          "id": "edge-3",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "owned_by",
+            "from": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:tether"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "agency",
+              "id": "agency:hollis-labs"
+            },
+            "source": "authored",
+            "status": "reviewed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        }
+      ],
+      "owner": "user:owner"
+    },
+    {
+      "publication": "draft",
+      "id": "project:frag",
+      "kind": "project",
+      "schema": "project/2",
+      "key": "frag",
+      "name": "Frag",
+      "summary": "Fragments engine: capture and route notes.",
+      "lifecycle": "experimental",
+      "authority": "registry",
+      "payload": {
+        "schema": "project/2",
+        "id": "frag",
+        "name": "Frag",
+        "lifecycle": "experimental",
+        "visibility": "private",
+        "owner": "agent:archie",
+        "type": "app",
+        "class": 3,
+        "disposition": "experiment",
+        "interfaces": [
+          {
+            "type": "gui"
+          }
+        ]
+      },
+      "revision_id": "rev-project-3",
+      "version_token": "vt-3",
+      "sequence": 3,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [
+        {
+          "hash": "sha256:e4",
+          "id": "edge-4",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "consumes",
+            "from": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:frag"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "project",
+              "id": "project:tether"
+            },
+            "source": "authored",
+            "status": "proposed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        }
+      ],
+      "owner": "agent:archie"
+    },
+    {
+      "publication": "draft",
+      "id": "agency:hollis-labs",
+      "kind": "agency",
+      "schema": "agency/1",
+      "key": "hollis-labs",
+      "name": "Hollis Labs",
+      "summary": "The agency that owns the portfolio.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "agency/1",
+        "id": "hollis-labs",
+        "name": "Hollis Labs"
+      },
+      "revision_id": "rev-agency-4",
+      "version_token": "vt-4",
+      "sequence": 4,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [],
+      "owner": "user:owner"
+    },
+    {
+      "publication": "draft",
+      "id": "agent:archie",
+      "kind": "agent",
+      "schema": "agent/1",
+      "key": "archie",
+      "name": "Archie",
+      "summary": "Architecture reviewer agent.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "agent/1",
+        "id": "archie",
+        "name": "Archie",
+        "role": "reviewer",
+        "harness": "claude"
+      },
+      "revision_id": "rev-agent-5",
+      "version_token": "vt-5",
+      "sequence": 5,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [
+        {
+          "hash": "sha256:e5",
+          "id": "edge-5",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "answers_to",
+            "from": {
+              "authority": "registry",
+              "kind": "agent",
+              "id": "agent:archie"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "agency",
+              "id": "agency:hollis-labs"
+            },
+            "source": "authored",
+            "status": "proposed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        },
+        {
+          "hash": "sha256:e6",
+          "id": "edge-6",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "responsible_for",
+            "from": {
+              "authority": "registry",
+              "kind": "agent",
+              "id": "agent:archie"
+            },
+            "to": {
+              "authority": "torque",
+              "kind": "task",
+              "id": "CW-20261118-0026"
+            },
+            "source": "authored",
+            "status": "proposed"
+          },
+          "target_state": "unchecked",
+          "checked_at": "2026-11-19T10:00:00Z"
+        }
+      ],
+      "owner": "user:owner"
+    },
+    {
+      "publication": "draft",
+      "id": "tool:mcp/tether/torque_task_get",
+      "kind": "tool",
+      "schema": "tool/1",
+      "key": "mcp-tether-torque_task_get",
+      "name": "torque_task_get",
+      "summary": "Fetch one Torque task with its newest comments.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "tool/1",
+        "id": "tool:mcp/tether/torque_task_get",
+        "source": "mcp",
+        "origin": "tether",
+        "lifecycle": "active",
+        "definition": {
+          "name": "torque_task_get",
+          "description": "Fetch the full TaskRecord for one task ID.",
+          "input_schema": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "annotations": {
+            "readOnlyHint": true
+          }
+        }
+      },
+      "revision_id": "rev-tool-6",
+      "version_token": "vt-6",
+      "sequence": 6,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [],
+      "owner": "project:tether",
+      "review": {
+        "definition_hash": "sha256:aa11",
+        "state": "unreviewed",
+        "queue_state": "pending",
+        "proposed_by": "writer"
+      }
+    },
+    {
+      "publication": "draft",
+      "id": "tool:mcp/tether/torque_task_create",
+      "kind": "tool",
+      "schema": "tool/1",
+      "key": "mcp-tether-torque_task_create",
+      "name": "torque_task_create",
+      "summary": "Create a Torque task.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "tool/1",
+        "id": "tool:mcp/tether/torque_task_create",
+        "source": "mcp",
+        "origin": "tether",
+        "lifecycle": "active",
+        "definition": {
+          "name": "torque_task_create",
+          "input_schema": {
+            "type": "object"
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+          }
+        }
+      },
+      "revision_id": "rev-tool-7",
+      "version_token": "vt-7",
+      "sequence": 7,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [
+        {
+          "hash": "sha256:e7",
+          "id": "edge-7",
+          "proposed_by": "writer",
+          "relation": {
+            "schema": "relation/1",
+            "type": "use_instead",
+            "from": {
+              "authority": "registry",
+              "kind": "tool",
+              "id": "tool:mcp/tether/torque_task_create"
+            },
+            "to": {
+              "authority": "registry",
+              "kind": "tool",
+              "id": "tool:mcp/tether/torque_task_get"
+            },
+            "source": "authored",
+            "status": "proposed"
+          },
+          "target_state": "resolved",
+          "checked_at": "2026-11-19T10:00:00Z"
+        }
+      ],
+      "owner": "project:tether",
+      "review": {
+        "definition_hash": "sha256:bb22",
+        "state": "unreviewed",
+        "queue_state": "pending",
+        "proposed_by": "writer"
+      }
+    },
+    {
+      "publication": "draft",
+      "id": "document:guide/operations",
+      "kind": "document",
+      "schema": "document/1",
+      "key": "guide-operations",
+      "name": "Operations guide",
+      "summary": "Restore procedure.",
+      "lifecycle": "active",
+      "authority": "registry",
+      "payload": {
+        "schema": "document/1",
+        "id": "guide/operations",
+        "name": "Operations guide",
+        "subtype": "procedure",
+        "format": "markdown",
+        "body": "# Restore\n\nRead the backup manifest first, then restore the newest snapshot.\n"
+      },
+      "revision_id": "rev-document-8",
+      "version_token": "vt-8",
+      "sequence": 8,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [],
+      "owner": "agent:archie",
+      "subtype": "procedure"
+    },
+    {
+      "publication": "draft",
+      "id": "skill:commit",
+      "kind": "skill",
+      "schema": "skill/1",
+      "key": "commit",
+      "name": "commit",
+      "summary": "Commit work in a shared tree.",
+      "lifecycle": "deprecated",
+      "authority": "registry",
+      "payload": {
+        "schema": "skill/1",
+        "id": "commit",
+        "name": "commit",
+        "description": "Commit work in a tree another session may be using."
+      },
+      "revision_id": "rev-skill-9",
+      "version_token": "vt-9",
+      "sequence": 9,
+      "created_at": "2026-11-18T09:00:00Z",
+      "updated_at": "2026-11-19T10:00:00Z",
+      "edges": [],
+      "owner": "user:owner"
+    }
+  ],
+  "history": {
+    "project:surface": [
+      {
+        "publication": "draft",
+        "id": "project:surface",
+        "kind": "project",
+        "schema": "project/2",
+        "key": "surface",
+        "name": "Surface",
+        "summary": "Framework for agent development environments; Desk is its first app.",
+        "lifecycle": "active",
+        "authority": "registry",
+        "payload": {
+          "schema": "project/2",
+          "id": "surface",
+          "name": "Surface",
+          "description": "A framework for agent development environments: the core plus modules, compiled into an app binary.",
+          "lifecycle": "active",
+          "visibility": "public",
+          "owner": "user:owner",
+          "type": "framework",
+          "disposition": "continue",
+          "class": 2,
+          "org": "hollis-labs",
+          "repo": "hollis-labs/surface",
+          "interfaces": [
+            {
+              "type": "gui",
+              "name": "desk"
+            },
+            {
+              "type": "mcp",
+              "auth": "loopback_open"
+            },
+            {
+              "type": "cli"
+            }
+          ],
+          "release": {
+            "tagging": "semver"
+          },
+          "edges": [
+            {
+              "type": "consumes",
+              "to": "project:tether"
+            },
+            {
+              "type": "owned_by",
+              "to": "agency:hollis-labs"
+            }
+          ]
+        },
+        "revision_id": "rev-project-1",
+        "version_token": "vt-1",
+        "sequence": 1,
+        "created_at": "2026-11-18T09:00:00Z",
+        "updated_at": "2026-11-20T09:30:00Z",
+        "edges": [
+          {
+            "hash": "sha256:e1",
+            "id": "edge-1",
+            "proposed_by": "writer",
+            "relation": {
+              "schema": "relation/1",
+              "type": "consumes",
+              "from": {
+                "authority": "registry",
+                "kind": "project",
+                "id": "project:surface"
+              },
+              "to": {
+                "authority": "registry",
+                "kind": "project",
+                "id": "project:tether"
+              },
+              "source": "authored",
+              "status": "reviewed"
+            },
+            "target_state": "resolved",
+            "checked_at": "2026-11-19T10:00:00Z"
+          },
+          {
+            "hash": "sha256:e2",
+            "id": "edge-2",
+            "proposed_by": "writer",
+            "relation": {
+              "schema": "relation/1",
+              "type": "owned_by",
+              "from": {
+                "authority": "registry",
+                "kind": "project",
+                "id": "project:surface"
+              },
+              "to": {
+                "authority": "registry",
+                "kind": "agency",
+                "id": "agency:hollis-labs"
+              },
+              "source": "authored",
+              "status": "proposed"
+            },
+            "target_state": "resolved",
+            "checked_at": "2026-11-19T10:00:00Z"
+          }
+        ],
+        "owner": "user:owner"
+      },
+      {
+        "publication": "draft",
+        "id": "project:surface",
+        "kind": "project",
+        "schema": "project/2",
+        "key": "surface",
+        "name": "Surface",
+        "summary": "Framework for ADEs.",
+        "lifecycle": "experimental",
+        "authority": "registry",
+        "payload": {
+          "schema": "project/2",
+          "id": "surface",
+          "name": "Surface",
+          "description": "A framework for ADEs.",
+          "lifecycle": "experimental",
+          "visibility": "public",
+          "owner": "user:owner",
+          "type": "framework",
+          "disposition": "continue",
+          "class": 2,
+          "org": "hollis-labs",
+          "repo": "hollis-labs/surface",
+          "interfaces": [
+            {
+              "type": "gui",
+              "name": "desk"
+            },
+            {
+              "type": "mcp",
+              "auth": "loopback_open"
+            }
+          ],
+          "release": {
+            "tagging": "semver"
+          },
+          "edges": [
+            {
+              "type": "consumes",
+              "to": "project:tether"
+            },
+            {
+              "type": "owned_by",
+              "to": "agency:hollis-labs"
+            }
+          ]
+        },
+        "revision_id": "rev-project-0",
+        "version_token": "vt-0",
+        "sequence": 0,
+        "created_at": "2026-11-18T09:00:00Z",
+        "updated_at": "2026-11-18T09:00:00Z",
+        "edges": [
+          {
+            "hash": "sha256:e1",
+            "id": "edge-1",
+            "proposed_by": "writer",
+            "relation": {
+              "schema": "relation/1",
+              "type": "consumes",
+              "from": {
+                "authority": "registry",
+                "kind": "project",
+                "id": "project:surface"
+              },
+              "to": {
+                "authority": "registry",
+                "kind": "project",
+                "id": "project:tether"
+              },
+              "source": "authored",
+              "status": "reviewed"
+            },
+            "target_state": "resolved",
+            "checked_at": "2026-11-19T10:00:00Z"
+          }
+        ],
+        "owner": "user:owner"
+      }
+    ]
+  },
+  "published": ["project:surface", "project:tether", "agency:hollis-labs"]
+}

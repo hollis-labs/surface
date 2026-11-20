@@ -200,7 +200,8 @@ export default { views: { "scratch/main": Scratch } } satisfies ModuleWeb
 A view gets `win` (its window: `args`, `key`, `focused`), `desk` (open, close, setTitle, setArgs, report,
 setDirty, run, confirm) and `api` (calls to the module's own routes). Hooks: `useEvent(prefix, fn)`,
 `useSetting(fullKey)` (and `setSetting` to change one), `useMarks(ref)`; marks: `addMark`, `replyMark`, `resolveMark`; `Icon` draws a lucide
-icon by name.
+icon by name. `CiteText` and `CiteRef` draw references as chips; `RecordBody` draws a record's text as the Cite record
+window does (a JSON document as fields, with the raw JSON a toggle away).
 
 - `desk.report(win.id, state)` replaces what the window says it is showing; send the whole state each time.
   The keys the desk reads are `kind`, `ref`, `url` and `selection`.

@@ -5,6 +5,18 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Registry (`modules/registry`, in Desk): a read-only browser for the Registry.** Kinds with record counts, the
+  review queue and the diagnostics; the records of a kind, filtered by lifecycle and owner or searched
+  (registry_record_search); a record's fields (the Cite structured view, with its JSON), status and owner, relations
+  both ways grouped by type as Cite chips, revisions with a field-by-field diff between two, its review, and the raw
+  record; a kind's schema with its fields and allowed relations. The working copy (drafts) by default, Published a
+  toggle away. Refreshes on its button and every 30 s while in front. Every call is one of the Registry's read tools
+  through the gateway (`registry.tether_command`); changes and review decisions are the agent's, with the Tether
+  module's registry_* tools, on the owner's word: the `registry` slot puts them top of mind and tells the agent the
+  record in front with its version token and definition hash. Registry records are a Cite kind,
+  `registry.record`: `registry:<id>` (`registry:project:surface`) in chat, notes or the terminal is a chip that opens
+  the record. The page's sdk exports `RecordBody` (the Cite record view's body) for a module to reuse.
+
 - **Agent Workbench (`modules/workbench`, in Studio): make, edit, evaluate and improve Nanite agents.** An agent is
   an agent directory (libs agent/agentdir) in the Workbench's library, created from a template, duplicated, deleted to
   a trash, imported (a `.tar.gz` or `.zip` archive checked for unsafe paths, links and size, or a directory copied in

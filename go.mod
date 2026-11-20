@@ -11,7 +11,7 @@ require (
 	github.com/hollis-labs/libs/core/util v0.11.1
 	github.com/hollis-labs/libs/llm/core v0.4.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
-	github.com/hollis-labs/nanite v0.5.0
+	github.com/hollis-labs/nanite v0.6.0
 	github.com/hollis-labs/substrate v0.1.1-0.20261120023730-64c3a1b0bb6c
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0
@@ -36,6 +36,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hollis-labs/libs/agent/agentdir v0.2.0 // indirect
+	github.com/hollis-labs/libs/agent/trace v0.2.0 // indirect
 	github.com/hollis-labs/libs/app/app-host v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/store v0.1.0 // indirect

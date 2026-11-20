@@ -38,7 +38,11 @@ export function parseJSONDocument(text: string | undefined): object | undefined 
   const t = text?.trim() ?? ""
   if (!(t.startsWith("{") && t.endsWith("}")) && !(t.startsWith("[") && t.endsWith("]"))) return undefined
   try {
-    const v: unknown = JSON.parse(t)
+    // A number is kept as it is written when a JS number cannot hold it exactly (an id past 2^53,
+    // 1.10): the reviver's source text (where the engine gives it) stands in for it.
+    const exact = (_key: string, v: unknown, ctx?: { source?: string }) =>
+      typeof v === "number" && ctx?.source !== undefined && String(v) !== ctx.source ? ctx.source : v
+    const v: unknown = JSON.parse(t, exact as (key: string, value: unknown) => unknown)
     return v && typeof v === "object" ? v : undefined
   } catch {
     return undefined
@@ -74,7 +78,7 @@ const ID_KEYS = ["id", "key", "ref", "slug", "uuid"]
 function scalar(v: unknown): DocNode {
   if (v === null || v === undefined) return { type: "scalar", text: "none", empty: true }
   if (typeof v === "boolean") return { type: "scalar", text: v ? "yes" : "no" }
-  if (typeof v === "number") return { type: "scalar", text: v.toLocaleString() }
+  if (typeof v === "number") return { type: "scalar", text: String(v) } // as written: 2026, not "2,026"
   const s = String(v)
   if (s === "") return { type: "scalar", text: "empty", empty: true }
   if (ISO.test(s) && !Number.isNaN(Date.parse(s))) return { type: "scalar", text: s, iso: s }
@@ -160,4 +164,30 @@ export function splitFrontMatter(text: string): { fields: DocField[]; rest: stri
     if (value) fields.push({ key: kv[1], label: humanize(kv[1]), node: scalar(value) })
   }
   return { fields, rest: text.slice(m[0].length) }
+}
+
+/** Items of a list drawn before "Show more". */
+export const LIST_PAGE = 50
+
+/** A document past either of these is shown raw, not laid out: drawing it would stall the page. */
+export const MAX_LAYOUT_BYTES = 512 << 10
+export const MAX_LAYOUT_VALUES = 5000
+
+/** Whether a document is small enough to lay out: its text and the number of values in it. */
+export function fitsLayout(text: string, doc: unknown): boolean {
+  if (text.length > MAX_LAYOUT_BYTES) return false
+  let n = 0
+  const walk = (v: unknown): boolean => {
+    if (++n > MAX_LAYOUT_VALUES) return false
+    if (v && typeof v === "object") for (const x of Object.values(v)) if (!walk(x)) return false
+    return true
+  }
+  return walk(doc)
+}
+
+/** Text in a Markdown code fence its own backticks cannot close: shown exactly as it is. */
+export function fenced(text: string, lang: string): string {
+  let ticks = "```"
+  while (text.includes(ticks)) ticks += "`"
+  return `${ticks}${lang}\n${text}\n${ticks}`
 }

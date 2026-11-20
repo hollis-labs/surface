@@ -181,8 +181,8 @@ func TestCasterJSONDocumentIsSummarisedNotExcerpted(t *testing.T) {
 	if strings.Contains(e.Description, "{") {
 		t.Fatal("the preview shows JSON text")
 	}
-	if len(c.reads) != 2 || c.reads[0] != casterPreviewBytes || c.reads[1] != casterMaxBytes {
-		t.Fatalf("reads %v: a JSON preview cut short is read again whole", c.reads)
+	if len(c.reads) != 2 || c.reads[0] != casterPreviewBytes || c.reads[1] != casterSummaryBytes {
+		t.Fatalf("reads %v: a JSON preview cut short is read once more, at the summary size", c.reads)
 	}
 	for _, f := range e.Fields {
 		if f.Label == "Ref" {
@@ -203,6 +203,33 @@ func TestCasterJSONDocumentIsSummarisedNotExcerpted(t *testing.T) {
 	got, _ = r.Resolve(context.Background(), h, []string{ref})
 	if d := got[ref].Description; d != "# Plan\n\nThe body." {
 		t.Fatalf("markdown description %q", d)
+	}
+
+	// A collab/v1 document: front matter, then JSON. Summarized past the front matter.
+	c.content, c.reads = "---\ncollab: v1\nkind: diagram\ntitle: Map\n---\n"+`{"diagram":"v1","nodes":[{"id":"a"},{"id":"b"}],"edges":[{"from":"a","to":"b"}]}`, nil
+	got, _ = r.Resolve(context.Background(), h, []string{ref})
+	if d := got[ref].Description; d != "1 edge · 2 nodes" {
+		t.Fatalf("collab diagram description %q", d)
+	}
+
+	// Text that starts like JSON but is Markdown, not cut short: an excerpt and Markdown, never "cut short JSON".
+	for _, md := range []string{"[Spec](https://example.test/spec) is the source.\n\nMore.", "[ ] write the port\n[x] read it", "[1] Smith, 2020. A paper.", "{curly} is a word here"} {
+		c.content, c.reads = md, nil
+		got, _ = r.Resolve(context.Background(), h, []string{ref})
+		if e := got[ref]; strings.Contains(e.Description, "JSON") || len(c.reads) != 1 || e.Description != excerpt(md, 320) {
+			t.Fatalf("%q: description %q after %d reads", md, e.Description, len(c.reads))
+		}
+		rec, _ = r.Record(context.Background(), h, ref)
+		if rec.Body != md {
+			t.Fatalf("%q: body %q", md, rec.Body)
+		}
+	}
+
+	// A JSON document longer than the summary size: two reads, no summary, no fragment.
+	c.content, c.reads = `{"messages":[`+strings.Repeat(`"xxxxxxxx",`, casterSummaryBytes/8)+`"y"]}`, nil
+	got, _ = r.Resolve(context.Background(), h, []string{ref})
+	if d := got[ref].Description; d != "A JSON document, too long to summarize here." || len(c.reads) != 2 {
+		t.Fatalf("large JSON preview: %q after %v", d, c.reads)
 	}
 
 	// JSON cut short even at the record's size: shown as code, never as broken JSON.
@@ -229,6 +256,16 @@ func TestSummaryOfJSON(t *testing.T) {
 		}
 		if got := summaryOfJSON(v); got != c.want {
 			t.Fatalf("%s: %q, want %q", c.in, got, c.want)
+		}
+	}
+	for _, md := range []string{"[ ] buy milk", "[x] done", "{ not json", "[link](x)"} {
+		if looksLikeJSON(md) {
+			t.Fatalf("%q looks like JSON", md)
+		}
+	}
+	for _, js := range []string{`{"a":1}`, "[\n  {", "[]", `["a"`, "{}"} {
+		if !looksLikeJSON(js) {
+			t.Fatalf("%q does not look like JSON", js)
 		}
 	}
 	if _, ok := parseJSONDoc("# Not JSON {"); ok {

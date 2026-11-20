@@ -3,6 +3,7 @@ package tether
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -11,11 +12,12 @@ import (
 // preview card, never shown as a fragment of its text. The page draws the whole of it as
 // fields in the record window (web/src/cite/structured.ts).
 
+// jsonStart is how a JSON object or array begins: "{" then a key or "}", "[" then a value or a
+// closing "]" that ends the text. A Markdown task line ("[ ] buy milk") is not JSON.
+var jsonStart = regexp.MustCompile(`^\s*(\{\s*["}]|\[\s*([\[{"\d-]|true|false|null|\]\s*$))`)
+
 // looksLikeJSON reports whether text starts the way a JSON object or array does.
-func looksLikeJSON(s string) bool {
-	t := strings.TrimSpace(s)
-	return strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[")
-}
+func looksLikeJSON(s string) bool { return jsonStart.MatchString(s) }
 
 // parseJSONDoc parses text that is a JSON object or array. Anything else (a scalar, Markdown,
 // JSON cut short) is not a JSON document.

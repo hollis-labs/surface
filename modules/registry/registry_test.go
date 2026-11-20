@@ -19,12 +19,12 @@ import (
 // the live kinds, diagnostics and project/2 schema, and records written in the Registry's
 // record shape).
 type fixture struct {
-	Kinds       json.RawMessage            `json:"kinds"`
-	Diagnostics json.RawMessage            `json:"diagnostics"`
-	Schemas     map[string]json.RawMessage `json:"schemas"`
-	Records     []map[string]any           `json:"records"`
+	Kinds       json.RawMessage             `json:"kinds"`
+	Diagnostics json.RawMessage             `json:"diagnostics"`
+	Schemas     map[string]json.RawMessage  `json:"schemas"`
+	Records     []map[string]any            `json:"records"`
 	History     map[string][]map[string]any `json:"history"`
-	Published   []string                   `json:"published"`
+	Published   []string                    `json:"published"`
 }
 
 // fake is the gateway: it answers the Registry's read tools from the fixture and records each call.

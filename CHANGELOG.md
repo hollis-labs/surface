@@ -17,7 +17,7 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   validators; one that fails is left out with the reason in the log. Variants are a profile's internal helpers
   (subtasks), and the `subtasks` and `skills` groups are turned on when a profile needs them; tool packages are
   offered only when the agent config turns `tools` on. Off on the host runner. `steering.json` is checked, not
-  applied yet. The Workbench declares its profile slot.
+  applied yet. The Workbench names its profile (the Agent Architect, `modules/workbench/profile/`), so Studio works as the Architect while the Workbench is in front.
 - **Nanite main (v0.6.1-0.20261120160952-50b6e5fc121c)** until v0.7.0 is tagged: authored validators, tool
   packages, steering and resume.
 

@@ -168,7 +168,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	open := dir
 	if len(s.prof.order) > 0 {
 		s.prof.seat, s.prof.stage = dir, s.stageDir(w.agent)
-		if err := s.stageProfile(ProfileChoice{Why: "default"}); err != nil {
+		if err = s.stageProfile(ProfileChoice{Why: "default"}); err != nil {
 			s.prof.stage = ""
 			return nil, fmt.Errorf("agent: staged agent directory: %w", err)
 		}

@@ -180,10 +180,10 @@ func TestModuleProfilesOnTheNaniteRunner(t *testing.T) {
 	}
 
 	// The staged directory is under the data directory; the owner's seat is untouched.
-	if _, err := os.Stat(filepath.Join(data, "agents", "profiles.staged", "agent.md")); err != nil {
+	if _, err = os.Stat(filepath.Join(data, "agents", "profiles.staged", "agent.md")); err != nil {
 		t.Errorf("staged directory: %v", err)
 	}
-	seat, err := os.ReadFile(filepath.Join(filepath.Dir(os.Getenv("SURFACE_AGENT_CONFIG")), "agents", "profiles", "agent.md"))
+	seat, err := os.ReadFile(filepath.Join(filepath.Dir(os.Getenv("SURFACE_AGENT_CONFIG")), "agents", "profiles", "agent.md")) //nolint:gosec // the test's own temporary directory
 	if err != nil || strings.Contains(string(seat), "Profile:") {
 		t.Errorf("the seat was changed: %v", err)
 	}

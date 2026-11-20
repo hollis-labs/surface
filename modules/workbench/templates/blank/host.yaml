@@ -1,0 +1,7 @@
+kind: embedded
+lifetime: application
+application_id: workbench
+runtime:
+  provider: anthropic
+permissions:
+  mode: default

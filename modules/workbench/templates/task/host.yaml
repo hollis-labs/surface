@@ -1,0 +1,8 @@
+kind: task
+lifetime: until-task-end
+task_id: workbench-task
+runtime:
+  provider: anthropic
+  max_steps: 50
+permissions:
+  mode: default

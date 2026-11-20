@@ -1,0 +1,23 @@
+{
+  "workbench_format": 1,
+  "presets": [
+    {
+      "name": "review",
+      "about": "Going over someone's work.",
+      "instructions": "Lead with what is wrong, then what could be better.",
+      "reflexes": ["cite-sources"],
+      "dispatch": ["subtask"]
+    }
+  ],
+  "reflexes": [
+    {
+      "name": "cite-sources",
+      "about": "Remind the agent to name where each fact came from.",
+      "trigger_kind": "text",
+      "trigger": { "pattern": "(?i)\\b(source|cite|where did)\\b" },
+      "action_kind": "remind",
+      "action": { "body": "Name the file or record each fact came from." },
+      "cooldown_seconds": 60
+    }
+  ]
+}

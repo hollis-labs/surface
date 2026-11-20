@@ -37,8 +37,6 @@ It must load with libs agentdir and Nanite's `agent/authored`.
 
 Which profile runs is chosen by the module in front.
 
-**Write for the smallest runtime.** Some apps run on libs agent/host, which loads only `agent.md` and `context/`. Put what the agent cannot do without in those two files; skills, variants and steering add to it under the Nanite runner.
-
 For the whole ADE, auth is one identity with one Warden grant (MVP): profiles and their subtasks share it, so list a profile's auth needs and don't configure them.
 
 ## Variants (`variants/<name>.md`)
@@ -121,7 +119,7 @@ An offline run checks the harness, not the agent. Only a live run shows behaviou
 - **Asking the owner:** `card_ask`, not `ask_user`. Showing things: `ade_point`, `ade_guide_start`.
 - **Desk rules:** give a reason for every window opened; open `transient` for a step and `deliverable` for a result; close your own transient windows; never take focus from the owner's unsaved work; never work around a refusal.
 - **Attention:** `needs_you` > `failed` > `unseen` > `working`. Items come from events, never from an agent's claim; to get an answer, show a card.
-- **Runners** (`SURFACE_AGENT_RUNNER`): `nanite` reads `<agents.dir>/<app>/`; `host` is libs agent/host, Basalisk's runtime; `scripted`.
+- **Runners** (`SURFACE_AGENT_RUNNER`): `nanite` (the default) reads `<agents.dir>/<app>/`; `scripted` is the test runner. libs agent/host is removed (Surface 0.4.0).
 
 ## Nanite front desk (chatrunner, 0.7.0)
 - **Intake:** `off`, `shadow`, `suggest` or `auto` (`AutoConfidence` 0.8); rules, or `PlanWithModel` through the `desk` use.

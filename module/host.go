@@ -50,8 +50,9 @@ type Agent interface {
 	Ask(ctx context.Context, a Ask) (string, error)
 	// Gateway is the model gateway the app's agent config names, read at the moment of the
 	// call: for a module that calls a model itself, and only on the owner's action (the
-	// Workbench's eval runs). It carries the key file's path, never the key. ErrNoAgent when
-	// the config names no model, gateway or key file.
+	// Workbench's eval runs). It carries the key file's path, never the key. Only a module
+	// whose manifest declares Gateway gets it; otherwise, and when the config names no model,
+	// gateway or key file, ErrNoAgent.
 	Gateway(ctx context.Context) (Gateway, error)
 }
 
@@ -61,8 +62,8 @@ type Gateway struct {
 	Model string `json:"model"`
 	URL   string `json:"url"`
 	// KeyFile is the path of the file that holds the key. Read it when a request is made;
-	// never log it or show the key.
-	KeyFile string `json:"key_file"`
+	// never log it or show the key. It is not marshaled.
+	KeyFile string `json:"-"`
 }
 
 // Ask is an errand for the agent.

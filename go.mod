@@ -5,14 +5,16 @@ go 1.26.11
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/hollis-labs/libs/agent/agentdir v0.2.0
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/host v0.1.1
+	github.com/hollis-labs/libs/agent/steer v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
 	github.com/hollis-labs/libs/llm/core v0.4.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
-	github.com/hollis-labs/nanite v0.5.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261120023730-64c3a1b0bb6c
+	github.com/hollis-labs/nanite v0.6.0
+	github.com/hollis-labs/substrate v0.1.1-0.20261120071756-768e5f7efbbd
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
@@ -35,7 +37,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hollis-labs/libs/agent/agentdir v0.2.0 // indirect
+	github.com/hollis-labs/libs/agent/trace v0.2.0 // indirect
 	github.com/hollis-labs/libs/app/app-host v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/store v0.1.0 // indirect

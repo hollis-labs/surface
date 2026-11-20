@@ -11,14 +11,14 @@ import (
 )
 
 // TestModulesImportOnlyTheContract keeps the seam: a module under modules/ may import, of
-// Surface, only the module package (and its helpers: moduletest, tetherlink, collab). Go's internal rule already keeps
+// Surface, only the module package (and its helpers: moduletest, tetherlink, collab, collabtest; widening it to collab was the owner's call). Go's internal rule already keeps
 // core/internal out of reach; this also keeps out the core's public assembly and the app
 // runner, so a module never comes to depend on how an app is put together.
 func TestModulesImportOnlyTheContract(t *testing.T) {
 	const self = "github.com/hollis-labs/surface/"
 	// tetherlink is a helper beside the contract, as moduletest is: a module that talks to Tether
 	// uses it rather than its own client, and it depends on nothing of the app.
-	allowed := map[string]bool{self + "module": true, self + "module/moduletest": true, self + "module/tetherlink": true, self + "module/collab": true}
+	allowed := map[string]bool{self + "module": true, self + "module/moduletest": true, self + "module/tetherlink": true, self + "module/collab": true, self + "module/collab/collabtest": true}
 	root := filepath.Join("..", "modules")
 	if _, err := os.Stat(root); err != nil {
 		t.Skip("no modules directory")

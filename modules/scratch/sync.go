@@ -2,12 +2,16 @@ package scratch
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/surface/module"
@@ -28,10 +32,13 @@ var allowed = tetherlink.Allowed{"caster_put": true, "caster_ls": true, "caster_
 func Ref(id string) string { return "caster://scratch/" + id }
 
 type syncer struct {
-	m    *mod
-	kick chan struct{}
-	stop context.CancelFunc
-	done sync.WaitGroup
+	m          *mod
+	kick       chan struct{}
+	stop       context.CancelFunc
+	done       sync.WaitGroup
+	importDue  atomic.Bool  // read Caster's items back on the next wake
+	lastAsked  atomic.Int64 // when the list last asked for that (unix nanoseconds)
+	lastImport time.Time    // the run loop's own
 }
 
 func (y *syncer) Kick() {
@@ -40,6 +47,32 @@ func (y *syncer) Kick() {
 	default:
 	}
 }
+
+// importSoon asks for Caster's items to be read back: when the sync is turned on, and when the
+// list is opened (at most every 30 s).
+func (y *syncer) importSoon(throttle bool) {
+	now := time.Now().UnixNano()
+	if throttle && time.Duration(now-y.lastAsked.Load()) < askEvery {
+		return
+	}
+	y.lastAsked.Store(now)
+	y.importDue.Store(true)
+	y.Kick()
+}
+
+// askEvery is how often opening the list asks for a read-back.
+var askEvery = 30 * time.Second
+
+// nextBackoff is the wait after another failure: firstBackoff, doubling, at most maxBackoff.
+func nextBackoff(prev time.Duration) time.Duration { return min(max(prev*2, firstBackoff), maxBackoff) }
+
+// Waits: importEvery between read-backs; after a failure, firstBackoff doubling to maxBackoff,
+// back to nothing after a pass that wrote everything.
+const (
+	importEvery  = 10 * time.Minute
+	firstBackoff = 5 * time.Second
+	maxBackoff   = 5 * time.Minute
+)
 
 // enabled reports whether items are written to Caster now: the setting is on and Tether is set.
 func (m *mod) syncEnabled() bool {
@@ -65,23 +98,34 @@ func (m *mod) tether() (tetherlink.Caller, error) {
 	return c, nil
 }
 
-// run writes behind the store until ctx ends: soon after a change, again with a growing wait
-// after a failure, and every ten minutes to read back what others put in Caster.
+// run writes behind the store until ctx ends: soon after a change; again after a failure, from
+// 5 s doubling to 5 min; and reads Caster's items back every ten minutes, when the sync is
+// turned on, and when the list is opened.
 func (y *syncer) run(ctx context.Context) {
-	wait := 10 * time.Minute
+	backoff := time.Duration(0)
 	for {
+		wait := importEvery
 		if y.m.syncEnabled() {
-			if _, err := y.m.importItems(ctx); err != nil {
-				slog.Warn("scratch: Caster's items were not read back", "err", err)
+			failed := false
+			if y.importDue.Swap(false) || time.Since(y.lastImport) >= importEvery {
+				y.lastImport = time.Now()
+				if _, err := y.m.importItems(ctx); err != nil {
+					slog.Warn("scratch: Caster's items were not read back", "err", err)
+					failed = true
+				}
 			}
-			more, failed := y.m.pass(ctx)
+			more, pfailed := y.m.pass(ctx)
+			failed = failed || pfailed
 			switch {
 			case failed:
-				wait = min(max(wait*2, 5*time.Second), 5*time.Minute)
+				backoff = nextBackoff(backoff)
+				wait = backoff
 			case more:
+				backoff = 0
 				continue
 			default:
-				wait = 10 * time.Minute
+				backoff = 0
+				wait = max(importEvery-time.Since(y.lastImport), time.Second)
 			}
 		}
 		timer := time.NewTimer(wait)
@@ -91,20 +135,33 @@ func (y *syncer) run(ctx context.Context) {
 			return
 		case <-y.kick:
 			timer.Stop()
-			wait = 10 * time.Minute
 		case <-timer.C:
 		}
 	}
 }
 
-// pass writes up to 25 items Caster does not have as they are now. It reports whether more are
-// waiting and whether a write failed.
+// managed reports whether a Caster tag is one this module writes from the item itself; any
+// other (a Basalisk link "task:CW-…", its own kinds such as "kind:command") is kept as it is.
+func managed(tag string) bool {
+	switch {
+	case tag == "scratch", tag == "done", tag == "archived",
+		strings.HasPrefix(tag, "day:"), strings.HasPrefix(tag, "tag:"):
+		return true
+	case strings.HasPrefix(tag, "kind:"):
+		return kinds[strings.TrimPrefix(tag, "kind:")]
+	}
+	return false
+}
+
+// pass writes up to 25 items Caster does not have as they are now (one in conflict is left
+// alone). One that fails is noted and the rest are still written. It reports whether more are
+// waiting and whether any write failed.
 func (m *mod) pass(ctx context.Context) (more, failed bool) {
 	c, err := m.tether()
 	if err != nil {
 		return false, true
 	}
-	rows, err := m.st.db.QueryContext(ctx, `SELECT id FROM items WHERE synced_at <> updated_at ORDER BY updated_at LIMIT 26`)
+	rows, err := m.st.db.QueryContext(ctx, `SELECT id FROM items WHERE synced_at <> updated_at AND conflict_rev = 0 ORDER BY sync_error <> '', updated_at LIMIT 26`)
 	if err != nil {
 		return false, true
 	}
@@ -120,29 +177,63 @@ func (m *mod) pass(ctx context.Context) (more, failed bool) {
 		more, todo = true, todo[:25]
 	}
 	for _, id := range todo {
-		it, removed, err := m.st.anyItem(ctx, id)
-		if err != nil {
-			continue
+		if !m.write(ctx, c, id) {
+			failed = true
 		}
-		// An item found in Caster keeps the name it has there.
-		name := "scratch/" + it.ID
-		if rest, ok := strings.CutPrefix(it.CasterRef, "caster://"); ok && rest != "" {
-			name = rest
-		}
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		_, err = c.Call(callCtx, "caster_put", map[string]any{
-			"name": name, "content": markdown(it), "mime": "text/markdown", "title": clip(firstLine(it.Text), 120),
-			"tags": strings.Join(casterTags(it, removed), " "), "source": "surface:scratch",
-		})
-		cancel()
-		if err != nil {
-			slog.Warn("scratch: an item was not written to Caster", "id", it.ID, "err", err)
-			_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET sync_error=? WHERE id=?`, clip(err.Error(), 300), it.ID)
-			return more, true
-		}
-		_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET caster_ref=?, synced_at=?, sync_error='' WHERE id=? AND updated_at=?`, "caster://"+name, it.Updated, it.ID, it.Updated)
 	}
-	return more, false
+	return more, failed
+}
+
+// write puts one item in Caster and checks the revision Caster answers against the one this
+// item was at: a later one means someone wrote in between (both are in Caster's history), which
+// is flagged as a conflict rather than taken as ours.
+func (m *mod) write(ctx context.Context, c tetherlink.Caller, id string) bool {
+	var it Item
+	var removed bool
+	var rev int
+	var keep string
+	var deleted sql.NullString
+	err := m.st.db.QueryRowContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at, caster_ref, deleted_at, caster_rev, caster_tags FROM items WHERE id=?`, id).
+		Scan(&it.ID, &it.Text, &it.Kind, &it.Done, &it.Tags, &it.Created, &it.Updated, &it.CasterRef, &deleted, &rev, &keep)
+	if err != nil {
+		return true
+	}
+	removed = deleted.Valid
+	// An item found in Caster keeps the name it has there.
+	name := "scratch/" + it.ID
+	if rest, ok := strings.CutPrefix(it.CasterRef, "caster://"); ok && rest != "" {
+		name = rest
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	raw, err := c.Call(callCtx, "caster_put", map[string]any{
+		"name": name, "content": markdown(it), "mime": "text/markdown", "title": clip(firstLine(it.Text), 120),
+		"tags": strings.Join(casterTags(it, removed, strings.Fields(keep)), " "), "source": "surface:scratch",
+	})
+	cancel()
+	var out struct {
+		Ref string `json:"ref"`
+	}
+	var got int
+	if err == nil {
+		if err = json.Unmarshal([]byte(raw), &out); err == nil {
+			_, at, _ := strings.Cut(out.Ref, "@")
+			if got, err = strconv.Atoi(at); err != nil {
+				err = errors.New("caster_put did not say the new revision")
+			}
+		}
+	}
+	if err != nil {
+		slog.Warn("scratch: an item was not written to Caster", "id", it.ID, "err", err)
+		_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET sync_error=? WHERE id=?`, clip(err.Error(), 300), it.ID)
+		return false
+	}
+	if rev > 0 && got != rev && got != rev+1 {
+		_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET caster_ref=?, conflict_rev=?, sync_error=? WHERE id=?`, "caster://"+name, got,
+			fmt.Sprintf("conflict: Caster had a change of its own (revision %d) under this write; both are in its history", got-1), it.ID)
+		return true
+	}
+	_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET caster_ref=?, caster_rev=?, synced_at=?, sync_error='' WHERE id=? AND updated_at=?`, "caster://"+name, got, it.Updated, it.ID, it.Updated)
+	return true
 }
 
 // markdown is an item as Basalisk writes one: a note as it is, a to-do as a task-list line,
@@ -166,13 +257,22 @@ func markdown(it Item) string {
 }
 
 // casterTags are an item's tags in Caster: that it is scratch, its kind, its day, its own tags,
-// and whether it is done or put away.
-func casterTags(it Item, removed bool) []string {
+// whether it is done or put away, and the tags it had there that this module does not manage
+// (keep). A kept kind (Basalisk's "kind:command") stands for the item's kind.
+func casterTags(it Item, removed bool, keep []string) []string {
 	day := it.Created
 	if len(day) >= 10 {
 		day = day[:10]
 	}
-	tags := []string{"scratch", "kind:" + it.Kind, "day:" + day}
+	tags := []string{"scratch"}
+	ownKind := false
+	for _, t := range keep {
+		ownKind = ownKind || strings.HasPrefix(t, "kind:")
+	}
+	if !ownKind {
+		tags = append(tags, "kind:"+it.Kind)
+	}
+	tags = append(tags, "day:"+day)
 	for _, t := range strings.FieldsFunc(it.Tags, func(r rune) bool { return r == ',' || r == ' ' }) {
 		tags = append(tags, "tag:"+t)
 	}
@@ -182,7 +282,27 @@ func casterTags(it Item, removed bool) []string {
 	if removed {
 		tags = append(tags, "archived")
 	}
-	return tags
+	return append(tags, keep...)
+}
+
+// fromTags reads what Caster's tags say of an item: done, put away, its own tags, its kind, and
+// the tags this module does not manage.
+func fromTags(tags string) (done, archived bool, own []string, kind string, keep []string) {
+	for _, t := range strings.Fields(tags) {
+		switch {
+		case t == "done":
+			done = true
+		case t == "archived":
+			archived = true
+		case strings.HasPrefix(t, "tag:"):
+			own = append(own, strings.TrimPrefix(t, "tag:"))
+		case strings.HasPrefix(t, "kind:") && kinds[strings.TrimPrefix(t, "kind:")]:
+			kind = strings.TrimPrefix(t, "kind:")
+		case !managed(t):
+			keep = append(keep, t)
+		}
+	}
+	return
 }
 
 // maxImport is the largest text read back from Caster as a scratch item.
@@ -207,9 +327,12 @@ func parse(content string) (text, kind string, done bool) {
 	return s, "note", false
 }
 
-// importItems reads back items in Caster's scratch namespace that are not here: ones an agent,
-// Basalisk or another machine put there. Small text only (a document parked in the namespace is
-// not a scratch item). They arrive as already written, so they are not written back.
+// importItems reads Caster's scratch namespace back: items an agent, Basalisk or another
+// machine put there that are not here (small text only: a document parked in the namespace is
+// not a scratch item), and changes made there to items this module holds. A change made there
+// is taken when the item has no change of its own waiting; otherwise the item is flagged as in
+// conflict and neither side is written over. Done, put away, the kind and the item's own tags
+// come from Caster's tags.
 func (m *mod) importItems(ctx context.Context) (int, error) {
 	c, err := m.tether()
 	if err != nil {
@@ -222,6 +345,8 @@ func (m *mod) importItems(ctx context.Context) (int, error) {
 	var list struct {
 		Items []struct {
 			Ref     string `json:"ref"`
+			Rev     int    `json:"rev"`
+			Tags    string `json:"tags"`
 			Updated string `json:"updated"`
 		} `json:"items"`
 	}
@@ -234,11 +359,26 @@ func (m *mod) importItems(ctx context.Context) (int, error) {
 		if !ok || name == "" {
 			continue
 		}
-		var have, passed int
-		_ = m.st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items WHERE id=? OR caster_ref=?`, name, li.Ref).Scan(&have)
-		_ = m.st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passed WHERE ref=?`, li.Ref).Scan(&passed)
-		if have > 0 || passed > 0 {
+		var id, synced, updated string
+		var rev, conflict int
+		err := m.st.db.QueryRowContext(ctx, `SELECT id, caster_rev, synced_at, updated_at, conflict_rev FROM items WHERE caster_ref=? OR id=?`, li.Ref, name).
+			Scan(&id, &rev, &synced, &updated, &conflict)
+		known := err == nil
+		if known && (li.Rev <= rev || conflict >= li.Rev) {
+			continue // Caster has nothing newer (or the conflict is already flagged)
+		}
+		if known && synced != updated {
+			_, _ = m.st.db.ExecContext(ctx, `UPDATE items SET conflict_rev=?, sync_error=? WHERE id=?`, li.Rev,
+				fmt.Sprintf("conflict: changed in Caster (revision %d) and here; neither is written over", li.Rev), id)
+			n++
 			continue
+		}
+		if !known {
+			var passed int
+			_ = m.st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passed WHERE ref=?`, li.Ref).Scan(&passed)
+			if passed > 0 {
+				continue
+			}
 		}
 		got, err := c.Call(ctx, "caster_get", map[string]any{"ref": li.Ref, "max_bytes": maxImport + 1})
 		if err != nil {
@@ -250,20 +390,37 @@ func (m *mod) importItems(ctx context.Context) (int, error) {
 			Truncated bool   `json:"truncated"`
 		}
 		if json.Unmarshal([]byte(got), &item) != nil || item.State != "resolved" || item.Truncated || len(item.Content) > maxImport || strings.TrimSpace(item.Content) == "" {
-			_, _ = m.st.db.ExecContext(ctx, `INSERT OR IGNORE INTO passed(ref) VALUES(?)`, li.Ref)
+			if !known {
+				_, _ = m.st.db.ExecContext(ctx, `INSERT OR IGNORE INTO passed(ref) VALUES(?)`, li.Ref)
+			}
 			continue
 		}
 		text, kind, done := parse(item.Content)
+		tdone, archived, own, tkind, keep := fromTags(li.Tags)
+		if tkind != "" {
+			kind = tkind
+		}
+		done = done || tdone
 		at := li.Updated
-		if _, err := time.Parse(time.RFC3339Nano, at); err != nil {
+		if _, perr := time.Parse(time.RFC3339Nano, at); perr != nil {
 			at = stamp()
 		}
-		id := name
-		if !strings.HasPrefix(id, "s_") {
-			id = "cst_" + name
+		var deletedAt any
+		if archived {
+			deletedAt = at
 		}
-		if _, err := m.st.db.ExecContext(ctx, `INSERT OR IGNORE INTO items (id, text, kind, done, created_at, updated_at, caster_ref, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, text, kind, done, at, at, li.Ref, at); err != nil {
+		if known {
+			now := stamp()
+			_, err = m.st.db.ExecContext(ctx, `UPDATE items SET text=?, kind=?, done=?, tags=?, deleted_at=?, caster_rev=?, caster_tags=?, updated_at=?, synced_at=?, sync_error='' WHERE id=?`,
+				text, kind, done, strings.Join(own, ", "), deletedAt, li.Rev, strings.Join(keep, " "), now, now, id)
+		} else {
+			if id = name; !strings.HasPrefix(id, "s_") {
+				id = "cst_" + name
+			}
+			_, err = m.st.db.ExecContext(ctx, `INSERT OR IGNORE INTO items (id, text, kind, done, tags, created_at, updated_at, deleted_at, caster_ref, caster_rev, caster_tags, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, text, kind, done, strings.Join(own, ", "), at, at, deletedAt, li.Ref, li.Rev, strings.Join(keep, " "), at)
+		}
+		if err != nil {
 			return n, err
 		}
 		n++

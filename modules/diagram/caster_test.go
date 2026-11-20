@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/surface/module/collab"
+	"github.com/hollis-labs/surface/module/collab/collabtest"
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
@@ -14,7 +14,7 @@ import (
 // saved as revisions there, refused when it moved on, hidden (not erased) on delete. A diagram
 // Basalisk wrote is read the same way.
 func TestDiagramsInCaster(t *testing.T) {
-	fake := collab.NewFake()
+	fake := collabtest.NewFake()
 	m := &mod{link: fake}
 	h := moduletest.Start(t, m)
 	ctx := context.Background()
@@ -45,7 +45,7 @@ func TestDiagramsInCaster(t *testing.T) {
 
 	// Basalisk saves a revision meanwhile: a save from revision 1 is refused, as Basalisk's is.
 	d, _ := m.st.get(ctx, id)
-	fake.Put("collab/diagram.system-map", strings.Replace(content, `"reads"`, `"reads (Basalisk)"`, 1), "System Map")
+	fake.Put("collab/diagram.system-map", strings.Replace(content, `"reads"`, `"reads (Basalisk)"`, 1), "System Map", "")
 	if _, err = h.Tool("diagram_put", `{"id":"`+id+`","body":`+flow+`,"base_rev":`+strconv.Itoa(d.Rev)+`}`); err == nil || !strings.Contains(err.Error(), "changed since") {
 		t.Fatalf("a stale save was taken: %v", err)
 	}

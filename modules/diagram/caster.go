@@ -104,7 +104,7 @@ func (c *casterStore) create(ctx context.Context, title, body string) (Diagram, 
 	if strings.TrimSpace(title) == "" {
 		title = "Untitled diagram"
 	}
-	d, err := c.docs.Create(ctx, collab.Doc{Kind: collab.KindDiagram, Title: title, Lang: "json", Body: body}, "owner")
+	d, err := c.docs.Create(ctx, collab.Doc{Kind: collab.KindDiagram, Title: title, Lang: "json", Body: body}, actor(ctx))
 	if err != nil {
 		return Diagram{}, err
 	}
@@ -120,7 +120,7 @@ func (c *casterStore) save(ctx context.Context, id, body, title string, base int
 	if strings.TrimSpace(title) != "" {
 		t = &title
 	}
-	d, err := c.docs.Save(ctx, id, base, t, body, "owner")
+	d, err := c.docs.Save(ctx, id, base, t, body, actor(ctx))
 	if err != nil {
 		return Diagram{}, casterErr(id, err)
 	}
@@ -145,7 +145,7 @@ func (c *casterStore) remove(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.docs.SetDeleted(ctx, id, cur.Rev, true)
+	_, err = c.docs.SetDeleted(ctx, id, cur.Rev, true, actor(ctx))
 	return casterErr(id, err)
 }
 
@@ -240,4 +240,12 @@ var casterSettings = []module.Setting{
 
 func sortByUpdated(d []Diagram) {
 	sort.SliceStable(d, func(i, j int) bool { return d[i].Updated > d[j].Updated })
+}
+
+// actor is who a write in Caster is recorded as: the agent for anyone acting for the owner.
+func actor(ctx context.Context) string {
+	if module.ActorOf(ctx).Delegate() {
+		return "agent"
+	}
+	return "owner"
 }

@@ -74,7 +74,11 @@ func (c *casterStore) list(ctx context.Context, q string) ([]Draft, error) {
 		if q != "" && !strings.Contains(strings.ToLower(d.Title), strings.ToLower(q)) {
 			continue
 		}
-		out = append(out, Draft{ID: d.Name, Title: d.Title, Lang: "markdown", Rev: d.Rev, Created: d.Created, Updated: d.Updated})
+		lang := d.Lang
+		if lang == "" {
+			lang = "markdown"
+		}
+		out = append(out, Draft{ID: d.Name, Title: d.Title, Lang: lang, Rev: d.Rev, Created: d.Created, Updated: d.Updated})
 	}
 	return out, nil
 }
@@ -134,7 +138,7 @@ func (c *casterStore) write(ctx context.Context, id, body, author, _ string, exp
 }
 
 func (c *casterStore) setLang(ctx context.Context, id, lang string) error {
-	_, err := c.docs.Update(ctx, id, 0, func(d *collab.Doc) { d.Lang = lang }, "owner")
+	_, err := c.docs.Update(ctx, id, 0, func(d *collab.Doc) { d.Lang = lang }, actor(ctx))
 	return casterErr(err)
 }
 
@@ -144,7 +148,7 @@ func (c *casterStore) remove(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.docs.SetDeleted(ctx, id, cur.Rev, true)
+	_, err = c.docs.SetDeleted(ctx, id, cur.Rev, true, actor(ctx))
 	return casterErr(err)
 }
 
@@ -227,4 +231,12 @@ var casterSettings = []module.Setting{
 	{Key: "tether_command", Title: "Tether command", About: "A command that speaks MCP over stdio to Tether, through which Caster is reached.", Type: module.SettingString, Default: ""},
 	{Key: "tether_url", Title: "Tether MCP URL", About: "Instead of a command: Tether's MCP endpoint over HTTP.", Type: module.SettingString, Default: ""},
 	{Key: "tether_token_file", Title: "Tether token file", About: "The file holding the token for the MCP URL.", Type: module.SettingString, Default: ""},
+}
+
+// actor is who a write in Caster is recorded as: the agent for anyone acting for the owner.
+func actor(ctx context.Context) string {
+	if module.ActorOf(ctx).Delegate() {
+		return "agent"
+	}
+	return "owner"
 }

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strconv"
@@ -133,7 +134,9 @@ func (s *Store) callAll(ctx context.Context, tool string, args map[string]any) (
 // ErrNotFound means there is no such document; Conflict that it moved on since it was read.
 var ErrNotFound = errors.New("no such document")
 
-// Conflict is returned by Save when the document has a newer revision than the edit began on.
+// Conflict is returned by a write when the document has a newer revision than the edit began
+// on, or when someone else wrote between this read and this write (Caster's put takes no
+// expected revision, so the revision it answers is checked: both writes stay in its history).
 type Conflict struct{ Rev int }
 
 func (c *Conflict) Error() string { return fmt.Sprintf("the document is now at revision %d", c.Rev) }
@@ -206,17 +209,43 @@ func (s *Store) get(ctx context.Context, name string, rev int) (content, title s
 	return out.Content, out.Title, at, true, nil
 }
 
-func (s *Store) put(ctx context.Context, name, content, title, mime, by string) (int, error) {
-	if by != "agent" {
-		by = "owner"
+// Tags are how a document is marked in Caster's listing, so a list needs no read of each
+// document: "collab", its kind and language, when it was made, and "deleted" when hidden.
+// Caster keeps the last tags given when a put gives none, so every put here gives them all.
+func tags(d Doc) string {
+	t := []string{"collab", "kind:" + d.Kind}
+	if d.Lang != "" {
+		t = append(t, "lang:"+d.Lang)
 	}
+	if d.Created != "" && !strings.ContainsAny(d.Created, " \t\n") {
+		t = append(t, "created:"+d.Created)
+	}
+	if d.Deleted {
+		t = append(t, "deleted")
+	}
+	return strings.Join(t, " ")
+}
+
+// actor is who a write is recorded as: "agent", or "owner" for anyone else.
+func actor(by string) string {
+	if by == "agent" {
+		return "agent"
+	}
+	return "owner"
+}
+
+func (s *Store) put(ctx context.Context, name, content, title, mime, tags, by string) (int, error) {
 	source := s.Source
 	if source == "" {
 		source = "surface"
 	}
-	raw, err := s.call(ctx, "caster_put", map[string]any{
-		"name": Namespace + "/" + name, "content": content, "mime": mime, "title": title, "source": source + ":" + by,
-	})
+	args := map[string]any{
+		"name": Namespace + "/" + name, "content": content, "mime": mime, "title": title, "source": source + ":" + actor(by),
+	}
+	if tags != "" {
+		args["tags"] = tags
+	}
+	raw, err := s.call(ctx, "caster_put", args)
 	if err != nil {
 		return 0, err
 	}
@@ -234,7 +263,29 @@ func (s *Store) put(ctx context.Context, name, content, title, mime, by string) 
 	return rev, nil
 }
 
+// putOver writes a document over the revision cur was read at and checks what Caster answered:
+// the same revision is an unchanged text (Caster keeps no new revision for it), the next one is
+// this write; anything else means someone else wrote in between, and both are in its history.
+func (s *Store) putOver(ctx context.Context, cur int, d Doc, by string) (Doc, error) {
+	rev, err := s.put(ctx, d.Name, encode(d), d.Title, "text/markdown", tags(d), by)
+	if err != nil {
+		return Doc{}, err
+	}
+	d.Rev = rev
+	if rev != cur && rev != cur+1 {
+		return d, &Conflict{Rev: rev}
+	}
+	return d, nil
+}
+
+// probeBytes is how much of a document is read to see its front matter, for one listed without
+// this package's tags (written by an older Basalisk, say).
+const probeBytes = 1024
+
 // List is the documents of a kind ("" for all), most recently changed first, without bodies.
+// It is one caster_ls: a document written here carries its kind, language, creation and
+// whether it is hidden as tags. One without them has its front matter read (a small read); one
+// that cannot be read is left out and logged, and the rest are listed.
 func (s *Store) List(ctx context.Context, kind string) ([]Doc, error) {
 	raw, err := s.callAll(ctx, "caster_ls", map[string]any{"ns": Namespace})
 	if err != nil {
@@ -245,6 +296,7 @@ func (s *Store) List(ctx context.Context, kind string) ([]Doc, error) {
 			Ref     string `json:"ref"`
 			Rev     int    `json:"rev"`
 			Title   string `json:"title"`
+			Tags    any    `json:"tags"`
 			Updated string `json:"updated"`
 		} `json:"items"`
 	}
@@ -261,21 +313,73 @@ func (s *Store) List(ctx context.Context, kind string) ([]Doc, error) {
 		if kind != "" && k != kind {
 			continue
 		}
-		doc, err := s.Get(ctx, name, 0)
-		if err != nil {
-			return nil, err
+		d := Doc{Name: name, Kind: k, Title: it.Title, Rev: it.Rev, Updated: it.Updated}
+		t := tagSet(it.Tags)
+		if t["collab"] {
+			d.Deleted = t["deleted"]
+			for tag := range t {
+				if v, ok := strings.CutPrefix(tag, "lang:"); ok {
+					d.Lang = v
+				}
+				if v, ok := strings.CutPrefix(tag, "created:"); ok {
+					d.Created = v
+				}
+			}
+		} else {
+			head, perr := s.probe(ctx, name)
+			if perr != nil {
+				slog.Warn("collab: a document could not be read for the list; it is left out", "name", name, "err", perr)
+				continue
+			}
+			d.Deleted, d.Lang, d.Created = head.Deleted, head.Lang, head.Created
+			if head.Title != "" {
+				d.Title = head.Title
+			}
 		}
-		if doc.Deleted {
-			continue
+		if !d.Deleted {
+			docs = append(docs, d)
 		}
-		docs = append(docs, Doc{Name: name, Kind: k, Title: it.Title, Rev: it.Rev, Updated: it.Updated})
 	}
 	sort.SliceStable(docs, func(i, j int) bool { return docs[i].Updated > docs[j].Updated })
 	return docs, nil
 }
 
-// Get is a document at a revision (0 = latest).
-func (s *Store) Get(ctx context.Context, name string, rev int) (Doc, error) {
+// tagSet reads caster_ls's tags: a space-separated string (or a list).
+func tagSet(v any) map[string]bool {
+	out := map[string]bool{}
+	switch t := v.(type) {
+	case string:
+		for _, w := range strings.Fields(t) {
+			out[w] = true
+		}
+	case []any:
+		for _, w := range t {
+			if s, ok := w.(string); ok {
+				out[s] = true
+			}
+		}
+	}
+	return out
+}
+
+// probe reads a document's front matter only.
+func (s *Store) probe(ctx context.Context, name string) (Doc, error) {
+	raw, err := s.call(ctx, "caster_get", map[string]any{"ref": "caster://" + Namespace + "/" + name, "max_bytes": probeBytes})
+	if err != nil {
+		return Doc{}, err
+	}
+	var out struct {
+		Content string `json:"content"`
+		State   string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || out.State != "resolved" {
+		return Doc{}, fmt.Errorf("caster_get %s: %s", name, out.State)
+	}
+	return decode(name, out.Content), nil
+}
+
+// read is a document at a revision (0 = latest), without when it was written.
+func (s *Store) read(ctx context.Context, name string, rev int) (Doc, error) {
 	if !ValidName(name) {
 		return Doc{}, ErrNotFound
 	}
@@ -294,9 +398,29 @@ func (s *Store) Get(ctx context.Context, name string, rev int) (Doc, error) {
 	return d, nil
 }
 
+// Get is a document at a revision (0 = latest), with when that revision was written (from
+// caster_log, which caster_get does not say).
+func (s *Store) Get(ctx context.Context, name string, rev int) (Doc, error) {
+	d, err := s.read(ctx, name, rev)
+	if err != nil {
+		return Doc{}, err
+	}
+	if log, lerr := s.Log(ctx, name); lerr == nil {
+		for _, r := range log {
+			if r.Rev == d.Rev {
+				d.Updated = r.At
+				break
+			}
+		}
+	}
+	return d, nil
+}
+
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
-// Create makes a new document and returns it. The name is made from the title.
+// Create makes a new document and returns it. The name is made from the title: the slug, then
+// slug-2 … slug-200 when it is taken. A name someone else took between the check and the write
+// (Caster then answers a later revision than 1) is given up for the next.
 func (s *Store) Create(ctx context.Context, d Doc, by string) (Doc, error) {
 	if d.Kind != KindDraft && d.Kind != KindArtifact && d.Kind != KindDiagram {
 		return Doc{}, errors.New("a document is a draft, an artifact or a diagram")
@@ -314,49 +438,45 @@ func (s *Store) Create(ctx context.Context, d Doc, by string) (Doc, error) {
 	}
 	d.Created = time.Now().UTC().Format(time.RFC3339)
 	base := d.Kind + "." + slug
-	d.Name = base
-	for n := 2; n < 200; n++ {
+	if !ValidName(base) {
+		return Doc{}, errors.New("that title does not make a usable name")
+	}
+	for n := 1; n <= maxNames; n++ {
+		d.Name = base
+		if n > 1 {
+			d.Name = base + "-" + strconv.Itoa(n)
+		}
 		_, _, _, taken, err := s.get(ctx, d.Name, 0)
 		if err != nil {
 			return Doc{}, err
 		}
-		if !taken {
-			break
+		if taken {
+			continue
 		}
-		d.Name = base + "-" + strconv.Itoa(n)
+		made, err := s.putOver(ctx, 0, d, by)
+		var conflict *Conflict
+		if errors.As(err, &conflict) {
+			continue // taken meanwhile: its own text is revision 1, ours a later one
+		}
+		return made, err
 	}
-	if !ValidName(d.Name) {
-		return Doc{}, errors.New("that title does not make a usable name")
-	}
-	rev, err := s.put(ctx, d.Name, encode(d), d.Title, "text/markdown", by)
-	if err != nil {
-		return Doc{}, err
-	}
-	d.Rev = rev
-	return d, nil
+	return Doc{}, fmt.Errorf("%s and %d more names like it are taken", base, maxNames-1)
 }
+
+// maxNames is how many names Create tries for one title.
+const maxNames = 200
 
 // Save writes a new revision of a document's body (and title, when given). base is the
 // revision the edit began on: when the document has moved on since, nothing is written and
-// a *Conflict says where it is now. base 0 skips the check.
+// a *Conflict says where it is now. base 0 is the revision read just before the write; a
+// write by someone else between the two is still caught (putOver).
 func (s *Store) Save(ctx context.Context, name string, base int, title *string, body string, by string) (Doc, error) {
-	cur, err := s.Get(ctx, name, 0)
-	if err != nil {
-		return Doc{}, err
-	}
-	if base > 0 && cur.Rev != base {
-		return cur, &Conflict{Rev: cur.Rev}
-	}
-	if title != nil && strings.TrimSpace(*title) != "" {
-		cur.Title = strings.TrimSpace(*title)
-	}
-	cur.Body = body
-	rev, err := s.put(ctx, name, encode(cur), cur.Title, "text/markdown", by)
-	if err != nil {
-		return Doc{}, err
-	}
-	cur.Rev = rev
-	return cur, nil
+	return s.Update(ctx, name, base, func(d *Doc) {
+		if title != nil && strings.TrimSpace(*title) != "" {
+			d.Title = strings.TrimSpace(*title)
+		}
+		d.Body = body
+	}, by)
 }
 
 // Revision is one entry of a document's history.
@@ -465,48 +585,33 @@ func (s *Store) MarkOp(ctx context.Context, name, op string, m Mark) ([]Mark, er
 		return nil, errors.New("a mark is added, updated or removed")
 	}
 	data, _ := json.MarshalIndent(markFile{Collab: "v1", Marks: marks}, "", " ")
-	if _, err := s.put(ctx, name+".marks", string(data), "Marks on "+name, "application/json", m.By); err != nil {
+	if _, err := s.put(ctx, name+".marks", string(data), "Marks on "+name, "application/json", "collab marks", m.By); err != nil {
 		return nil, err
 	}
 	return marks, nil
 }
 
-// SetDeleted hides or restores a document without erasing revisions or marks.
-func (s *Store) SetDeleted(ctx context.Context, name string, base int, deleted bool) (Doc, error) {
+// SetDeleted hides or restores a document without erasing revisions or marks: in its front
+// matter, as Basalisk does, and as the tag "deleted", so a list sees it without reading it. by
+// is who did it.
+func (s *Store) SetDeleted(ctx context.Context, name string, base int, deleted bool, by string) (Doc, error) {
 	if base < 1 {
 		return Doc{}, errors.New("base_rev is required")
 	}
-	d, err := s.Get(ctx, name, 0)
-	if err != nil {
-		return Doc{}, err
-	}
-	if d.Rev != base {
-		return d, &Conflict{Rev: d.Rev}
-	}
-	d.Deleted = deleted
-	rev, err := s.put(ctx, name, encode(d), d.Title, "text/markdown", "agent")
-	if err != nil {
-		return Doc{}, err
-	}
-	d.Rev = rev
-	return d, nil
+	return s.Update(ctx, name, base, func(d *Doc) { d.Deleted = deleted }, by)
 }
 
 // Update writes a new revision of a document after change has edited it (its title, its
-// language, its body). base is the revision the edit began on, as for Save; 0 skips the check.
+// language, its body). base is the revision the edit began on, as for Save.
 func (s *Store) Update(ctx context.Context, name string, base int, change func(*Doc), by string) (Doc, error) {
-	cur, err := s.Get(ctx, name, 0)
+	cur, err := s.read(ctx, name, 0)
 	if err != nil {
 		return Doc{}, err
 	}
 	if base > 0 && cur.Rev != base {
 		return cur, &Conflict{Rev: cur.Rev}
 	}
+	read := cur.Rev
 	change(&cur)
-	rev, err := s.put(ctx, name, encode(cur), cur.Title, "text/markdown", by)
-	if err != nil {
-		return Doc{}, err
-	}
-	cur.Rev = rev
-	return cur, nil
+	return s.putOver(ctx, read, cur, by)
 }

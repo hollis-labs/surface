@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/surface/module/collab"
+	"github.com/hollis-labs/surface/module/collab/collabtest"
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
@@ -12,7 +12,7 @@ import (
 // revisions there, refused when stale,
 // listed beside the app's own, and a revision Basalisk wrote is read.
 func TestDraftsInCaster(t *testing.T) {
-	fake := collab.NewFake()
+	fake := collabtest.NewFake()
 	h := moduletest.Start(t, &mod{link: fake})
 	if err := h.Settings.Set(t.Context(), "new_in", "caster"); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestDraftsInCaster(t *testing.T) {
 	}
 
 	// Basalisk writes revision 3; the draft reads it, and the diff route compares Caster's revisions.
-	fake.Put("collab/draft.launch-plan", strings.Replace(content, "one\n", "ONE\n", 1), "Launch Plan")
+	fake.Put("collab/draft.launch-plan", strings.Replace(content, "one\n", "ONE\n", 1), "Launch Plan", "")
 	got, _ := h.Tool("drafts_get", `{"id":"`+id+`"}`)
 	if s := got.(string); !strings.Contains(s, "ONE") || !strings.Contains(s, "revision 3 of 3") {
 		t.Fatal(s)

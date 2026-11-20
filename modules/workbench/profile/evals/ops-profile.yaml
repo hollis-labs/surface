@@ -1,0 +1,59 @@
+name: ops-profile
+description: The Architect's first real job, designing the Operations module's agent profile from the module's design.
+mode: direct
+cases:
+  - id: designs-the-operations-profile
+    turns:
+      - "Design the Operations module's agent profile. The module design is docs/ops-design.md."
+    fixtures:
+      docs/ops-design.md: |
+        # Operations module (design, condensed)
+        A workstream board the owner runs. Each workstream is a revisioned document with a lifecycle:
+        planning, planned, queued, in_flight, in_review, adoption, active, plus dropped. "held" is a flag,
+        not a lane. Queued is a separate, ordered band; reorder works only inside it.
+        Views: ops (the board), ops.workstream (drill-in: Overview, Tasks, Activity, History), ops.activity.
+        Tools: ops_list, ops_get, ops_activity (read); ops_create, ops_update, ops_move, ops_queue_reorder,
+        ops_link, ops_unlink, ops_request_agent, ops_launch_request (write, the owner approves);
+        ops_drop (confirm). Events: ops.changed, ops.activity.
+        Rules: the board is the owner's. The agent proposes moves; it never launches anything. To start
+        work it files a task (ops_request_agent) or sends a request (ops_launch_request).
+        Activity merges task state, status entries, sessions and messages, and the board's own transitions.
+    script:
+      - calls: [{tool: read_file, args: {path: docs/ops-design.md}}]
+      - say: |
+          ## ops: design
+          Delivers: module profile at modules/ops/profile/
+          Identity: keeps the owner's workstream board current; proposes moves, never launches. To start work
+          it uses ops_launch_request or ops_request_agent.
+          Context: ops-states.md (lanes, held flag, the Queued band).
+          Skills: seed-the-board, weekly-review, request-a-launch.
+          Modes: triage (what needs a decision), review (in-flight health).
+          Reflexes: no-launch (text, remind: request, don't launch); held-check (event ops.changed, remind).
+          Tools top of mind: ops_list, ops_get, ops_activity, ops_move.
+          Front desk: intake suggest; results merge; activity digest.
+          Auth needs: none beyond the app's grant.
+          Evals: proposes a move without making it; asked to launch, requests instead; reads the queue in order.
+          Pending: reflexes and presets apply from Nanite 0.7.0; module profiles from Surface core.
+    graders:
+      - tool_called: {tool: read_file, args: {path: docs/ops-design.md}}
+      - contains: "modules/ops/profile/"
+      - contains: "ops_launch_request"
+      - regex: "(?i)never launch"
+      - regex: "(?i)reflex"
+      - max_steps: 10
+      - rubric: "The profile keeps the board the owner's (propose, never launch), uses the design's real tool names and lifecycle, and its reflexes guard invariants rather than restating instructions."
+
+  - id: asked-to-launch-it-requests
+    turns:
+      - "In the Ops profile, should the agent just launch the queued workstream itself when I say go?"
+    fixtures:
+      docs/ops-design.md: |
+        The agent never launches anything. To start work it files a task (ops_request_agent) or sends a
+        request to the dispatcher (ops_launch_request).
+    script:
+      - calls: [{tool: read_file, args: {path: docs/ops-design.md}}]
+      - say: "No. The design says the agent never launches; when you say go, it sends ops_launch_request (or files ops_request_agent) and links the thread. I'd add a no-launch reflex as a backstop."
+    graders:
+      - contains: "ops_launch_request"
+      - not_contains: "tether_session_launch"
+      - regex: "(?i)\\bno\\b|never"

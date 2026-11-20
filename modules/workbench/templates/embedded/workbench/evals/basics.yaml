@@ -1,0 +1,19 @@
+name: basics
+description: Reads a file it is pointed at and states one fact from it.
+mode: direct
+cases:
+  - id: reads-the-note
+    turns:
+      - "What does notes/launch.md say the launch date is? Answer with the date."
+    fixtures:
+      notes/launch.md: |
+        # Launch
+        The launch moved from 2026-12-01 to 2026-12-08.
+    graders:
+      - answer_line: "2026-12-08"
+      - tool_called: {tool: read_file, args: {path: notes/launch.md}}
+      - max_steps: 6
+    # What the stand-in model does in an offline run (a harness check; no model is called).
+    script:
+      - calls: [{tool: read_file, args: {path: notes/launch.md}}]
+      - say: "The launch moved a week.\nANSWER: 2026-12-08"

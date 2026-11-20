@@ -1,0 +1,11 @@
+kind: embedded
+lifetime: application
+application_id: workbench
+runtime:
+  provider: anthropic
+  max_output_tokens: 4096
+  max_steps: 30
+  context_window: 200000
+  tool_concurrency: 4
+permissions:
+  mode: default

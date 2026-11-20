@@ -4,6 +4,7 @@
  */
 import {
   Bot,
+  Boxes,
   Brain,
   Copy,
   ExternalLink,
@@ -50,6 +51,7 @@ const ICONS: Record<string, LucideIcon> = {
   "tether.message": Mail,
   "caster.doc": NotebookText,
   "work.item": Target,
+  "registry.record": Boxes,
   path: FileText,
   "path.relative": FileText,
   url: Link2,

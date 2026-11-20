@@ -35,6 +35,8 @@ type FileConfig struct {
 	MaxTokens int    `json:"max_tokens,omitempty"`
 	MaxSteps  int    `json:"max_steps,omitempty"`
 	CompactAt int    `json:"compact_at,omitempty"`
+	// AutoApprove bypasses approval asks for testing; explicit denies still apply.
+	AutoApprove bool `json:"auto_approve,omitempty"`
 	// MCP lists outside MCP servers whose tools the agent gets. Reserved: the engine does
 	// not use this field; configure MCP in the Nanite agent directory.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`

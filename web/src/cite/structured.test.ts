@@ -2,8 +2,12 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   type DocNode,
+  fenced,
   fieldsOf,
+  fitsLayout,
   humanize,
+  LIST_PAGE,
+  MAX_LAYOUT_VALUES,
   parseJSONDocument,
   splitFrontMatter,
   titleOf,
@@ -115,4 +119,33 @@ test("front matter is split off as fields", () => {
   )
   assert.equal(fm.rest, "# Plan\n\nBody")
   assert.equal(splitFrontMatter("# No front matter\n---\n"), undefined)
+})
+
+test("numbers are shown as written: no grouping, no lost digits", () => {
+  const doc = parseJSONDocument('{"year":2026,"big":12345678901234567890,"ratio":1.10,"n":-3}') as Record<
+    string,
+    unknown
+  >
+  const text = (k: string) => (toDocNode(doc[k]) as { text: string }).text
+  assert.equal(text("year"), "2026")
+  assert.equal(text("big"), "12345678901234567890")
+  assert.equal(text("ratio"), "1.10")
+  assert.equal(text("n"), "-3")
+})
+
+test("a document too large to lay out is shown raw", () => {
+  const small = { items: Array.from({ length: 10 }, (_, i) => ({ id: i })) }
+  assert.equal(fitsLayout(JSON.stringify(small), small), true)
+  const many = { items: Array.from({ length: MAX_LAYOUT_VALUES }, (_, i) => ({ id: i })) }
+  assert.equal(fitsLayout(JSON.stringify(many), many), false)
+  const long = { text: "x".repeat(600 << 10) }
+  assert.equal(fitsLayout(JSON.stringify(long), long), false)
+  assert.ok(LIST_PAGE > 0 && LIST_PAGE <= 100)
+})
+
+test("the raw view is the text as written, fenced so it cannot close early", () => {
+  const raw = '{\n  "id": 12345678901234567890,\n  "md": "```go\\nx\\n```"\n}'
+  const fence = "````"
+  assert.equal(fenced(raw, "json"), `${fence}json\n${raw}\n${fence}`)
+  assert.equal(fenced("a ``` b", "json"), "````json\na ``` b\n````")
 })

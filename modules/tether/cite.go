@@ -508,9 +508,12 @@ func tetherMessage(ctx context.Context, c tetherlink.Caller, id string, full boo
 // casterMaxBytes bounds the text a Caster record is read with.
 const casterMaxBytes = 256 << 10
 
-// casterPreviewBytes is what a preview reads first. A JSON document cut short there cannot
-// be summarized, so it is read again up to casterMaxBytes.
+// casterPreviewBytes is what a preview reads first: enough for a Markdown excerpt.
 const casterPreviewBytes = 4096
+
+// casterSummaryBytes is what a preview reads, once more, of a JSON document cut short at
+// casterPreviewBytes, to summarize it. A document longer than this is not summarized.
+const casterSummaryBytes = 64 << 10
 
 type casterAnswer struct {
 	Content   string `json:"content"`
@@ -546,20 +549,25 @@ func casterDoc(ctx context.Context, c tetherlink.Caller, ref string, full bool) 
 	if err != nil {
 		return module.RefEntity{}, err
 	}
-	if !full && d.Truncated && looksLikeJSON(d.Content) {
-		if whole, err := casterRead(ctx, c, ref, casterMaxBytes); err == nil {
-			d = whole
+	// The text past any front matter (a collab/v1 document has one) is Markdown or JSON.
+	text := stripFrontMatter(d.Content)
+	if !full && d.Truncated && looksLikeJSON(text) {
+		if more, err := casterRead(ctx, c, ref, casterSummaryBytes); err == nil {
+			d, text = more, stripFrontMatter(more.Content)
 		}
 	}
-	doc, isJSON := parseJSONDoc(d.Content)
+	doc, isJSON := parseJSONDoc(text)
+	// JSON that does not parse because it was cut short; text that only starts like JSON
+	// ("[Spec](…)", "[ ] a task") and was not cut is Markdown.
+	cutJSON := !isJSON && d.Truncated && looksLikeJSON(text)
 	title := strings.TrimSpace(d.Title)
 	if title == "" && isJSON {
 		if m, ok := doc.(map[string]any); ok {
 			title = pick(m, "title", "name", "subject")
 		}
 	}
-	if title == "" && !looksLikeJSON(d.Content) {
-		title = firstLine(stripFrontMatter(d.Content))
+	if title == "" && !isJSON && !cutJSON {
+		title = firstLine(text)
 	}
 	if title == "" {
 		title = ref[strings.LastIndexByte(ref, '/')+1:]
@@ -571,23 +579,23 @@ func casterDoc(ctx context.Context, c tetherlink.Caller, ref string, full bool) 
 	switch {
 	case isJSON:
 		e.Description = summaryOfJSON(doc)
-	case looksLikeJSON(d.Content):
+	case cutJSON:
 		e.Description = "A JSON document, too long to summarize here."
 	default:
-		e.Description = excerpt(stripFrontMatter(d.Content), 320)
+		e.Description = excerpt(text, 320)
 	}
 	if d.Revision != nil {
 		e.Fields = addField(e.Fields, "Revision", fmt.Sprint(d.Revision), false)
 	}
-	if isJSON {
+	if isJSON || cutJSON {
 		e.Fields = addField(e.Fields, "Format", "JSON", false)
 	}
 	if full {
 		switch {
 		case isJSON:
-			e.Body = strings.TrimSpace(d.Content)
-		case looksLikeJSON(d.Content): // cut short: no longer JSON, so shown as code
-			e.Body = "```json\n" + strings.TrimRight(d.Content, "\n") + "\n```\n\n…(cut short)"
+			e.Body = strings.TrimSpace(d.Content) // front matter and all: the page lays out both
+		case cutJSON: // no longer JSON, so shown as code
+			e.Body = "```json\n" + strings.TrimRight(text, "\n") + "\n```\n\n…(cut short)"
 		default:
 			e.Body = d.Content
 			if d.Truncated {

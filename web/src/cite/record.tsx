@@ -12,29 +12,46 @@ import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { ViewProps } from "../sdk/types"
 import { type CiteRecord, kindLabel, loadRecord, openURL } from "./store.ts"
-import { parseJSONDocument, splitFrontMatter, toDocNode } from "./structured.ts"
+import { fenced, fitsLayout, parseJSONDocument, splitFrontMatter, toDocNode } from "./structured.ts"
 import { DocFields, DocValue } from "./structured-view.tsx"
 import { CiteText, iconFor, subtitleFor, updatedAgo } from "./ui.tsx"
 
 /**
  * A record's text: Markdown (its front matter, if any, as fields above it), or, when it is a
- * JSON document, its fields laid out to be read, with the raw JSON a toggle away.
+ * JSON document (a collab/v1 one has front matter over it), its fields laid out to be read,
+ * with the JSON a toggle away, shown as it was written. A document too large to lay out is
+ * shown as its text.
  */
 export function RecordBody({ body }: { body: string }) {
-  const doc = useMemo(() => parseJSONDocument(body), [body])
-  const node = useMemo(() => (doc ? toDocNode(doc) : undefined), [doc])
-  const front = useMemo(() => (doc ? undefined : splitFrontMatter(body)), [doc, body])
+  const front = useMemo(() => (parseJSONDocument(body) ? undefined : splitFrontMatter(body)), [body])
+  const json = front ? front.rest : body
+  const doc = useMemo(() => parseJSONDocument(json), [json])
+  const fits = useMemo(() => (doc ? fitsLayout(json, doc) : false), [json, doc])
+  const node = useMemo(() => (doc && fits ? toDocNode(doc) : undefined), [doc, fits])
   const [mode, setMode] = useState<"fields" | "raw">("fields")
-  if (front)
+  const head = front?.fields.length ? <DocFields fields={front.fields} /> : null
+  if (doc && !fits)
     return (
-      <div className="flex min-w-0 flex-col gap-4">
-        {front.fields.length ? <DocFields fields={front.fields} /> : null}
-        <Markdown>{front.rest}</Markdown>
+      <div className="flex min-w-0 flex-col gap-3">
+        {head}
+        <p className="text-xs text-muted-foreground">
+          This JSON document is too large to lay out; it is shown as it is.
+        </p>
+        <pre className="font-mono text-xs break-all whitespace-pre-wrap">{json}</pre>
       </div>
     )
-  if (!node) return <Markdown>{body}</Markdown>
+  if (!node)
+    return front ? (
+      <div className="flex min-w-0 flex-col gap-4">
+        {head}
+        <Markdown>{front.rest}</Markdown>
+      </div>
+    ) : (
+      <Markdown>{body}</Markdown>
+    )
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      {head}
       <ToggleGroup
         variant="outline"
         size="sm"
@@ -52,11 +69,7 @@ export function RecordBody({ body }: { body: string }) {
           JSON
         </ToggleGroupItem>
       </ToggleGroup>
-      {mode === "fields" ? (
-        <DocValue node={node} />
-      ) : (
-        <Markdown>{`\`\`\`json\n${JSON.stringify(doc, null, 2)}\n\`\`\``}</Markdown>
-      )}
+      {mode === "fields" ? <DocValue node={node} /> : <Markdown>{fenced(json.trim(), "json")}</Markdown>}
     </div>
   )
 }

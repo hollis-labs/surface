@@ -4,10 +4,12 @@
  * telling field. Text is set as Markdown when it looks like Markdown, else as written, with
  * its references as chips. Dates are short ("3d ago"), the full time on hover.
  */
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Markdown } from "@/components/ui/markdown"
-import { type DocField, type DocNode, isInline } from "./structured.ts"
+import { type DocField, type DocItem, type DocNode, isInline, LIST_PAGE } from "./structured.ts"
 import { ago, CiteText } from "./ui.tsx"
 
 function Scalar({ node }: { node: Extract<DocNode, { type: "scalar" }> }) {
@@ -98,29 +100,41 @@ export function DocValue({ node }: { node: DocNode }) {
         <span className="text-muted-foreground italic">empty</span>
       )
     case "list":
-      return (
-        <div className="flex min-w-0 flex-col gap-2">
-          {node.items.map((item, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: items of one fixed document, in order
-            <Card key={i} size="sm">
-              <CardHeader>
-                <CardTitle>{item.title}</CardTitle>
-                {item.subtitle ? (
-                  <CardDescription>
-                    <code className="font-mono text-xs break-all">{item.subtitle}</code>
-                  </CardDescription>
-                ) : null}
-              </CardHeader>
-              {item.fields.length ? (
-                <CardContent>
-                  <DocFields fields={item.fields} />
-                </CardContent>
-              ) : null}
-            </Card>
-          ))}
-        </div>
-      )
+      return <DocList items={node.items} />
     case "json":
       return <Markdown>{`\`\`\`json\n${node.text}\n\`\`\``}</Markdown>
   }
+}
+
+/** A list of sub-cards, LIST_PAGE at a time. */
+function DocList({ items }: { items: DocItem[] }) {
+  const [shown, setShown] = useState(LIST_PAGE)
+  const left = items.length - shown
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      {items.slice(0, shown).map((item, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: items of one fixed document, in order
+        <Card key={i} size="sm">
+          <CardHeader>
+            <CardTitle>{item.title}</CardTitle>
+            {item.subtitle ? (
+              <CardDescription>
+                <code className="font-mono text-xs break-all">{item.subtitle}</code>
+              </CardDescription>
+            ) : null}
+          </CardHeader>
+          {item.fields.length ? (
+            <CardContent>
+              <DocFields fields={item.fields} />
+            </CardContent>
+          ) : null}
+        </Card>
+      ))}
+      {left > 0 ? (
+        <Button variant="outline" size="sm" className="self-start" onClick={() => setShown((n) => n + LIST_PAGE)}>
+          Show {Math.min(left, LIST_PAGE)} more of {left}
+        </Button>
+      ) : null}
+    </div>
+  )
 }

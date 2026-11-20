@@ -6,6 +6,7 @@
 // `cite-references`, which teaches it to agents.
 import { createCasterKind } from "./kinds/caster.ts"
 import { createFragmentKind } from "./kinds/fragment.ts"
+import { createOpsKind } from "./kinds/ops.ts"
 import { createPathKinds } from "./kinds/path.ts"
 import { createRegistryKind } from "./kinds/registry.ts"
 import { createTesseractKinds } from "./kinds/tesseract.ts"
@@ -18,6 +19,7 @@ import { createRefRegistry, type RefRegistry } from "./registry.ts"
 export { codeRanges, detect, detectRefs, refKey, uniqueRefs } from "./detect.ts"
 export { CASTER_KIND } from "./kinds/caster.ts"
 export { FRAGMENT_KIND } from "./kinds/fragment.ts"
+export { OPS_WORKSTREAM_KIND } from "./kinds/ops.ts"
 export { PATH_KIND, RELATIVE_PATH_KIND } from "./kinds/path.ts"
 export { REGISTRY_RECORD_KIND } from "./kinds/registry.ts"
 export { TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND } from "./kinds/tesseract.ts"
@@ -41,6 +43,7 @@ export function createDefaultRefRegistry(): RefRegistry {
     createCasterKind(),
     createWorkKind(),
     createRegistryKind(),
+    createOpsKind(),
     ...createPathKinds(),
   ]) {
     r.register(k)

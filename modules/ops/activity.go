@@ -147,7 +147,10 @@ func (r reader) read(ctx context.Context, id string) taskRead {
 	got.task, got.err = r.task(ctx, id)
 	if got.err != nil {
 		got.task = Task{ID: id, Status: "unknown"}
-		r.cache.put(id, got)
+		// A read cut short by the caller (canceled, out of time) says nothing about the task.
+		if ctx.Err() == nil && !errors.Is(got.err, context.Canceled) && !errors.Is(got.err, context.DeadlineExceeded) {
+			r.cache.put(id, got)
+		}
 		return got
 	}
 	if !Finished(got.task.Status) {

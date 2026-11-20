@@ -40,10 +40,17 @@ var (
 	ErrNotFound = errors.New("there is no such workstream")
 )
 
-// Conflict says the document moved on and the change could not be applied to what is there.
-type Conflict struct{ Rev int }
+// Conflict says the change does not stand: the document moved on, and it could not be applied
+// to what is there. Rev is the revision now latest; Note, when set, says what happened.
+type Conflict struct {
+	Rev  int
+	Note string
+}
 
 func (c *Conflict) Error() string {
+	if c.Note != "" {
+		return c.Note
+	}
 	return fmt.Sprintf("the workstream was changed meanwhile (now revision %d); read it again and redo the change", c.Rev)
 }
 
@@ -221,43 +228,53 @@ func (s *Store) All(ctx context.Context) (Board, error) {
 	return b, nil
 }
 
-// sanitizeParents puts at the top level (with a problem) every workstream whose parent is
-// not there, whose chain of parents loops, or that sits deeper than maxDepth.
+// sanitizeParents puts at the top level (with a problem saying why) only the workstreams that
+// cannot sit where their document says: one whose own parent is not in Ops, one on a loop of
+// parents, and the topmost one of a chain that runs deeper than maxDepth. Everything under
+// such a workstream stays under it.
 func sanitizeParents(all []Workstream) {
-	parent := map[string]string{}
-	for _, w := range all {
-		parent[w.ID] = w.Parent
+	idx := map[string]int{}
+	for i, w := range all {
+		idx[w.ID] = i
 	}
-	have := map[string]bool{}
-	for _, w := range all {
-		have[w.ID] = true
+	lift := func(i int, why string) {
+		all[i].Problem = joinProblem(all[i].Problem, why+"; shown at the top level (parent "+Ref(all[i].Parent)+")")
+		all[i].Parent = ""
 	}
+	// A parent that is not there.
+	for i, w := range all {
+		if _, ok := idx[w.Parent]; w.Parent != "" && !ok {
+			lift(i, fmt.Sprintf("its parent %s is not in Ops", Ref(w.Parent)))
+		}
+	}
+	// Loops: a workstream whose chain of parents comes back to itself.
 	for i := range all {
-		w := &all[i]
-		if w.Parent == "" {
+		if all[i].Parent == "" {
 			continue
 		}
-		why := ""
-		seen := map[string]bool{w.ID: true}
-		depth := 0
-		for p := w.Parent; p != ""; p = parent[p] {
-			depth++
-			switch {
-			case !have[p]:
-				why = fmt.Sprintf("its parent %s is not in Ops", Ref(p))
-			case seen[p]:
-				why = fmt.Sprintf("its parents make a loop (through %s)", Ref(p))
-			case depth > maxDepth:
-				why = fmt.Sprintf("it nests deeper than %d levels", maxDepth)
-			}
-			if why != "" {
+		for p, n := all[i].Parent, 0; p != "" && n <= len(all); n++ {
+			if p == all[i].ID {
+				lift(i, fmt.Sprintf("its parents make a loop back to it (through %s)", Ref(all[i].Parent)))
 				break
 			}
-			seen[p] = true
+			p = all[idx[p]].Parent
 		}
-		if why != "" {
-			w.Problem = joinProblem(w.Problem, why+"; shown at the top level (parent "+Ref(w.Parent)+")")
-			w.Parent = ""
+	}
+	// Depth: lift the topmost of a chain that runs too deep, and look again.
+	for round := 0; round < len(all); round++ {
+		lifted := false
+		for i := range all {
+			nest := 0
+			for p := all[i].Parent; p != ""; p = all[idx[p]].Parent {
+				nest++
+			}
+			if nest == maxDepth+1 {
+				lift(i, fmt.Sprintf("it would sit %d deep, past the %d allowed", nest, maxDepth))
+				lifted = true
+			}
+		}
+		if !lifted {
+			return
 		}
 	}
 }
@@ -402,45 +419,101 @@ const maxRetries = 2
 // none yet). Its error refuses the change.
 type apply func(cur Item, exists bool) (content, title string, err error)
 
-// putOver writes name by applying fn to cur (the revision just read). When Caster answers a
-// revision further on than cur+1, someone else wrote in between: their revision (the one
-// before this write) is read, fn is applied to it, and the result is written again, up to
-// maxRetries times. When fn refuses theirs, theirs is put back as the latest and fn's error is
-// returned, so a refused change never stands over someone else's.
+// putOver writes name by applying fn to cur (the revision just read).
+//
+// Caster's put takes no expected revision, so a write is checked by the revision it answers.
+// One further on than the revision this write follows means someone else wrote in between, and
+// this write now sits over theirs. Their revision (the one just before) is read at once, fn is
+// applied to it, and the result is written again, so the window in which the latest revision
+// lacks their change is one read and one put long. That is repeated up to maxRetries times.
+//
+// The result reported always matches what Caster holds:
+//   - nil: this change is the latest revision, built on everyone else's;
+//   - fn's error, or *Conflict: this change does not stand. The latest foreign revision seen was
+//     put back over it, or someone wrote after it (and theirs is left alone);
+//   - any other error says what stands in its message.
+//
+// A race can still lose a write: a writer who builds on this write's first revision, before it
+// is re-applied, builds without the change it overwrote. Caster keeps every revision, so nothing
+// is gone from its history.
 func (s *Store) putOver(ctx context.Context, name, mime string, cur Item, exists bool, fn apply) error {
 	base, baseExists := cur, exists
-	// last is the revision this write expects to follow: the one read, then this write's own
-	// previous revision (which a retry follows, over theirs).
+	// last is the revision this write follows: the one read, then this write's own previous
+	// revision (which a retry follows, over theirs).
 	last := cur.Rev
+	ours := 0 // this write's latest revision in Caster, 0 before the first put
 	for attempt := 0; ; attempt++ {
 		content, title, err := fn(base, baseExists)
 		if err != nil {
-			if attempt > 0 {
-				if _, rerr := s.put(ctx, name, base.Content, base.Title, mime); rerr != nil {
-					return fmt.Errorf("%w (and their revision could not be put back: %w)", err, rerr)
-				}
+			if ours == 0 {
+				return err
 			}
-			return err
+			return s.restore(ctx, name, mime, base, ours, func(r int) error {
+				var c *Conflict
+				if errors.As(err, &c) {
+					return &Conflict{Rev: r, Note: c.Note}
+				}
+				return err
+			})
 		}
 		rev, err := s.put(ctx, name, content, title, mime)
 		if err != nil {
-			return err
+			if ours == 0 {
+				return err
+			}
+			return s.restore(ctx, name, mime, base, ours, func(int) error {
+				return fmt.Errorf("the change was not written again over someone else's: %w", err)
+			})
 		}
+		ours = rev
 		if rev <= last+1 {
 			return nil
 		}
+		theirs, ok, gerr := s.caster.Get(ctx, name, rev-1)
+		if gerr != nil || !ok {
+			return fmt.Errorf("written as revision %d, but the revision just before it (someone else's) could not be read to keep their change; Caster's history has both", rev)
+		}
 		if attempt == maxRetries {
-			return &Conflict{Rev: rev}
-		}
-		theirs, ok, err := s.caster.Get(ctx, name, rev-1)
-		if err != nil {
-			return fmt.Errorf("Caster could not be read: %w", err)
-		}
-		if !ok {
-			return &Conflict{Rev: rev}
+			return s.restore(ctx, name, mime, theirs, ours, func(r int) error {
+				return &Conflict{Rev: r, Note: fmt.Sprintf("others kept writing while this was written; their latest is back as revision %d and this change was not kept: read it again and redo the change", r)}
+			})
 		}
 		base, baseExists, last = theirs, true, rev
 	}
+}
+
+// restore puts theirs back over this write's revision ours, so a refused change does not stand,
+// and returns refused (with the revision now latest). The restore is checked like any write:
+//   - when someone wrote after ours, theirs is not restored over it, and the conflict says so;
+//   - when a write lands between that check and the restore's put, theirs (now over it) is put
+//     back once more on top.
+//
+// Whatever it cannot settle is said in the error.
+func (s *Store) restore(ctx context.Context, name, mime string, theirs Item, ours int, refused func(rev int) error) error {
+	latest, ok, err := s.caster.Get(ctx, name, 0)
+	if err != nil || !ok {
+		return fmt.Errorf("%w; and Caster could not be read to put the earlier revision back: this change may stand as revision %d", refused(ours), ours)
+	}
+	if latest.Rev != ours {
+		_ = s.keep(ctx, latest, "")
+		return &Conflict{Rev: latest.Rev, Note: fmt.Sprintf("someone else wrote after this change (now revision %d); it was left as they wrote it: read it to see what stands", latest.Rev)}
+	}
+	rr, err := s.put(ctx, name, theirs.Content, theirs.Title, mime)
+	if err != nil {
+		return fmt.Errorf("%w; and the earlier revision could not be put back: this change stands as revision %d", refused(ours), ours)
+	}
+	if rr <= ours+1 {
+		return refused(rr)
+	}
+	// A write landed between the check and the restore, and the restore sits over it: put
+	// theirs back on top, once.
+	newcomer, ok, err := s.caster.Get(ctx, name, rr-1)
+	if err == nil && ok {
+		if r3, perr := s.put(ctx, name, newcomer.Content, newcomer.Title, mime); perr == nil && r3 <= rr+1 {
+			return &Conflict{Rev: r3, Note: fmt.Sprintf("someone else wrote while this change was being undone; theirs is the latest (revision %d) and this change was not kept: read it again", r3)}
+		}
+	}
+	return &Conflict{Rev: rr, Note: fmt.Sprintf("several writers raced on this document (revisions %d to %d); it could not be settled: read it and check what stands, Caster's history has every revision", ours, rr)}
 }
 
 // put writes one revision and keeps it in the copy.

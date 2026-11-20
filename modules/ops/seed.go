@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // The seed maps the owner's workstream tracker (kept by the Local Orchestrator: threads with a
@@ -183,13 +184,15 @@ func ReadTracker(path string) ([]byte, error) {
 	if err != nil || !before.Mode().IsRegular() {
 		return nil, errTrackerPath
 	}
-	f, err := os.Open(path) //nolint:gosec // the owner's own file, named in the owner's page
+	// Non-blocking, so a FIFO swapped in after the Lstat cannot hold the open; the descriptor
+	// is then checked to be the same regular file.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // the owner's own file, named in the owner's page
 	if err != nil {
 		return nil, errTrackerPath
 	}
 	defer func() { _ = f.Close() }()
 	opened, err := f.Stat()
-	if err != nil || !os.SameFile(before, opened) {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
 		return nil, errTrackerPath
 	}
 	b, err := io.ReadAll(io.LimitReader(f, maxTracker+1))

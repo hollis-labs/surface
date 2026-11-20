@@ -434,10 +434,15 @@ func (m *mod) apiSeedApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := m.st.Apply(r.Context(), p, actor(r.Context())+" (seed)")
-	if err != nil {
-		if len(res.Created) == 0 {
-			_ = m.st.ReleasePlan(r.Context(), id)
+	if len(res.Created) == 0 && len(res.Noted) == 0 && res.Followups == 0 {
+		// Nothing was written, whatever went wrong: the preview can be applied again.
+		_ = m.st.ReleasePlan(r.Context(), id)
+		if err == nil && len(res.Failed) > 0 {
+			fail(w, http.StatusBadGateway, "nothing was written: "+strings.Join(res.Failed, "; "), map[string]any{"result": res})
+			return
 		}
+	}
+	if err != nil {
 		failErr(w, err)
 		return
 	}

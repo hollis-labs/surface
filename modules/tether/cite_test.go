@@ -272,3 +272,28 @@ func TestSummaryOfJSON(t *testing.T) {
 		t.Fatal("markdown parsed as JSON")
 	}
 }
+
+func TestCasterRefsOpenInTheirModule(t *testing.T) {
+	cases := map[string]string{
+		"caster://collab/diagram.system-map":      "diagram.open",
+		"caster://collab/draft.launch-plan":       "drafts.open",
+		"caster://collab/draft.launch-plan.marks": "",
+		"caster://collab/artifact.mock":           "",
+		"caster://scratch/s_0123456789":           "",
+		"caster://w-portfolio/i.ab12cd34":         "work.open-ref",
+		"caster://work/portfolio":                 "work.open-ref",
+		"caster://chief/0078-evidence-20261119@3": "",
+	}
+	for ref, want := range cases {
+		got := ""
+		if o := casterOpen(ref); o != nil {
+			got = o.Command
+		}
+		if got != want {
+			t.Fatalf("%s opens with %q, want %q", ref, got, want)
+		}
+	}
+	if o := casterOpen("caster://collab/diagram.system-map"); o.Args["id"] != "diagram.system-map" {
+		t.Fatalf("args %v", o.Args)
+	}
+}

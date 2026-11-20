@@ -1,7 +1,8 @@
 // Package diagram is the Diagram module: architecture and flow drawings the owner and the agent
 // keep together. A diagram is plain JSON (nodes, edges, lanes, positions) the agent can read and
 // write; every save is a revision, and any two can be compared on the canvas. Ported from
-// Basalisk's Diagram app, with the drawings kept in the module's own store.
+// Basalisk's Diagram app. A drawing is kept in the module's own store or, as in Basalisk, in
+// Caster (caster://collab/diagram.<name>, caster.go); both are listed.
 package diagram
 
 import (
@@ -15,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/surface/module"
+	"github.com/hollis-labs/surface/module/collab"
+	"github.com/hollis-labs/surface/module/tetherlink"
 )
 
 //go:embed migrations/*.sql
@@ -24,7 +27,9 @@ func init() { module.Register(&mod{}) }
 
 type mod struct {
 	module.Base
-	st *store
+	h    module.Host
+	st   backend
+	link tetherlink.Caller // tests: Caster's stand-in; else from the settings
 }
 
 const viewID = "diagram"
@@ -63,8 +68,9 @@ func (m *mod) Manifest() module.Manifest {
 					return m.open(ctx, h, id)
 				}},
 		},
-		Tools: m.tools(),
-		Store: &module.Store{Migrations: migrations, Dir: "migrations"},
+		Tools:    m.tools(),
+		Store:    &module.Store{Migrations: migrations, Dir: "migrations"},
+		Settings: casterSettings,
 		Slots: []module.Slot{{
 			Name: "diagram", About: "architecture and flow drawings the owner and the agent keep together",
 			Views:        []string{viewID},
@@ -178,7 +184,8 @@ func changed(h module.Host, id string) {
 }
 
 func (m *mod) Start(_ context.Context, h module.Host) error {
-	m.st = &store{db: h.Store()}
+	m.h = h
+	m.st = &router{m: m, local: &store{db: h.Store()}, cast: &casterStore{docs: &collab.Store{Link: m.tether}}}
 	h.Handle("GET /diagrams", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		list, err := m.st.list(r.Context())
 		reply(w, list, err)

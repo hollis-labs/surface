@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/surface/module"
+	"github.com/hollis-labs/surface/module/collab"
+	"github.com/hollis-labs/surface/module/tetherlink"
 )
 
 //go:embed migrations/*.sql
@@ -27,8 +29,9 @@ func init() { module.Register(&mod{}) }
 
 type mod struct {
 	module.Base
-	st *store
-	h  module.Host
+	st   backend
+	h    module.Host
+	link tetherlink.Caller // tests: Caster's stand-in; else from the settings
 }
 
 // ref is what a draft's marks are pinned to.
@@ -45,6 +48,15 @@ func (m *mod) Manifest() module.Manifest {
 			Describe: m.describe,
 		}},
 		Commands: []module.Command{
+			{ID: "drafts.open", Title: "Drafts: open a draft", Section: "Drafts", Hidden: true,
+				Run: func(ctx context.Context, _ module.Host, args map[string]any) (any, error) {
+					id, _ := args["id"].(string)
+					d, err := m.st.get(ctx, id)
+					if err != nil {
+						return nil, err
+					}
+					return m.open(ctx, d)
+				}},
 			{ID: "drafts.new", Title: "Drafts: new draft", Section: "Drafts", Keywords: "write document new",
 				Run: func(ctx context.Context, h module.Host, args map[string]any) (any, error) {
 					title, _ := args["title"].(string)
@@ -75,6 +87,7 @@ func (m *mod) Manifest() module.Manifest {
 		Settings: []module.Setting{
 			{Key: "default_lang", Title: "New drafts are written in", Type: module.SettingEnum, Default: "markdown",
 				Options: []string{"markdown", "text", "go", "typescript", "python", "shell", "sql", "yaml", "json"}},
+			casterSettings[0], casterSettings[1], casterSettings[2], casterSettings[3],
 		},
 		Slots: []module.Slot{{
 			Name: "drafts", About: "writing and revising a document with the owner: prose, code or a plan, by revisions and marks",
@@ -112,7 +125,8 @@ func langOf(ref string) string {
 }
 
 func (m *mod) Start(_ context.Context, h module.Host) error {
-	m.st, m.h = &store{db: h.Store()}, h
+	m.h = h
+	m.st = &router{m: m, local: &store{db: h.Store()}, cast: &casterStore{docs: &collab.Store{Link: m.tether}}}
 	m.routes(h)
 	return nil
 }

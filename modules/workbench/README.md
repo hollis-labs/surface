@@ -4,7 +4,7 @@ A Surface module for making and improving Nanite agents: create, edit, version, 
 eval suites against it; ask a model for edits that would fix the failures; accept or reject each; run again and
 compare. It is in Studio (`apps/studio/surface.yaml`).
 
-The agent is an **agent directory** as libs `agent/agentdir` v0.2.0 and Nanite v0.6.0 read it. The Workbench keeps
+The agent is an **agent directory** as libs `agent/agentdir` v0.3.0 and Nanite 0.7.0 read it. The Workbench keeps
 its own state about an agent in a **sidecar** beside the directory, never inside it. Everything Nanite-specific goes
 through `Runtime` (`runtime.go`), which uses Nanite's public `agent` and `evals` packages only.
 
@@ -17,7 +17,7 @@ through `Runtime` (`runtime.go`), which uses Nanite's public `agent` and `evals`
 | Versions (a full copy, a digest, a note), diff, rollback | real |
 | Prompt, skills, tools (.mcp.json, permissions.yaml), variants, providers.yaml, context files, host.yaml runtime knobs | real: these are Nanite's own files |
 | `compact_at` | a runtime option: Nanite takes it only in code (`agent.Options.CompactAt`). Kept in the sidecar and passed on every eval run; a host that opens the agent passes it the same way. A host.yaml key comes in a later agentdir release |
-| Reflexes, triggers, presets | **steer v0.1.0 config; Nanite applies it via `agent.Options.Steering` from its next release.** libs `agent/steer` v0.1.0's own types and validation, kept in the sidecar (host configuration, not agent-directory files). Surface pins Nanite v0.6.0, which has no steering, so eval runs do not apply them; that is wired in when Nanite 0.7.0 is tagged |
+| Reflexes, triggers, presets | `agent/steer` configuration in the sidecar, applied via `agent.Options.Steering` during evals. Reminder and halt actions execute; Surface command/tool actions need a connected host. |
 | Base prompt | shown read-only (Nanite's Universal slot) on the Prompt and Assembled prompt tabs |
 | Boot prompts and boot profiles | not here: they are Tether catalog concepts, not part of an agent directory |
 | Slot budgets, slot placement, the context window, a compaction summary prompt | not offered: engine-owned, set by the model, or not a knob Nanite has |
@@ -66,7 +66,7 @@ credential-like assignment is a warning (sent with an export in `X-Workbench-War
 Validation, by file, on every save (and as you type, without saving):
 
 - `agentdir.Load` over the directory (agent.md's schema-2 front matter, host.yaml's profile, .mcp.json, skills).
-- `variants/*.md` as Nanite v0.6.0 loads them: the name, strict front matter, `read_only` with `can_spawn`,
+- `variants/*.md` through `nanite/agent/authored`: the name, strict front matter, `read_only` with `can_spawn`,
   `last_n` 1–50, budgets, tool patterns.
 - `providers.yaml` with Nanite's own `ProviderSpec.Validate`; `key_ref` must be a reference.
 - `runtime.subtask_limit` at most 8 (Nanite refuses the agent above it); a warning above about 5,900 for
@@ -173,14 +173,10 @@ scenario's `Grade`. Steps and tokens come from the turn's trace record (libs `ag
 usage plus `subtasks[].usage`); the tool calls and their arguments, and the transcript, from the model's replies.
 `compact_at` from options.json is passed as `agent.Options.CompactAt`.
 
-**Every run happens in a child process**: the app's own binary started again with the hidden argument
-`workbench-eval` (`child.go`). `nanite/evals` changes the working directory for each case, which the app's server must
-never see. The parent sends the request as JSON on stdin (the gateway URL and the key file's path, never the key),
-reads progress and the result as JSON lines, and never changes directory. Canceling a run kills the child. The child
-gets a minimal environment (`PATH`, `HOME`, the locale, `TMPDIR`), none of the server's other variables, and all its
-temporary files go under a root the parent makes and removes once the child has ended, canceled or not. One live run
-goes at a time in the app (each run's dollar cap is its own); a second is refused with a message. Offline runs: two at
-a time.
+**Runs execute in process** through `nanite/evals.Run`. Nanite sets `agent.Options.WorkDir`
+to each case’s private workspace; the server never changes its working directory. Cancellation
+interrupts the provider request and temporary workspaces are removed. One live run and two offline
+runs may run at a time. MCP servers are omitted; any future stdio MCP support must use absolute paths.
 
 **Offline** (the default) plays each case's `script`: earlier turns are answered "Noted.", a subtask returns at once,
 no model is called and nothing is spent. **Live** runs only when the owner presses Run live and confirms (or a
@@ -274,12 +270,25 @@ agent directory: copy it with a `host.yaml` into the app's agent directory, or i
 
 ## Known gaps
 
-Stopgaps, labeled as such in the code, pending Nanite exports (asked of Nanite):
+Nanite integration uses `agent/providers` for Anthropic and OpenAI gateways, `agent/authored`
+for variants and providers.yaml, and `evals.Scenario.Stubs` for canned host tools. Keys remain
+file references and resolve per request; resolved keys join the scope used by Workbench's error scrubber.
 
-- Nanite exports no model provider, and nanite/evals needs one for a live run, so `provider.go` is a small Anthropic
-  Messages client over the gateway (non-streaming). Eval runs therefore speak the Anthropic wire only; an agent with
-  `runtime.provider: openai` cannot be run live. When Nanite exports a constructor this file goes.
-- nanite/evals has no hook for host tools, so a case cannot stub a tool yet: an eval has the file tools over its
-  fixtures, and `.mcp.json` servers are not started.
-- nanite/evals.Run changes the process's working directory for each case; runs therefore happen in a child process.
-- Variant and providers.yaml validation mirrors Nanite v0.6.0's internal rules (they are not exported).
+Cases can define `stubs` in the suite editor/API:
+
+```yaml
+stubs:
+  - name: lookup_note
+    description: Read a fixture note.
+    read_only: true
+    schema: {type: object, properties: {id: {type: string}}}
+    results:
+      - when: {id: launch}
+        text: "Launch is Tuesday."
+      - text: "No matching note."
+        is_error: true
+```
+
+Matching `when` answers take precedence. Other results are consumed in order, repeating the last;
+use argument matching for deterministic concurrent calls. Built-in names and `mcp__` names are
+refused. Each case result includes `stub_calls` from Nanite.

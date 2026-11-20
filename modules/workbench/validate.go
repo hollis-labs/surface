@@ -1,20 +1,16 @@
 package workbench
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/hollis-labs/libs/agent/agentdir"
-	nanite "github.com/hollis-labs/nanite/agent"
-	"gopkg.in/yaml.v3"
+	"github.com/hollis-labs/nanite/agent/authored"
 )
 
 // Problem is one thing wrong (or worth knowing) about an agent's files.
@@ -56,7 +52,7 @@ func (r *Report) add(file, sev, format string, args ...any) {
 }
 
 // Validate checks a tree as Nanite will read it: agentdir.Load over the directory, then the
-// files agentdir does not read (variants/*.md and providers.yaml, as Nanite v0.6.0 parses
+// files agentdir does not read (variants/*.md and providers.yaml, as Nanite parses
 // them), the limits Nanite enforces when the agent opens, the sidecar files, and literal
 // secrets where only references belong.
 func Validate(t Tree) Report {
@@ -233,86 +229,13 @@ func checkMCPSecrets(rep *Report, c agentdir.MCPConfig) {
 	}
 }
 
-// variantFront is Nanite v0.6.0's variant front matter (internal/subagent), decoded strictly
-// as Nanite decodes it.
-//
-// STOPGAP, pending a Nanite export (asked of Nanite): the variant and providers.yaml checks
-// below mirror Nanite's internal rules, which a host cannot call. When Nanite exports a
-// validator, they go.
-type variantFront struct {
-	Description string `yaml:"description"`
-	Tools       struct {
-		Allow []string `yaml:"allow"`
-		Deny  []string `yaml:"deny"`
-	} `yaml:"tools"`
-	ReadOnly bool   `yaml:"read_only"`
-	Provider string `yaml:"provider"`
-	Model    string `yaml:"model"`
-	Budgets  struct {
-		Steps  int     `yaml:"steps"`
-		Tokens int     `yaml:"tokens"`
-		Wall   string  `yaml:"wall"`
-		Cost   float64 `yaml:"cost"`
-	} `yaml:"budgets"`
-	LastN     int  `yaml:"last_n"`
-	ResultCap int  `yaml:"result_cap"`
-	CanSpawn  bool `yaml:"can_spawn"`
-}
-
-var (
-	envNameRe       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
-	variantNameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
-	builtinVariants = []string{"code", "research", "worker", "planner", "chat"}
-)
-
-// maxLastN is the most parent messages a variant may hand its child.
-const maxLastN = 50
-
-// checkVariant validates variants/<name>.md as Nanite v0.6.0 does when it loads it.
+// checkVariant uses the same parser as the Nanite runtime.
 func checkVariant(name string, raw []byte) error {
-	if !variantNameRe.MatchString(name) || slices.Contains(builtinVariants, name) {
-		return fmt.Errorf("variant name %q: lower-case letters, digits and dashes, at most 40, and not %s", name, strings.Join(builtinVariants, ", "))
-	}
-	head, body, err := splitFront(raw)
-	if err != nil {
-		return err
-	}
-	var m variantFront
-	dec := yaml.NewDecoder(bytes.NewReader(head))
-	dec.KnownFields(true)
-	if err := dec.Decode(&m); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("front matter: %w", err)
-	}
-	if strings.TrimSpace(body) == "" {
-		return errors.New("the body (the role prompt) is empty")
-	}
-	if strings.TrimSpace(m.Provider) != "" && strings.TrimSpace(m.Model) == "" {
-		return fmt.Errorf("provider %q needs a model", m.Provider)
-	}
-	if m.ReadOnly && m.CanSpawn {
-		return errors.New("read_only and can_spawn cannot be combined")
-	}
-	if m.Budgets.Wall != "" {
-		if d, err := time.ParseDuration(m.Budgets.Wall); err != nil || d <= 0 {
-			return fmt.Errorf("budgets.wall %q: use a positive duration such as 10m", m.Budgets.Wall)
-		}
-	}
-	for field, n := range map[string]float64{"budgets.steps": float64(m.Budgets.Steps), "budgets.tokens": float64(m.Budgets.Tokens),
-		"budgets.cost": m.Budgets.Cost, "last_n": float64(m.LastN), "result_cap": float64(m.ResultCap)} {
-		if n < 0 {
-			return fmt.Errorf("%s must not be negative", field)
-		}
-	}
-	if m.LastN > maxLastN {
-		return fmt.Errorf("last_n must be at most %d", maxLastN)
-	}
-	for _, p := range slices.Concat(m.Tools.Allow, m.Tools.Deny) {
-		if _, err := path.Match(p, ""); err != nil || strings.TrimSpace(p) == "" {
-			return fmt.Errorf("invalid tool pattern %q", p)
-		}
-	}
-	return nil
+	_, err := authored.ParseVariant(name, raw)
+	return err
 }
+
+var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 // splitFront splits "---\n<yaml>\n---\n<body>"; no leading fence means no front matter.
 func splitFront(raw []byte) (head []byte, body string, err error) {
@@ -332,25 +255,14 @@ func splitFront(raw []byte) (head []byte, body string, err error) {
 	return nil, "", errors.New("unterminated front matter")
 }
 
-// providersDoc is providers.yaml as Nanite v0.6.0 reads it (internal/definition).
-type providersDoc struct {
-	Providers map[string]nanite.ProviderSpec `yaml:"providers"`
-	Use       map[string]struct {
-		Provider string `yaml:"provider"`
-		Model    string `yaml:"model"`
-	} `yaml:"use"`
-}
-
-// checkProviders validates providers.yaml with Nanite's own ProviderSpec.Validate.
+// checkProviders uses Nanite's schema, then applies Workbench's secret checks.
 func checkProviders(raw []byte) ([]string, error) {
-	var doc providersDoc
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
-	dec.KnownFields(true)
-	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
+	doc, err := authored.ParseProviders(raw)
+	if err != nil {
 		return nil, err
 	}
 	var names []string
-	for name, spec := range doc.Providers {
+	for name, spec := range doc.Named {
 		spec.Name = name
 		if err := spec.Validate(); err != nil {
 			return nil, err
@@ -370,16 +282,6 @@ func checkProviders(raw []byte) ([]string, error) {
 			}
 		}
 		names = append(names, name)
-	}
-	for use, sel := range doc.Use {
-		switch use {
-		case "chat", "summarizer", "subtask":
-		default:
-			return nil, fmt.Errorf("use %q must be chat, summarizer or subtask", use)
-		}
-		if sel.Provider == "" || sel.Model == "" {
-			return nil, fmt.Errorf("use %s needs provider and model", use)
-		}
 	}
 	slices.Sort(names)
 	return names, nil

@@ -142,7 +142,7 @@ func TestValidationNamesTheFile(t *testing.T) {
 		{"variants/reviewer.md", "---\nread_only: true\ncan_spawn: true\n---\nReview.\n", "cannot be combined"},
 		{"variants/reviewer.md", "---\nlast_n: 80\n---\nReview.\n", "last_n must be at most 50"},
 		{"variants/reviewer.md", "---\nsurprise: 1\n---\nReview.\n", "surprise"},
-		{"variants/code.md", "Do it.\n", "not code"},
+		{"variants/code.md", "Do it.\n", "built-in variant"},
 		{"providers.yaml", "providers:\n  anthropic:\n    wire: anthropic\n    base_url: http://x\n", "built in"},
 		{"providers.yaml", "providers:\n  local:\n    wire: openai-chat\n    base_url: http://127.0.0.1:1/v1\n    headers: {X-Api-Key: abc}\n", "X-Api-Key"},
 		{"host.yaml", "kind: embedded\nlifetime: application\napplication_id: a\nruntime:\n  subtask_limit: 9\n", "subtask_limit is at most 8"},

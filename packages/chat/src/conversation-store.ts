@@ -23,8 +23,8 @@ import {
 } from "./conversation.ts"
 import { reduceConversation, userItemId } from "./conversation-reduce.ts"
 import { append, type ChatState, initialState, remove } from "./reduce.ts"
-import type { RunEnd } from "./store.ts"
-import { type Decision, HostError, type HostState, type StreamEvent } from "./wire.ts"
+import type { RunEnd } from "./stream.ts"
+import { type Decision, HostError, type HostState, type StreamEvent } from "./stream.ts"
 
 export interface ConversationStoreOptions extends ConversationOptions {
   /** The agent whose conversation this is. */

@@ -67,11 +67,15 @@ func TestSendUsesTheClassifiedSlot(t *testing.T) {
 		s.cls.Correct("jot down quick capture idea", "scratch")
 		s.cls.Correct("tighten the wording of this paragraph", "notes")
 	}
-	res, err := s.Send(context.Background(), "jot down quick capture idea", "", "")
+	_, err := sendTest(context.Background(), t, s, "jot down quick capture idea", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Assembly.Slot != "scratch" || res.Assembly.Why != "classified" {
-		t.Fatalf("assembly slot %q why %q", res.Assembly.Slot, res.Assembly.Why)
+	turns, err := s.trace.Recent(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 || turns[0].Slot != "scratch" || turns[0].Why != "classified" {
+		t.Fatalf("traced assembly: %+v", turns)
 	}
 }

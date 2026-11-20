@@ -4,7 +4,7 @@ import { fakeHost, says, until } from "../test/fake-host.ts"
 import { reduceConversation } from "./conversation-reduce.ts"
 import { createConversationStore } from "./conversation-store.ts"
 import { type ChatItem, type ChatState, initialState } from "./reduce.ts"
-import type { StreamEvent } from "./wire.ts"
+import type { StreamEvent } from "./stream.ts"
 
 const now = (flush: () => void) => flush()
 const open = (host: ReturnType<typeof fakeHost>, more: Record<string, unknown> = {}) =>

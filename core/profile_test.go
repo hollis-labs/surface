@@ -212,10 +212,11 @@ func naniteConfig(t *testing.T, gateway string) {
 	t.Setenv("NANITE_DEFAULT_MODEL", "test-model")
 }
 
-// On the host runner every turn is the app's own agent: profiles are listed, off.
-func TestModuleProfilesAreOffOnTheHostRunner(t *testing.T) {
+// On the scripted runner every turn is the app's own agent: profiles are listed, off.
+func TestModuleProfilesAreOffOnTheScriptedRunner(t *testing.T) {
 	model := newFakeModel(t)
-	hostConfig(t, model.srv.URL)
+	naniteConfig(t, model.srv.URL)
+	t.Setenv("SURFACE_AGENT_RUNNER", "scripted")
 	ctx := context.Background()
 	app, err := New(ctx, Options{Name: "profilehost", Title: "Profile host", DataDir: t.TempDir(), Modules: []string{"scratch", "profiletest"}})
 	if err != nil {

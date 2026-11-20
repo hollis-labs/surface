@@ -12,9 +12,9 @@ import (
 )
 
 // The agent's standing instructions: the owner's rules for all work, kept in
-// <agent dir>/context/standing.md. The host runner puts the agent directory's text in the
-// system prompt when it opens (agentdir_text.go), and the system prompt is then fixed until
-// the app restarts. So:
+// <agent dir>/context/standing.md. Nanite reloads these files for each turn. The optional
+// fixed-prompt integration helpers below can carry changes until an injected engine reloads:
+//
 //
 //   - standing_get and standing_update read and replace the file. An update is written
 //     atomically, and the text it replaces is kept in context/.history/ (a subdirectory, so

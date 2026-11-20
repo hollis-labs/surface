@@ -15,6 +15,9 @@ Not: a place for app-specific code (that is a module), an agent runtime (the age
 - `cmd/surface` — the generator. `app/` — the generated main's body (Substrate boot, serve, the client CLI).
 - `docs/architecture.md` first, then `docs/writing-a-module.md`.
 
+The embedded agent uses Nanite on the durable conversation wire by default. Runtime settings belong
+in its agent directory's `host.yaml`; the `host` runner is retired. Stored transcripts are preserved.
+
 ## Commands
 
 ```sh

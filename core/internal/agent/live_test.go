@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hollis-labs/libs/agent/chat"
 )
 
 // TestLive runs one real turn against the gateway in SURFACE_LIVE_CONFIG (an agent.json).
@@ -25,32 +27,36 @@ func TestLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng, err := newHostEngine(context.Background(), cfg, systemPrompt("Surface test", ""), s.k.DB(), runWatch{})
+	s.cfg = cfg
+	s.wire, err = s.openWire(context.Background(), RunnerNanite)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
-	if aerr := eng.AddTools(s.engineTools()...); aerr != nil {
-		t.Fatal(aerr)
-	}
-	s.engine = eng
 	mux := http.NewServeMux()
 	s.Mount(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Post(srv.URL+"/api/agent/turns", "application/json",
-		strings.NewReader(`{"text":"Which slot are you in, and which tools are top of mind? Then read the note in front with notes_read. Answer in two short lines.","client_id":"c"}`))
-	if err != nil || resp.StatusCode != 200 {
-		t.Fatalf("turn: %v %v", err, resp.Status)
+	view, err := s.wire.svc.EnsureConversation(t.Context(), s.wire.agent)
+	if err != nil {
+		t.Fatal(err)
 	}
-	var tr struct {
-		RunID string `json:"run_id"`
+	_, err = s.wire.svc.Submit(t.Context(), view.ConversationID, chat.Turn{Text: "Which slot are you in, and which tools are top of mind? Then read the note in front with notes_read. Answer in two short lines."})
+	if err != nil {
+		t.Fatal(err)
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&tr)
+	raw, err := http.Post(srv.URL+"/api/agent/conversations/"+view.ConversationID+"/attachments", "application/json", strings.NewReader(`{"role":"viewer","stream":"committed"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attachment struct {
+		ID string `json:"attachment_id"`
+	}
+	_ = json.NewDecoder(raw.Body).Decode(&attachment)
+	_ = raw.Body.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/agent/runs/"+tr.RunID+"/events", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/agent/conversations/"+view.ConversationID+"/events?attachment="+attachment.ID+"&after=0", nil)
 	ev, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

@@ -2,14 +2,11 @@ package agent
 
 import (
 	"context"
-	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/hollis-labs/libs/agent/chat"
 	"github.com/hollis-labs/libs/agent/chat/chattest"
-	"github.com/hollis-labs/libs/agent/host"
-	"github.com/hollis-labs/surface/core/internal/storage"
 )
 
 type ends struct {
@@ -49,37 +46,8 @@ func TestTheConversationWiresRunsSayHowTheyEnded(t *testing.T) {
 	}
 }
 
-func TestTheHostEnginesRunsSayHowTheyEnded(t *testing.T) {
-	ctx := context.Background()
-	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "core.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	sq, err := host.NewSQLite(ctx, db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var e ends
-	w := e.watch()
-	st := watchedStore{Store: sq, started: w.started, ended: w.ended}
-	thread, err := st.MainThread(ctx, Owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostWords := map[string]string{"a": "finished", "b": "cancelled", "c": "error"} //nolint:misspell // the host library's own words
-	for id, status := range hostWords {
-		if err := st.StartRun(ctx, id, thread, Owner, "m"); err != nil {
-			t.Fatal(err)
-		}
-		if err := st.FinishRun(ctx, id, host.RunEnd{Status: status}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want := map[string]string{"a": RunFinished, "b": RunCanceled, "c": RunFailed}
-	for id, status := range want {
-		if e.ended[id] != status {
-			t.Errorf("%s ended %q, want %q", id, e.ended[id], status)
-		}
-	}
+// runWatch is what an engine calls as its runs start and end.
+type runWatch struct {
+	started func(id string)
+	ended   func(id, status, reason string)
 }

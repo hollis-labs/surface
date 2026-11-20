@@ -2,19 +2,12 @@ package agent
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
-
-	"github.com/hollis-labs/libs/agent/host"
 )
 
-// Engine is the seam the embedded agent plugs into. Everything else in Surface (slots,
-// router, reflexes, the panel's wire) talks to this, so the agent underneath can change
-// without them: today libs agent/host, later Nanite's embeddable package.
-//
-// The wire it serves is agent-host/1 (libs agent/host WIRE.md), which the page's
-// @hollis-labs/ade-agent client speaks.
+// Engine is the optional injected engine seam used by custom integrations and tests.
+// Production embedded agents use Nanite on the durable conversation wire.
 type Engine interface {
 	// Ready reports whether a model is configured, so a message can be answered.
 	Ready() bool
@@ -63,114 +56,19 @@ type Said struct {
 	CreatedAt string
 }
 
-// hostEngine is the Engine over libs agent/host.
-type hostEngine struct {
-	h *host.Host
-}
+// unavailableEngine keeps setup endpoints usable when no embedded model is configured.
+// It owns no runtime, threads, or persistence.
+type unavailableEngine struct{}
 
-// newHostEngine builds the agent/host engine with its conversation tables in db.
-func newHostEngine(ctx context.Context, cfg FileConfig, system string, db *sql.DB, watch runWatch) (*hostEngine, error) {
-	sq, err := host.NewSQLite(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	var store host.Store = sq
-	if watch.started != nil && watch.ended != nil {
-		store = watchedStore{Store: sq, started: watch.started, ended: watch.ended}
-	}
-	h := host.New(host.Config{
-		Model:     cfg.Model,
-		BaseURL:   cfg.GatewayURL,
-		KeyFile:   cfg.KeyFile,
-		System:    system,
-		MaxTokens: cfg.MaxTokens,
-		MaxSteps:  cfg.MaxSteps,
-		CompactAt: cfg.CompactAt,
-		// Surface assembles the block itself (slots.Assemble); the host only unwraps it.
-		DescribeContext: describe,
-	}, store)
-	return &hostEngine{h: h}, nil
-}
-
-// describe returns the block Surface put in the turn's context.
-func describe(raw json.RawMessage) string {
-	var c struct {
-		Block string `json:"block"`
-	}
-	if json.Unmarshal(raw, &c) != nil {
-		return ""
-	}
-	return c.Block
-}
-
-func (e *hostEngine) Ready() bool   { return e.h.Config().Ready() }
-func (e *hostEngine) Model() string { return e.h.Config().Model }
-func (e *hostEngine) Close()        { e.h.Close() }
-
-func (e *hostEngine) AddTools(tools ...EngineTool) error {
-	out := make([]host.ServerTool, 0, len(tools))
-	for _, t := range tools {
-		run := t.Run
-		out = append(out, host.ServerTool{
-			Spec: host.ToolSpec{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, Level: t.Level},
-			Run: func(ctx context.Context, _ string, input map[string]any) (string, error) {
-				raw, err := json.Marshal(input)
-				if err != nil {
-					return "", err
-				}
-				return run(ctx, raw)
-			},
-		})
-	}
-	return e.h.AddServerTools(out...)
-}
-
-func (e *hostEngine) Start(ctx context.Context, t Turn) (string, error) {
-	id, err := e.h.Start(ctx, host.Turn{Owner: t.Owner, Text: t.Text, ClientID: t.ClientID, Context: t.Context, Auto: t.Auto})
-	return id, engineErr(err)
-}
-
-func (e *hostEngine) History(ctx context.Context, owner string) ([]Said, error) {
-	st := e.h.Store()
-	thread, err := st.MainThread(ctx, owner)
-	if err != nil {
-		return nil, err
-	}
-	msgs, err := st.Messages(ctx, thread)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Said, 0, len(msgs))
-	for _, m := range msgs {
-		s := Said{Role: m.Role, CreatedAt: m.CreatedAt}
-		var meta struct {
-			Text string `json:"text"`
-		}
-		_ = json.Unmarshal(m.Meta, &meta)
-		var words []string
-		for _, b := range m.Blocks {
-			switch b.Type {
-			case "text":
-				words = append(words, b.Text)
-			case "tool_use":
-				s.ToolNames = append(s.ToolNames, b.Name)
-			}
-		}
-		if m.Role == "user" && meta.Text != "" {
-			s.Text = meta.Text // what the owner typed, without the context block
-		} else {
-			for i, w := range words {
-				if i > 0 {
-					s.Text += "\n"
-				}
-				s.Text += w
-			}
-		}
-		out = append(out, s)
-	}
-	return out, nil
-}
-
-func (e *hostEngine) Handler(prefix string, owner func(*http.Request) (string, error)) http.Handler {
-	return e.h.Handler(prefix, owner)
+func (unavailableEngine) Ready() bool                                     { return false }
+func (unavailableEngine) Model() string                                   { return "" }
+func (unavailableEngine) AddTools(...EngineTool) error                    { return nil }
+func (unavailableEngine) Start(context.Context, Turn) (string, error)     { return "", ErrNotReady }
+func (unavailableEngine) History(context.Context, string) ([]Said, error) { return nil, nil }
+func (unavailableEngine) Close()                                          {}
+func (unavailableEngine) Handler(prefix string, _ func(*http.Request) (string, error)) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+prefix, func(w http.ResponseWriter, _ *http.Request) { reply(w, 200, map[string]any{"ready": false}) })
+	mux.HandleFunc("GET "+prefix+"/thread", func(w http.ResponseWriter, _ *http.Request) { reply(w, 200, map[string]any{"messages": []Said{}}) })
+	return mux
 }

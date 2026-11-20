@@ -39,7 +39,6 @@ once the shapes settle.
 
 ## The agent
 
-The decided direction is Nanite's embeddable package. It does not exist yet (Nanite's agent code is all under
-`internal/`), so the agent sits behind a thin seam (`core/internal/agent`: `Engine`) implemented today on
-`libs/agent/host`, the extraction of Basalisk's agent that Substrate's BOM pins for ADE apps. When Nanite
-ships its package, the seam's implementation changes and nothing else does.
+Surface embeds Nanite through `nanite/chatrunner` and keeps its durable chat transcript separately.
+Substrate supplies the process and persistence mechanisms; Nanite supplies the model runtime.
+The optional `Engine` seam supports injected integrations and tests, without constructing a legacy runtime.

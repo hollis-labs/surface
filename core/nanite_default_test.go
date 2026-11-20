@@ -125,13 +125,11 @@ func TestNaniteForcedCompactionKeepsContextAndWholeTurns(t *testing.T) {
 		var receipt struct {
 			ID string `json:"run_id"`
 		}
-		a.until("chat service accepts next turn", func() bool {
-			code := do(t, srv, "POST", "/api/agent/conversations/"+conv.ID+"/turns", string(raw), &receipt)
-			if code != 202 && code != 409 {
-				t.Fatalf("turn %d: %d", i, code)
-			}
-			return code == 202
-		})
+		a.waitIdle()
+		if code := do(t, srv, "POST", "/api/agent/conversations/"+conv.ID+"/turns", string(raw), &receipt); code != 202 {
+			t.Fatalf("turn %d: %d", i, code)
+		}
+
 		a.until("finished run", func() bool {
 			var runs []struct {
 				ID     string `json:"run_id"`

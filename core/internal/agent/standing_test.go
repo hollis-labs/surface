@@ -3,8 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,9 +101,6 @@ func TestStandingUpdateKeepsHistoryAndWritesAtomically(t *testing.T) {
 			t.Errorf("left in context/: %s", e.Name())
 		}
 	}
-	if text := agentDirText(dir, slog.New(slog.NewTextHandler(io.Discard, nil))); strings.Contains(text, "Use the cards.") || !strings.Contains(text, "Log friction.") {
-		t.Fatalf("the runner would read: %q", text)
-	}
 
 	// A second update keeps the second version; the same text again changes nothing.
 	if _, err = callOwn(t, s, "standing_update", map[string]string{"text": next + "\n- One more.", "why": "two"}); err != nil {
@@ -150,7 +145,7 @@ func TestTheChangedStandingRidesInTheBlockUntilAFreshOpen(t *testing.T) {
 	if strings.Contains(s.Preview(ctx).Block, "<standing changed>") {
 		t.Fatal("a section with no runner that fixed the prompt")
 	}
-	s.noteStandingLoaded(dir) // the host runner opens
+	s.noteStandingLoaded(dir) // a fixed-prompt integration opens
 	if strings.Contains(s.Preview(ctx).Block, "<standing changed>") {
 		t.Fatal("a section before any change")
 	}
@@ -178,7 +173,7 @@ func TestTheChangedStandingRidesInTheBlockUntilAFreshOpen(t *testing.T) {
 		t.Fatalf("the long section: %s", b[strings.Index(b, "<standing changed>"):])
 	}
 	if n := len([]rune(b)); n > 20_000 {
-		t.Fatalf("the block is %d characters, over the host runner's clip", n)
+		t.Fatalf("the block is %d characters, over the fixed-prompt integration's clip", n)
 	}
 
 	s.noteStandingLoaded(dir) // a fresh open: the prompt has it now
@@ -191,31 +186,6 @@ func TestTheChangedStandingRidesInTheBlockUntilAFreshOpen(t *testing.T) {
 	}
 	if b = s.Preview(ctx).Block; !strings.Contains(b, "were removed") {
 		t.Fatalf("a removed file: %s", b)
-	}
-}
-
-// The host runner remembers the standing text it opened with.
-func TestTheHostRunnerRemembersTheStandingItOpenedWith(t *testing.T) {
-	dir := standingDir(t, "- Chief goes first.")
-	s, _, _, _ := setup(t, Options{})
-	key := filepath.Join(t.TempDir(), "key")
-	if err := os.WriteFile(key, []byte("k"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s.cfg = FileConfig{Model: "m", GatewayURL: "http://127.0.0.1:1", KeyFile: key}
-	r, err := s.openHostRunner(context.Background(), &wire{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = r.Close() })
-	if !strings.Contains(r.Config().System, "- Chief goes first.") {
-		t.Fatal("the system prompt does not have the standing text")
-	}
-	if err = os.WriteFile(standingPath(dir), []byte("- Changed.\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if b := s.Preview(context.Background()).Block; !strings.Contains(b, "- Changed.\n</standing changed>") {
-		t.Fatalf("no section after the file changed under the runner: %s", b)
 	}
 }
 

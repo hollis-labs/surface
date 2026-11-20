@@ -227,16 +227,14 @@ func (x *Runner) Propose(ctx context.Context, agent, runID string) (Proposal, er
 	}
 	input := proposeInput(t, run, suite)
 	caps := x.caps(Caps{})
-	const maxOut = 6000
-	// The most the request can cost, priced conservatively as nanite/evals prices.
-	worst := (float64(len(input)+len(metaPrompt))/3*15 + maxOut*75) / 1e6
+	worst := proposeWorst(input)
 	if worst > caps.MaxUSD {
 		return Proposal{}, fmt.Errorf("workbench: the request could cost up to $%.2f, over the $%.2f cap", worst, caps.MaxUSD)
 	}
 	model := runModel(t, gw)
 	meter := &usageMeter{budget: caps.RunTokens}
 	p := &budgeted{Provider: newGatewayProvider(gw.URL, gw.KeyFile), meter: meter}
-	text, err := p.Complete(ctx, llmtypes.ChatRequest{Model: model, MaxTokens: maxOut, SystemPrompt: metaPrompt,
+	text, err := p.Complete(ctx, llmtypes.ChatRequest{Model: model, MaxTokens: proposeMaxOut, SystemPrompt: metaPrompt,
 		Messages: []llmtypes.ChatMessage{{Role: "user", Content: input}}})
 	if err != nil {
 		return Proposal{}, err
@@ -300,6 +298,9 @@ func applyEdit(t Tree, e Edit) (Tree, string) {
 // Decide accepts or rejects one edit of a proposal. Accepting applies it to the agent as it
 // is now and saves a new version. Only the owner decides: this is not an agent tool.
 func (x *Runner) Decide(agent, propID string, n int, accept bool) (Proposal, error) {
+	// One decision at a time per proposal: two accepts of the same edit cannot both apply.
+	unlock := x.lib.lock("proposal:" + agent + "/" + propID)
+	defer unlock()
 	prop, err := x.GetProposal(agent, propID)
 	if err != nil {
 		return prop, err
@@ -325,13 +326,15 @@ func (x *Runner) Decide(agent, propID string, n int, accept bool) (Proposal, err
 	if err != nil {
 		return prop, err
 	}
+	base := t.Digest()
 	next, problem := applyEdit(t, *e)
 	if problem != "" {
 		e.Status, e.Problem = "stale", problem
 		_ = x.saveProposal(prop)
 		return prop, errors.New("workbench: " + problem)
 	}
-	v, _, err := x.lib.Save(agent, next, "", fmt.Sprintf("accepted proposal %s #%d (%s): %s", propID, n, e.File, clip(e.Rationale, 200)), "owner")
+	// Saved over the state the edit was applied to: a save in between refuses it.
+	v, _, err := x.lib.Save(agent, next, base, fmt.Sprintf("accepted proposal %s #%d (%s): %s", propID, n, e.File, clip(e.Rationale, 200)), "owner")
 	if err != nil {
 		return prop, err
 	}
@@ -341,4 +344,43 @@ func (x *Runner) Decide(agent, propID string, n int, accept bool) (Proposal, err
 	}
 	x.h.Events().Publish("workbench.changed", map[string]any{"agent": agent, "version": v.N})
 	return prop, nil
+}
+
+// proposeMaxOut is the output allowance of a proposal request.
+const proposeMaxOut = 6000
+
+// proposeWorst is the most a proposal request can cost, priced conservatively as
+// nanite/evals prices: its input at three characters a token and its whole output allowance.
+func proposeWorst(input string) float64 {
+	return (float64(len(input)+len(metaPrompt))/3*15 + proposeMaxOut*75) / 1e6
+}
+
+// ProposeEstimate is what a proposal would cost, worked out before the owner agrees.
+type ProposeEstimate struct {
+	Model       string  `json:"model"`
+	InputTokens int     `json:"input_tokens"`
+	MaxOutput   int     `json:"max_output"`
+	WorstUSD    float64 `json:"worst_usd"`
+	CapUSD      float64 `json:"cap_usd"`
+	Failed      int     `json:"failed"`
+}
+
+// EstimatePropose works out a proposal's size and worst cost without calling a model.
+func (x *Runner) EstimatePropose(ctx context.Context, agent, runID string) (ProposeEstimate, error) {
+	run, err := x.GetRun(agent, runID)
+	if err != nil {
+		return ProposeEstimate{}, err
+	}
+	suite, err := x.suite(agent, run.Suite)
+	if err != nil {
+		return ProposeEstimate{}, err
+	}
+	t, err := x.lib.Tree(agent)
+	if err != nil {
+		return ProposeEstimate{}, err
+	}
+	gw, _ := x.gw(ctx)
+	input := proposeInput(t, run, suite)
+	return ProposeEstimate{Model: runModel(t, gw), InputTokens: (len(input) + len(metaPrompt)) / 3, MaxOutput: proposeMaxOut,
+		WorstUSD: proposeWorst(input), CapUSD: x.caps(Caps{}).MaxUSD, Failed: run.Failed}, nil
 }

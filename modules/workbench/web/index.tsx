@@ -105,6 +105,7 @@ interface Estimate {
   prompt_tokens: number
   tokens: number
   caps: Caps
+  worst_usd: number
   gateway: string
   ready: boolean
   not_ready?: string
@@ -1397,10 +1398,11 @@ function SteeringTab({ files, setFile, report }: FileProps) {
   return (
     <>
       <div className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs">
-        <strong>Draft config, not yet run by Nanite.</strong> Reflexes, triggers and presets are kept in the Workbench's
-        sidecar (workbench/steering.json), not in the agent directory: no agent-directory format is decided yet, and
-        Nanite has no reflex runtime yet, so eval runs do not apply them. The shapes mirror libs agent/steer (in
-        review), so a host can pass them as typed options once it does. Exports carry the file under workbench/.
+        <strong>steer v0.1.0 config; Nanite applies it via agent.Options.Steering from its next release.</strong>{" "}
+        Reflexes, triggers and presets are libs agent/steer v0.1.0 types, checked with steer's own validation and kept
+        in the Workbench's sidecar (workbench/steering.json): they are host configuration, not agent-directory files.
+        Surface pins Nanite v0.6.0, which has no steering yet, so eval runs do not apply them; that is wired in when
+        Nanite 0.7.0 is tagged. Exports carry the file under workbench/.
       </div>
       <Section title="Reflexes" aside={<Problems report={report} file={STEERING} />}>
         {parseError && <p className="text-xs text-destructive">steering.json is not JSON: {parseError}</p>}
@@ -1941,7 +1943,7 @@ function EvalsTab({
     if (!estimate) return
     const ok = await desk.confirm({
       title: `Run ${estimate.cases} cases against ${estimate.model}?`,
-      message: `This calls a real model through ${estimate.gateway} and costs money. Estimated ${estimate.tokens.toLocaleString()} tokens. Caps: $${estimate.caps.max_usd} (estimated at a conservative price), ${estimate.caps.turn_tokens.toLocaleString()} tokens a case, ${estimate.caps.run_tokens.toLocaleString()} tokens for the run.`,
+      message: `This calls a real model through ${estimate.gateway} and costs money. Estimated ${estimate.tokens.toLocaleString()} tokens, at most about $${estimate.worst_usd.toFixed(2)} at a conservative price. Caps: $${estimate.caps.max_usd} (estimated at a conservative price), ${estimate.caps.turn_tokens.toLocaleString()} tokens a case, ${estimate.caps.run_tokens.toLocaleString()} tokens for the run.`,
       confirmLabel: "Run",
     })
     if (!ok) return
@@ -1972,9 +1974,16 @@ function EvalsTab({
       }
       return
     }
+    let est: Estimate
+    try {
+      est = await api.get<Estimate>(`agents/${id}/suites/${r.suite}/estimate`)
+    } catch (e) {
+      setNotice(errText(e))
+      return
+    }
     const ok = await desk.confirm({
-      title: `Run ${r.suite} again?`,
-      message: "This calls a real model and costs money, within the same caps. The result is compared with this run.",
+      title: `Run ${r.suite} again (${est.cases} cases, ${est.model})?`,
+      message: `This calls a real model and costs money. Estimated ${est.tokens.toLocaleString()} tokens, at most about $${est.worst_usd.toFixed(2)} at a conservative price. Caps: $${est.caps.max_usd}, ${est.caps.turn_tokens.toLocaleString()} tokens a case, ${est.caps.run_tokens.toLocaleString()} tokens for the run. The result is compared with this run.`,
       confirmLabel: "Run again",
     })
     if (!ok) return
@@ -1987,9 +1996,16 @@ function EvalsTab({
     }
   }
   const propose = async (r: Run) => {
+    let est: { model: string; input_tokens: number; max_output: number; worst_usd: number; cap_usd: number }
+    try {
+      est = await api.get(`agents/${id}/runs/${r.id}/propose-estimate`)
+    } catch (e) {
+      setNotice(errText(e))
+      return
+    }
     const ok = await desk.confirm({
       title: "Ask a model for improvements?",
-      message: `The ${r.failed} failed cases, the prompt, skills, variants, context and reflexes are sent to ${r.model}. It costs money. Nothing changes until you accept an edit.`,
+      message: `The ${r.failed} failed cases, the prompt, skills, variants, context and reflexes are sent to ${est.model}: about ${est.input_tokens.toLocaleString()} tokens in, at most ${est.max_output.toLocaleString()} out, at most about $${est.worst_usd.toFixed(2)} at a conservative price (cap $${est.cap_usd}). It costs money. Nothing changes until you accept an edit.`,
       confirmLabel: "Propose",
     })
     if (!ok) return

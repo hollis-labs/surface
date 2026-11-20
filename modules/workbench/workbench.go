@@ -24,7 +24,12 @@ import (
 	"github.com/hollis-labs/surface/module"
 )
 
-func init() { module.Register(&mod{}) }
+func init() {
+	// Started as an eval child (child.go), this process runs the eval and exits; it never
+	// becomes the app.
+	_ = runChildIfAsked()
+	module.Register(&mod{})
+}
 
 type mod struct {
 	module.Base
@@ -37,7 +42,7 @@ type mod struct {
 
 func (m *mod) Manifest() module.Manifest {
 	return module.Manifest{
-		ID: "workbench", Title: "Agent Workbench", Version: WorkbenchVersion,
+		ID: "workbench", Title: "Agent Workbench", Version: WorkbenchVersion, Gateway: true,
 		About: "Make, edit, evaluate and improve Nanite agents: prompt, skills, tools, variants, providers, reflexes and triggers, context; versions; import and export; eval runs and improvement proposals.",
 		Views: []module.View{{
 			ID: "workbench", Title: "Agent Workbench", Icon: "flask-conical", Width: 1180, Height: 760, Menu: true, Bare: true,
@@ -98,6 +103,12 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 		m.rt = &naniteRuntime{}
 	}
 	m.run = &Runner{lib: m.lib, rt: m.rt, h: h, now: time.Now}
+	// After a crash: the library's leftovers put right, and runs that were going when the app
+	// stopped marked as interrupted (their eval process went with it).
+	if err := m.lib.Recover(); err != nil {
+		h.Log().Warn("workbench: library not recovered", "err", err)
+	}
+	m.run.recoverRuns()
 	m.routes(h)
 	return nil
 }

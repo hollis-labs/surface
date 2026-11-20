@@ -79,10 +79,47 @@ type Grader struct {
 }
 
 // JSONCheck is a value at a path in the answer read as JSON: "$.a.b[0]" or "a.b.0".
+// equals compares the value (equals: null wants a JSON null); exists: false wants the path
+// absent; with neither, the path must exist.
 type JSONCheck struct {
 	Path   string `yaml:"path" json:"path"`
 	Equals any    `yaml:"equals,omitempty" json:"equals,omitempty"`
-	Exists bool   `yaml:"exists,omitempty" json:"exists,omitempty"`
+	Exists *bool  `yaml:"exists,omitempty" json:"exists,omitempty"`
+	// HasEquals records that equals was given, so that equals: null is a check for null.
+	HasEquals bool `yaml:"-" json:"has_equals,omitempty"`
+}
+
+// UnmarshalYAML reads a JSONCheck strictly and notes whether equals was given.
+func (c *JSONCheck) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return errors.New("json_path: a mapping with path, and equals or exists")
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i].Value, n.Content[i+1]
+		switch k {
+		case "path":
+			if err := v.Decode(&c.Path); err != nil {
+				return err
+			}
+		case "equals":
+			c.HasEquals = true
+			if err := v.Decode(&c.Equals); err != nil {
+				return err
+			}
+		case "exists":
+			var b bool
+			if err := v.Decode(&b); err != nil {
+				return err
+			}
+			c.Exists = &b
+		default:
+			return fmt.Errorf("json_path: unknown field %q", k)
+		}
+	}
+	if c.HasEquals && c.Exists != nil && !*c.Exists {
+		return errors.New("json_path: equals and exists: false contradict each other")
+	}
+	return nil
 }
 
 // ToolCheck names a tool and, optionally, arguments its call must include.
@@ -401,10 +438,16 @@ func jsonCheck(answer string, c JSONCheck) (bool, string) {
 		}
 	}
 	got, ok := jsonAt(v, c.Path)
+	if c.Exists != nil && !*c.Exists {
+		if ok {
+			return false, fmt.Sprintf("%s is in the answer (want it absent)", c.Path)
+		}
+		return true, fmt.Sprintf("%s is absent", c.Path)
+	}
 	if !ok {
 		return false, fmt.Sprintf("%s is not in the answer", c.Path)
 	}
-	if c.Equals == nil {
+	if !c.HasEquals && c.Equals == nil {
 		return true, fmt.Sprintf("%s exists", c.Path)
 	}
 	gb, _ := json.Marshal(got)

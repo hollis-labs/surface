@@ -17,7 +17,7 @@ through `Runtime` (`runtime.go`), which uses Nanite's public `agent` and `evals`
 | Versions (a full copy, a digest, a note), diff, rollback | real |
 | Prompt, skills, tools (.mcp.json, permissions.yaml), variants, providers.yaml, context files, host.yaml runtime knobs | real: these are Nanite's own files |
 | `compact_at` | a runtime option: Nanite takes it only in code (`agent.Options.CompactAt`). Kept in the sidecar and passed on every eval run; a host that opens the agent passes it the same way. A host.yaml key comes in a later agentdir release |
-| Reflexes, triggers, presets | **draft config, not yet run by Nanite.** Kept in the sidecar, shaped like libs `agent/steer` (libs#174, in review) so a host can pass them as typed options once Nanite has a reflex runtime (N6-05). Eval runs do not apply them |
+| Reflexes, triggers, presets | **steer v0.1.0 config; Nanite applies it via `agent.Options.Steering` from its next release.** libs `agent/steer` v0.1.0's own types and validation, kept in the sidecar (host configuration, not agent-directory files). Surface pins Nanite v0.6.0, which has no steering, so eval runs do not apply them; that is wired in when Nanite 0.7.0 is tagged |
 | Base prompt | shown read-only (Nanite's Universal slot) on the Prompt and Assembled prompt tabs |
 | Boot prompts and boot profiles | not here: they are Tether catalog concepts, not part of an agent directory |
 | Slot budgets, slot placement, the context window, a compaction summary prompt | not offered: engine-owned, set by the model, or not a knob Nanite has |
@@ -32,7 +32,7 @@ through `Runtime` (`runtime.go`), which uses Nanite's public `agent` and `evals`
 <root>/<id>/agent/                  the agent directory: what Nanite opens
 <root>/<id>/workbench/              the sidecar
     meta.json                       source, template, created
-    steering.json                   reflexes, triggers, presets (draft)
+    steering.json                   reflexes, triggers, presets (steer v0.1.0)
     options.json                    runtime options: compact_at
     versions/000001/tree/...        every file of each saved state
     versions/000001/meta.json       n, digest, agentdir digest, note, author, created
@@ -52,6 +52,15 @@ Authored paths only: `agent.md`, `host.yaml`, `.mcp.json`, `permissions.yaml`, `
 exported; in particular never `.nanite/` (conversations, traces, `nanite.db*`, `agent.lock`, `transcripts/`, `jobs/`).
 A file is at most 1 MiB, an agent at most 512 files and 16 MiB.
 
+Credentials: a value passes a credential only by reference, when it is entirely `${VARIABLE}`, `Bearer ${VARIABLE}`, or
+a `keychain://`, `file://` or `env://` reference. Checked in `.mcp.json` env, headers, arguments (and the value after a
+credential flag) and URLs; `host.yaml` `runtime.env`; `providers.yaml` `key_ref`, `base_url` and headers. A field named
+like a credential (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*AUTH*`, `*PASSWORD*`, `*_PAT`) with a literal value is refused, and
+so is any value shaped like a known credential (`sk-`, `sk-ant-`, `ghp_`/`github_pat_`, `xox?-`, `AKIA…`, a private key,
+`user:password@` in a URL, `api_key=`/`token=` in a query). Every other file (prompts, skills and their resources,
+context, suites) is scanned too: a known credential shape is a warning when saved and refuses an export; a
+credential-like assignment is a warning (sent with an export in `X-Workbench-Warnings`).
+
 Validation, by file, on every save (and as you type, without saving):
 
 - `agentdir.Load` over the directory (agent.md's schema-2 front matter, host.yaml's profile, .mcp.json, skills).
@@ -67,6 +76,14 @@ Validation, by file, on every save (and as you type, without saving):
 options), length-prefixed in path order like agentdir's own. It covers what `agentdir_digest` (agentdir.Load's)
 leaves out: variants, providers.yaml, skill resources and the sidecar. Runs are keyed by `digest`.
 
+## Saving
+
+A save writes the agent's changed authored files in place, each through a temporary file and a rename, and removes the
+authored files the new state lacks. Nothing else in the directory is touched: Nanite's `.nanite/` (`nanite.db*`,
+`agent.lock`, `transcripts/`, `jobs/`), notes, backups. The directory itself is never moved, so a host running the agent
+from it keeps running. At start the Workbench removes an interrupted write's temporary files (never inside `.nanite/`),
+puts back an agent directory an older version left aside, and marks runs left `running` as `interrupted`.
+
 ## Versions
 
 Every save that changes something writes a version: a full copy of the files, the digest, the agentdir digest, a
@@ -74,7 +91,7 @@ note, who saved it (`owner`, or `agent` for a tool) and when. A save names the d
 refused if the agent changed since. Rollback saves an old version's files as a new version. Accepting a proposal
 saves a version whose note names the proposal.
 
-## steering.json (draft; not yet run by Nanite)
+## steering.json (steer v0.1.0 config)
 
 ```json
 {
@@ -92,7 +109,9 @@ saves a version whose note names the proposal.
 }
 ```
 
-`presets` and `reflexes` marshal exactly as `steer.Preset` and `steer.Reflex`. Trigger kinds: `text`
+`presets` and `reflexes` are `steer.Preset` and `steer.Reflex` (libs `agent/steer` v0.1.0), checked with
+`Reflex.Validate` against a vocabulary of steer's `remind` and `halt` plus Surface's `run_command` and `call_tool`, and
+`Preset.Validate`. Trigger kinds: `text`
 (`{"pattern"}`), `predicate` (a libs `agent/core/reflexes` predicate), `event` (`{"topic"}`), `focus` (`{"view"}`).
 Action kinds: `remind` (`{"body"}`) and `halt` (`{"message"}`, text and predicate triggers only) are steer's own;
 `run_command` (`{"command"}`) and `call_tool` (`{"tool"}`) are the kinds a Surface host registers. A preset may only
@@ -130,6 +149,7 @@ cases:
       - regex: "(?m)^ANSWER: "
       - answer_line: "2026-12-08"            # the last "ANSWER:" line, Nanite's convention
       - json_path: {path: "$.status", equals: ok}   # the answer, or its first ```json block
+      - json_path: {path: "$.error", exists: false} # absent; equals: null wants a JSON null
       - tool_called: {tool: read_file, args: {path: notes/launch.md}}  # args: a subset
       - no_tool_called: {}                   # or {tool: bash}
       - max_steps: 4
@@ -144,16 +164,28 @@ scenario's `Grade`. Steps and tokens come from the turn's trace record (libs `ag
 usage plus `subtasks[].usage`); the tool calls and their arguments, and the transcript, from the model's replies.
 `compact_at` from options.json is passed as `agent.Options.CompactAt`.
 
+**Every run happens in a child process**: the app's own binary started again with the hidden argument
+`workbench-eval` (`child.go`). `nanite/evals` changes the working directory for each case, which the app's server must
+never see. The parent sends the request as JSON on stdin (the gateway URL and the key file's path, never the key),
+reads progress and the result as JSON lines, and never changes directory. Cancelling a run kills the child.
+
 **Offline** (the default) plays each case's `script`: earlier turns are answered "Noted.", a subtask returns at once,
 no model is called and nothing is spent. **Live** runs only when the owner presses Run live and confirms (or a
 confirm-level tool call). The page shows the case count, the model, an estimate of the tokens and the caps first.
-A live run sends every request through the app's gateway (`model`, `gateway_url`, `key_file` in the app's agent
+The module declares `Manifest.Gateway` to be given the gateway (`Host.Agent().Gateway`). A live run sends every
+request through the app's gateway (`model`, `gateway_url`, `key_file` in the app's agent
 config; the key is read per request and never logged), with:
 
 - nanite/evals' dollar cap (`eval_max_usd`, default 10, at most 50; each request reserves its most expensive
   outcome at a conservative price before it is sent);
 - a per-case token cap (`agent.Options.TurnTokenBudget` = `eval_turn_tokens`);
-- a run token budget (`eval_run_tokens`): once passed, the run is stopped and nothing more is sent.
+- a run token budget (`eval_run_tokens`): every request first reserves its most expensive outcome (its input and its
+  whole output allowance), so requests running side by side cannot together pass it; a request that would is refused
+  and the run is stopped.
+
+Only the owner, at the page, can start a live run or re-run, ask for a proposal, accept or reject one, roll back, delete
+or import a directory: a request with no Origin (MCP, the HTTP tools, the CLI) is an outside client and is refused
+there. Outside clients use the agent tools, where the owner is asked.
 
 ## runs/<run>.json
 
@@ -169,10 +201,13 @@ From a live or offline run with failures, Propose (live: it calls a model, after
 cases (turns, graders, answer, the end of the transcript) and the agent's prompt, skills, variants, context and
 steering, with a fixed meta-prompt (`proposals.go`), and asks for JSON: `{"proposals": [{"file", "diff",
 "rationale"}]}` (or `content` for a new file). At most five edits; only the prompt, skills, variants, context and
-steering may be changed. Each edit is checked: the diff must apply and the agent must still validate, or it is
-marked `invalid`. Stored as `id`, `run`, `digest`, `model`, `tokens`, `items[]` (`n`, `file`, `diff`, `rationale`,
+steering may be changed. Each edit is checked: the diff must apply strictly (each hunk's body has
+exactly the lines its header counts, at least one kept line unless the file is new, and it matches at its stated line
+or at exactly one place within 50 lines; one bad hunk refuses the whole edit) and the agent must still validate, or it
+is marked `invalid`. Stored as `id`, `run`, `digest`, `model`, `tokens`, `items[]` (`n`, `file`, `diff`, `rationale`,
 `status`: pending, accepted, rejected, invalid, stale; `version` once accepted). Accepting applies the edit to the
-agent as it is now (`stale` if it no longer applies) and saves a version. Re-run runs the suite again and compares.
+agent as it is now (`stale` if it no longer applies) and saves a version over exactly the state it was applied to; one
+decision at a time per proposal, so an edit cannot be accepted twice. Re-run runs the suite again and compares.
 
 ## workbench.json (the export manifest)
 
@@ -203,18 +238,20 @@ note, dry_run}`) · `GET agents/{id}/versions/{n}/diff?to=current|m` · `POST ag
 ## Agent tools
 
 `workbench_list`, `_get`, `_validate`, `_versions`, `_suites`, `_estimate`, `_runs`, `_run_get`, `_compare`,
-`_proposals` (read); `workbench_create`, `_write_file`, `_import_dir`, `_write_suite` (write; `_write_file` waits
-while the owner has unsaved changes to that agent); `workbench_run_eval` and `workbench_propose` (confirm: a live run
-or a proposal costs money). No tool accepts or rejects a proposal, rolls back, deletes or sets a mode: those are the
+`_proposals` (read); `workbench_create`, `_write_file` (the prompt, skills, variants, context, steering, options),
+`_import_dir`, `_write_suite` (write; the writes wait while the owner has unsaved changes to that agent and save over the
+state they read); `workbench_write_config` (`host.yaml`, `.mcp.json`, `permissions.yaml`, `providers.yaml`: what the
+agent may run and reach), `workbench_run_eval` and `workbench_propose` (confirm: asked every time). No tool accepts or rejects a proposal, rolls back, deletes or sets a mode: those are the
 owner's.
 
 ## Known gaps
+
+Stopgaps, labeled as such in the code, pending Nanite exports (asked of Nanite):
 
 - Nanite exports no model provider, and nanite/evals needs one for a live run, so `provider.go` is a small Anthropic
   Messages client over the gateway (non-streaming). Eval runs therefore speak the Anthropic wire only; an agent with
   `runtime.provider: openai` cannot be run live. When Nanite exports a constructor this file goes.
 - nanite/evals has no hook for host tools, so a case cannot stub a tool yet: an eval has the file tools over its
   fixtures, and `.mcp.json` servers are not started.
-- nanite/evals.Run changes the process's working directory for each case, so runs are one at a time in the process
-  and nothing else in the app may rely on the working directory during one.
+- nanite/evals.Run changes the process's working directory for each case; runs therefore happen in a child process.
 - Variant and providers.yaml validation mirrors Nanite v0.6.0's internal rules (they are not exported).

@@ -138,7 +138,7 @@ func TestValidationNamesTheFile(t *testing.T) {
 		file, content, want string
 	}{
 		{".mcp.json", `{"mcpServers":{"x":{"type":"http"}}}`, "requires an HTTP(S) URL"},
-		{".mcp.json", `{"mcpServers":{"x":{"command":"tool","env":{"` + credName + `":"written-in-the-file"}}}}`, "literal credential"},
+		{".mcp.json", `{"mcpServers":{"x":{"command":"tool","env":{"` + credName + `":"written-in-the-file"}}}}`, "credential is named"},
 		{"variants/reviewer.md", "---\nread_only: true\ncan_spawn: true\n---\nReview.\n", "cannot be combined"},
 		{"variants/reviewer.md", "---\nlast_n: 80\n---\nReview.\n", "last_n must be at most 50"},
 		{"variants/reviewer.md", "---\nsurprise: 1\n---\nReview.\n", "surprise"},

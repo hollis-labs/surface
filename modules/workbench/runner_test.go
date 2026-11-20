@@ -270,7 +270,7 @@ func TestToolsAreLevelledAndNoneAccepts(t *testing.T) {
 	if err != nil || !out.(map[string]any)["saved"].(bool) {
 		t.Fatal(out, err)
 	}
-	out, err = h.Tool("workbench_write_file", `{"agent":"tooled","file":"host.yaml","content":"kind: nope\n","note":"break"}`)
+	out, err = h.Tool("workbench_write_config", `{"agent":"tooled","file":"host.yaml","content":"kind: nope\n","note":"break"}`)
 	if err != nil || out.(map[string]any)["saved"].(bool) {
 		t.Fatal("an invalid write was saved", out, err)
 	}

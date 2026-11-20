@@ -128,6 +128,15 @@ func Validate(t Tree) Report {
 	if _, err := parseOptions(t[optionsFile]); err != nil {
 		rep.add(optionsFile, "error", "%v", err)
 	}
+	for _, f := range scanTree(t) {
+		msg := "line %d holds %s"
+		if f.Refuse {
+			msg += "; an export is refused while it is there"
+		} else {
+			msg = "line %d has %s; make sure it is not a real credential"
+		}
+		rep.add(f.File, "warning", msg, f.Line, f.What)
+	}
 	rep.OK = !slices.ContainsFunc(rep.Problems, func(p Problem) bool { return p.Severity == "error" })
 	return rep
 }
@@ -180,8 +189,8 @@ func checkRuntime(rep *Report, p agentdir.Profile) {
 		rep.add("host.yaml", "warning", "runtime.provider is openai but no model is set; Nanite's default model is an Anthropic one")
 	}
 	for k, v := range r.Env {
-		if secretName(k) && literalSecret(v) {
-			rep.add("host.yaml", "error", "runtime.env.%s looks like a credential written in the file; keep keys out of agent files", k)
+		if why := secretValue(k, v); why != "" {
+			rep.add("host.yaml", "error", "runtime.env.%s %s; keep credentials out of agent files", k, why)
 		}
 	}
 }
@@ -189,42 +198,44 @@ func checkRuntime(rep *Report, p agentdir.Profile) {
 func checkMCPSecrets(rep *Report, c agentdir.MCPConfig) {
 	for name, s := range c.Servers {
 		for k, v := range s.Env {
-			if secretName(k) && literalSecret(v) {
-				rep.add(".mcp.json", "error", "server %s: env %s holds a literal credential; use ${VARIABLE} or a secret reference (keychain://, file://, env://)", name, k)
+			if why := secretValue(k, v); why != "" {
+				rep.add(".mcp.json", "error", "server %s: env %s %s; use ${VARIABLE} or a reference (keychain://, file://, env://)", name, k, why)
 			}
 		}
 		for k, v := range s.Headers {
-			if secretName(k) && literalSecret(v) {
-				rep.add(".mcp.json", "error", "server %s: header %s holds a literal credential; use ${VARIABLE} or a secret reference", name, k)
+			if why := secretValue(k, v); why != "" {
+				rep.add(".mcp.json", "error", "server %s: header %s %s; use ${VARIABLE}, Bearer ${VARIABLE} or a reference", name, k, why)
 			}
 		}
-	}
-}
-
-func secretName(k string) bool {
-	k = strings.ToLower(k)
-	for _, w := range []string{"key", "token", "secret", "auth", "password", "credential"} {
-		if strings.Contains(k, w) {
-			return true
+		for i, a := range s.Args {
+			// "--api-key sk-..." or "--token=abc": the value after a credential flag counts too.
+			flag := ""
+			if i > 0 && strings.HasPrefix(s.Args[i-1], "-") {
+				flag = s.Args[i-1]
+			}
+			if f, v, ok := strings.Cut(a, "="); ok && strings.HasPrefix(f, "-") {
+				flag, a = f, v
+			}
+			if strings.HasPrefix(a, "-") && !strings.Contains(a, "=") {
+				continue // a flag, not a value
+			}
+			field := strings.TrimLeft(flag, "-")
+			if why := secretValue(field, a); why != "" {
+				rep.add(".mcp.json", "error", "server %s: argument %d %s; pass credentials through env with ${VARIABLE}", name, i+1, why)
+			}
+		}
+		if why := urlSecret(s.URL); why != "" {
+			rep.add(".mcp.json", "error", "server %s: url %s", name, why)
 		}
 	}
-	return false
-}
-
-var refRe = regexp.MustCompile(`^(\$\{[A-Za-z_][A-Za-z0-9_]*\}|[a-z][a-z0-9+.-]*://.+)$`)
-
-// literalSecret: a value that is neither empty, a ${VARIABLE}, nor a reference.
-func literalSecret(v string) bool {
-	v = strings.TrimSpace(v)
-	if v == "" || refRe.MatchString(v) {
-		return false
-	}
-	// "Bearer ${TOKEN}" and the like are references too.
-	return !strings.Contains(v, "${")
 }
 
 // variantFront is Nanite v0.6.0's variant front matter (internal/subagent), decoded strictly
 // as Nanite decodes it.
+//
+// STOPGAP, pending a Nanite export (asked of Nanite): the variant and providers.yaml checks
+// below mirror Nanite's internal rules, which a host cannot call. When Nanite exports a
+// validator, they go.
 type variantFront struct {
 	Description string `yaml:"description"`
 	Tools       struct {
@@ -340,8 +351,16 @@ func checkProviders(raw []byte) ([]string, error) {
 		if err := spec.Validate(); err != nil {
 			return nil, err
 		}
-		if spec.KeyRef != "" && !refRe.MatchString(strings.TrimSpace(spec.KeyRef)) {
+		if spec.KeyRef != "" && !isRef(spec.KeyRef) {
 			return nil, fmt.Errorf("provider %s: key_ref must be a secret reference (keychain://, file://, env://), not a key", name)
+		}
+		if why := urlSecret(spec.BaseURL); why != "" {
+			return nil, fmt.Errorf("provider %s: base_url %s", name, why)
+		}
+		for k, v := range spec.Headers {
+			if why := secretValue(k, v); why != "" {
+				return nil, fmt.Errorf("provider %s: header %s %s", name, k, why)
+			}
 		}
 		names = append(names, name)
 	}

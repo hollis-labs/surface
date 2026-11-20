@@ -97,13 +97,23 @@ func compactAt(n int) int {
 }
 
 // hostTools is the app's tools as the host runner takes them: the same list, levels and
-// approver the engine gets.
+// approver the engine gets, and how long each may run.
 func (s *Service) hostTools() []hostrunner.Tool {
 	var out []hostrunner.Tool
 	for _, t := range s.engineTools() {
-		out = append(out, hostrunner.Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, Level: t.Level, Run: t.Run})
+		out = append(out, hostrunner.Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, Level: t.Level, Run: t.Run,
+			WaitsForOwner: waitsForOwner(t)})
 	}
 	return out
+}
+
+// waitsForOwner reports whether a tool waits for the owner's answer: by the app's
+// convention such a tool takes timeout_seconds, how long to wait (card_ask, genui_show,
+// design_approve). It may then run for up to 70 minutes; any other tool for 5.
+func waitsForOwner(t EngineTool) bool {
+	props, _ := t.InputSchema["properties"].(map[string]any)
+	_, ok := props["timeout_seconds"]
+	return ok
 }
 
 // ranBefore reports whether a conversation has an agent's run on its stream already: one

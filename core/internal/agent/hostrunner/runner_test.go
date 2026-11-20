@@ -1,6 +1,7 @@
 package hostrunner
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -30,6 +31,9 @@ type gateway struct {
 	reqs    []request
 	answers []answer
 	summary string
+	// failSummary refuses the summary request; gzip compresses an answer when asked to.
+	failSummary bool
+	gzip        bool
 }
 
 type request struct {
@@ -61,8 +65,9 @@ func (r request) system() string {
 
 type answer struct {
 	text                 []string
-	tool                 string // a tool call: name
-	input                string // its input
+	tool                 string   // a tool call: name
+	input                string   // its input
+	more                 []string // more tool calls in the same answer, by name, input {}
 	in, read, write, out int
 	hold                 bool
 }
@@ -98,6 +103,10 @@ func (g *gateway) serve(w http.ResponseWriter, r *http.Request) {
 	g.reqs = append(g.reqs, req)
 	var a answer
 	switch {
+	case strings.Contains(req.system(), "running summary") && g.failSummary:
+		g.mu.Unlock()
+		http.Error(w, `{"error":{"message":"summary refused"}}`, 400)
+		return
 	case strings.Contains(req.system(), "running summary"):
 		a = answer{text: []string{g.summary}, in: 400, out: 30}
 	case len(g.answers) > 0:
@@ -109,11 +118,20 @@ func (g *gateway) serve(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	fl := w.(http.Flusher)
+	var out io.Writer = w
+	flush := fl.Flush
+	if g.gzip && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		defer func() { _ = gz.Close() }()
+		out = gz
+		flush = func() { _ = gz.Flush(); fl.Flush() }
+	}
 	send := func(typ string, v map[string]any) {
 		v["type"] = typ
 		raw, _ := json.Marshal(v)
-		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, raw)
-		fl.Flush()
+		_, _ = fmt.Fprintf(out, "event: %s\ndata: %s\n\n", typ, raw)
+		flush()
 	}
 	send("message_start", map[string]any{"message": map[string]any{"usage": map[string]any{
 		"input_tokens": a.in, "cache_read_input_tokens": a.read, "cache_creation_input_tokens": a.write, "output_tokens": 1}}})
@@ -136,6 +154,14 @@ func (g *gateway) serve(w http.ResponseWriter, r *http.Request) {
 		send("content_block_start", map[string]any{"index": i, "content_block": map[string]any{"type": "tool_use", "id": fmt.Sprintf("toolu_%d", len(g.reqs)), "name": a.tool}})
 		send("content_block_delta", map[string]any{"index": i, "delta": map[string]any{"type": "input_json_delta", "partial_json": a.input}})
 		send("content_block_stop", map[string]any{"index": i})
+		i++
+	}
+	for k, name := range a.more {
+		stop = "tool_use"
+		send("content_block_start", map[string]any{"index": i, "content_block": map[string]any{"type": "tool_use", "id": fmt.Sprintf("toolu_%d_%d", len(g.reqs), k), "name": name}})
+		send("content_block_delta", map[string]any{"index": i, "delta": map[string]any{"type": "input_json_delta", "partial_json": "{}"}})
+		send("content_block_stop", map[string]any{"index": i})
+		i++
 	}
 	send("message_delta", map[string]any{"delta": map[string]any{"stop_reason": stop}, "usage": map[string]any{"output_tokens": a.out}})
 	send("message_stop", map[string]any{})
@@ -187,10 +213,16 @@ func openFixture(t *testing.T, g *gateway, db *sql.DB, compactAt int) *fixture {
 				return name + " ran with " + string(input), nil
 			}}
 	}
+	stuck := Tool{Name: "stuck", Description: "Never returns by itself.", Level: LevelRead, Timeout: 150 * time.Millisecond,
+		InputSchema: map[string]any{"type": "object"},
+		Run: func(ctx context.Context, _ json.RawMessage) (string, error) {
+			<-ctx.Done()
+			return "", ctx.Err()
+		}}
 	r, err := Open(context.Background(), Options{
 		Config: hostConfig(g.srv.URL, key, compactAt),
 		DB:     db,
-		Tools:  []Tool{tool("look", LevelRead), tool("change", LevelWrite), tool("risky", LevelConfirm), tool("slow", LevelAct)},
+		Tools:  []Tool{tool("look", LevelRead), tool("change", LevelWrite), tool("risky", LevelConfirm), tool("slow", LevelAct), stuck},
 		Ask: func(_ context.Context, c Call) bool {
 			mu.Lock()
 			defer mu.Unlock()

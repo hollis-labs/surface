@@ -511,17 +511,22 @@ What it does with context, as Basalisk did:
 - **The system prompt is fixed**: Surface's own, then the config's `system`. Nothing per turn goes in it.
 - **The context block goes in front of the owner's message**, in the same stored message. The history the model
   is sent is then the same, byte for byte, from one request to the next, and the provider's cache holds. The block
-  is not capped to a slot's size (`contextLimit` is 0): the thread's size is kept in hand by compaction.
+  is not capped to a slot's size (`contextLimit` is 0); it is clipped at 20,000 characters, as the host clips its
+  own, since it is stored in every turn.
 - **Compaction**: when the thread's last request passed `compact_at` tokens (default 110,000, Basalisk's; negative
   turns it off), the older part is summarized once and the model is sent the summary, then the recent turns whole.
   Nothing is deleted. The panel is told (`host.compact`, with `before` and `after` in tokens).
+  `compact_at` must exceed what every request carries anyway (the tool definitions and the system prompt, plus the
+  summary and the turns compaction keeps) by a clear margin. When compacting would gain under a tenth (the thread
+  is within 10% of the smallest request it has sent, or of the size the last compaction left), the runner skips it
+  and logs a warning instead of summarizing on every turn.
 
 | What | Where it comes from |
 |---|---|
 | Model, gateway, key | The app's agent config: `model`, `gateway_url`, `key_file` |
 | `max_tokens`, `max_steps`, `compact_at` | The app's agent config (defaults 8192, 24, 110,000) |
 | The thread | One host thread per conversation (host owner `chat:<conversation id>`), in the host's `agenthost_*` tables in the core database. Its id is the conversation's `runner_ref`. A restart resumes it, summary included |
-| Tools | The app's tools, run in the app, with their levels: `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time. A call that waits for the owner (`card_ask`) runs as long as it needs, and stops with the run |
+| Tools | The app's tools, run in the app, with their levels: `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time. A call may take 5 minutes, or 70 for a tool that waits for the owner (one that takes `timeout_seconds`: `card_ask`, `genui_show`, `design_approve`); one that runs out is given up and the model told. Every call stops with the run |
 | Ask first, standing approvals | As for `nanite`: a routing rule's ask-first, and `agent_grants` read before asking |
 | Usage | Uncached input, cache reads and cache writes, per model request (the summary's included), in the run log |
 | A turn the host answers (a halting reflex) | Recorded in the thread |

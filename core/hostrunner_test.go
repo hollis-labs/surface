@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/surface/module"
 )
@@ -22,6 +24,15 @@ type fakeModel struct {
 	srv  *httptest.Server
 	mu   sync.Mutex
 	sent []string
+	// next is what the next answers are instead of text: a tool to call, or "hold" (an
+	// answer that never ends).
+	next []string
+}
+
+func (m *fakeModel) script(next ...string) {
+	m.mu.Lock()
+	m.next = append(m.next, next...)
+	m.mu.Unlock()
 }
 
 func newFakeModel(t *testing.T) *fakeModel {
@@ -31,10 +42,30 @@ func newFakeModel(t *testing.T) *fakeModel {
 		m.mu.Lock()
 		m.sent = append(m.sent, string(body))
 		n := len(m.sent)
+		next := ""
+		if len(m.next) > 0 {
+			next, m.next = m.next[0], m.next[1:]
+		}
 		m.mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
-		frame := func(typ, data string) { _, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, data) }
+		frame := func(typ, data string) {
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, data)
+			w.(http.Flusher).Flush()
+		}
 		frame("message_start", `{"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}`)
+		switch next {
+		case "":
+		case "hold":
+			<-r.Context().Done()
+			return
+		default:
+			frame("content_block_start", fmt.Sprintf(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_%d","name":%q}}`, n, next))
+			frame("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}`)
+			frame("content_block_stop", `{"type":"content_block_stop","index":0}`)
+			frame("message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":12}}`)
+			frame("message_stop", `{"type":"message_stop"}`)
+			return
+		}
 		frame("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
 		frame("content_block_delta", fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Answer %d."}}`, n))
 		frame("content_block_stop", `{"type":"content_block_stop","index":0}`)
@@ -155,7 +186,7 @@ func TestTheHostRunnerOnTheConversationWire(t *testing.T) {
 	var req struct {
 		System   []struct{ Text string } `json:"system"`
 		Messages []struct {
-			Role    string `json:"role"`
+			Role    string                  `json:"role"`
 			Content []struct{ Text string } `json:"content"`
 		} `json:"messages"`
 	}
@@ -340,4 +371,143 @@ func TestTheHostRunnerSeedsAConversationFromAnotherRunner(t *testing.T) {
 	if n := strings.Count(second, "went on before your history here begins"); n != 1 {
 		t.Errorf("the note is in the thread %d times, want once (the first turn only)", n)
 	}
+}
+
+// streamUntil reads the conversation's stream from the start until a data line has all of want,
+// and returns the data lines read.
+func (a *lateApp) streamUntil(want ...string) []string {
+	t := a.t
+	t.Helper()
+	rctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(rctx, "GET", a.srv.URL+"/api/agent/conversations/"+a.conv+"/events?attachment="+a.att+"&after=0", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var lines []string
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 1<<16), 1<<22)
+	for sc.Scan() {
+		line, ok := strings.CutPrefix(sc.Text(), "data: ")
+		if !ok {
+			continue
+		}
+		lines = append(lines, line)
+		all := true
+		for _, w := range want {
+			all = all && strings.Contains(line, w)
+		}
+		if all {
+			return lines
+		}
+	}
+	t.Fatalf("the stream ended before %q", want)
+	return nil
+}
+
+func countWith(lines []string, s string) int {
+	n := 0
+	for _, l := range lines {
+		if strings.Contains(l, s) {
+			n++
+		}
+	}
+	return n
+}
+
+// Through the Service: an approval answered "always" is kept and covers the next call; a
+// cancel stops a run whose model has not answered, and the conversation goes on.
+func TestTheHostRunnerApprovalsAndCancelThroughTheService(t *testing.T) {
+	model := newFakeModel(t)
+	hostConfig(t, model.srv.URL)
+	ctx := context.Background()
+	app, err := New(ctx, Options{Name: "hostappr", Title: "Host approvals", DataDir: t.TempDir(), Modules: []string{"scratch"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = app.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(app.Handler())
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+		_ = app.Stop(context.Background())
+	})
+	a := &lateApp{t: t, srv: srv}
+	var conv struct {
+		ID string `json:"conversation_id"`
+	}
+	do(t, srv, "POST", "/api/agent/agents/hostappr/conversation", "{}", &conv)
+	var att struct {
+		ID string `json:"attachment_id"`
+	}
+	do(t, srv, "POST", "/api/agent/conversations/"+conv.ID+"/attachments", `{"role":"controller","stream":"committed"}`, &att)
+	a.conv, a.att = conv.ID, att.ID
+	turn := func(text string) string {
+		var r struct {
+			RunID string `json:"run_id"`
+		}
+		if code := do(t, srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, &r); code != 202 {
+			t.Fatalf("turn %q: %d", text, code)
+		}
+		return r.RunID
+	}
+	ended := func(run string) {
+		a.until("run "+run+" ended", func() bool {
+			for _, r := range a.runs() {
+				if r.RunID == run && r.Status != "" {
+					return true
+				}
+			}
+			return false
+		})
+	}
+
+	// agent_reflex_put is a write tool: it asks.
+	model.script("agent_reflex_put")
+	run := turn("add a reflex")
+	lines := a.streamUntil(`"approval.request"`)
+	var req struct {
+		ApprovalID string `json:"approval_id"`
+	}
+	_ = json.Unmarshal([]byte(lines[len(lines)-1]), &req)
+	if req.ApprovalID == "" || !strings.Contains(lines[len(lines)-1], `agent_reflex_put`) {
+		t.Fatalf("the approval request: %s", lines[len(lines)-1])
+	}
+	if code := do(t, srv, "POST", "/api/agent/conversations/"+a.conv+"/approvals/"+req.ApprovalID,
+		`{"attachment":"`+a.att+`","decision":"allow","scope":"always"}`, nil); code != 204 {
+		t.Fatalf("answering: %d", code)
+	}
+	ended(run)
+	var grants []struct {
+		Tool string `json:"tool"`
+	}
+	do(t, srv, "GET", "/api/agent/grants", "", &grants)
+	if len(grants) != 1 || grants[0].Tool != "agent_reflex_put" {
+		t.Fatalf("grants: %+v", grants)
+	}
+	// The next call is covered: no question.
+	model.script("agent_reflex_put")
+	run = turn("another reflex")
+	ended(run)
+	if n := countWith(a.streamUntil(run, `"verb":"run.finish"`), `"approval.request"`); n != 1 {
+		t.Errorf("%d approval requests, want 1", n)
+	}
+
+	// Cancel a run the model is still answering.
+	sent := model.count()
+	model.script("hold")
+	run = turn("wait for it")
+	a.until("the model was asked", func() bool { return model.count() > sent })
+	if code := do(t, srv, "POST", "/api/agent/conversations/"+a.conv+"/runs/"+run+"/cancel", `{"attachment":"`+a.att+`"}`, nil); code != 202 {
+		t.Fatalf("cancel: %d", code)
+	}
+	a.streamUntil(run, `"verb":"run.abort"`)
+	ended(run)
+	next := model.count() + 1
+	turn("after the cancel")
+	a.partsUntil(fmt.Sprintf("Answer %d.", next))
 }

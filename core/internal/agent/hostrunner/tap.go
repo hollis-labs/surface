@@ -31,12 +31,29 @@ type tap struct {
 	url  string
 	srv  *http.Server
 	ln   net.Listener
-	step func(thread string) *usageStep
+	step func(thread string, summary bool) *usageStep
 }
 
 type tapThreadKey struct{}
 
-func openTap(target string, step func(string) *usageStep, logger *slog.Logger) (*tap, error) {
+type tapSummaryKey struct{}
+
+// summaryRequest reports whether a request body is the host's compaction request: the only
+// one it sends with no tools and its summary prompt as the system prompt.
+func summaryRequest(body []byte) bool {
+	var req struct {
+		System []struct {
+			Text string `json:"text"`
+		} `json:"system"`
+		Tools []json.RawMessage `json:"tools"`
+	}
+	if json.Unmarshal(body, &req) != nil || len(req.Tools) > 0 || len(req.System) == 0 {
+		return false
+	}
+	return strings.HasPrefix(req.System[0].Text, "You are writing the running summary")
+}
+
+func openTap(target string, step func(string, bool) *usageStep, logger *slog.Logger) (*tap, error) {
 	to, err := url.Parse(strings.TrimRight(target, "/"))
 	if err != nil || (to.Scheme != "http" && to.Scheme != "https") || to.Host == "" {
 		return nil, fmt.Errorf("hostrunner: the gateway URL %q is not an HTTP(S) URL", target)
@@ -52,7 +69,19 @@ func openTap(target string, step func(string) *usageStep, logger *slog.Logger) (
 			r.SetURL(to)
 			r.Out.Host = to.Host
 			r.Out.Header.Del(threadHeader)
-			r.Out = r.Out.WithContext(context.WithValue(r.Out.Context(), tapThreadKey{}, thread))
+			// The usage frames must be readable here: no compressed answer. (The transport
+			// still asks for one itself and undoes it before the tap reads.)
+			r.Out.Header.Del("Accept-Encoding")
+			summary := false
+			if r.In.Body != nil {
+				if body, err := io.ReadAll(io.LimitReader(r.In.Body, 64<<20)); err == nil {
+					summary = summaryRequest(body)
+					r.Out.Body = io.NopCloser(bytes.NewReader(body))
+					r.Out.ContentLength = int64(len(body))
+				}
+			}
+			ctx := context.WithValue(r.Out.Context(), tapThreadKey{}, thread)
+			r.Out = r.Out.WithContext(context.WithValue(ctx, tapSummaryKey{}, summary))
 		},
 		// A model stream goes through as it arrives.
 		FlushInterval: -1,
@@ -61,7 +90,8 @@ func openTap(target string, step func(string) *usageStep, logger *slog.Logger) (
 				return nil
 			}
 			thread, _ := res.Request.Context().Value(tapThreadKey{}).(string)
-			res.Body = &usageReader{rc: res.Body, step: t.step(thread)}
+			summary, _ := res.Request.Context().Value(tapSummaryKey{}).(bool)
+			res.Body = &usageReader{rc: res.Body, step: t.step(thread, summary)}
 			return nil
 		},
 		ErrorLog: log.New(io.Discard, "", 0),

@@ -184,16 +184,9 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
 		_ = os.Setenv("NANITE_DEFAULT_MODEL", c.Model)
 	}
-	snapshot, err := agentdir.Load(open)
+	compact, keep, err := naniteCompactionFallback(open)
 	if err != nil {
 		return nil, fmt.Errorf("agent: host config: %w", err)
-	}
-	compact, keep := snapshot.Profile.Runtime.CompactAt, snapshot.Profile.Runtime.CompactKeepTokens
-	if compact == 0 {
-		compact = 110000
-	}
-	if keep == 0 {
-		keep = 22000
 	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
@@ -241,8 +234,24 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
-	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups), "compact_at", compact, "compact_keep_tokens", keep)
+	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups))
 	return r, nil
+}
+
+// naniteCompactionFallback supplies Surface defaults only for missing settings.
+// Zero options leave authored values to Nanite's own host.yaml loading.
+func naniteCompactionFallback(dir string) (compact, keep int, err error) {
+	snapshot, err := agentdir.Load(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	if snapshot.Profile.Runtime.CompactAt == 0 {
+		compact = 110000
+	}
+	if snapshot.Profile.Runtime.CompactKeepTokens == 0 {
+		keep = 22000
+	}
+	return compact, keep, nil
 }
 
 // runnerTools is the app's tools as the runner takes them: the same list, levels and

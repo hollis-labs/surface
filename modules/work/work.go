@@ -54,6 +54,7 @@ func (m *mod) Manifest() module.Manifest {
 			openCommand("work.open", "planner", "Planner: open", "planner plans goals milestones features tasks strategy"),
 			openCommand("work.content", "content", "Content: open", "content articles videos posts publishing calendar"),
 			openCommand("work.writer", "writer", "Writer: open", "writer books chapters scenes characters codex manuscript ttrpg"),
+			m.openRefCommand(),
 		},
 		Settings: []module.Setting{
 			{Key: "tether_command", Title: "Tether command", About: "A command that speaks MCP over stdio to Tether (the local bridge): Caster, Torque and mail are reached through it.", Type: module.SettingString, Default: ""},

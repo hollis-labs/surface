@@ -49,3 +49,24 @@ func TestAWorkItemResolvesFromTheCopyAndOpensInItsApp(t *testing.T) {
 		t.Fatalf("resolving reached Caster: %d calls", after-before)
 	}
 }
+
+// A caster:// reference to a workspace or one of its items opens in that workspace's app; one
+// no workspace holds is refused, so the page shows the record instead.
+func TestACasterRefOpensInItsWorkspace(t *testing.T) {
+	h := start(t, seeded())
+	call(t, h, "work_list", `{"workspace":"portfolio"}`)
+	ctx := context.Background()
+	if _, err := h.RunCommand(ctx, "work.open-ref", map[string]any{"ref": "caster://w-portfolio/i.task0001@2"}); err != nil {
+		t.Fatal(err)
+	}
+	w, ok := h.DeskState.Focused(ctx)
+	if !ok || w.Args["workspace"] != "portfolio" || w.Args["item"] != "task0001" {
+		t.Fatalf("opened %+v", w)
+	}
+	if _, err := h.RunCommand(ctx, "work.open-ref", map[string]any{"ref": "caster://work/portfolio"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.RunCommand(ctx, "work.open-ref", map[string]any{"ref": "caster://chief/notes"}); err == nil {
+		t.Fatal("a ref outside every workspace was opened")
+	}
+}

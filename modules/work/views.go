@@ -2,6 +2,8 @@ package work
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/hollis-labs/surface/module"
 )
@@ -66,4 +68,62 @@ func openCommand(id, app, title, keywords string) module.Command {
 			return h.Desk().Open(ctx, view, opts)
 		},
 	}
+}
+
+// openRefCommand opens a caster://<ns>/<name> reference in the app whose workspace holds it:
+// "caster://work/<slug>" is the workspace, "caster://<its ns>/i.<id>" an item of it. Cite's
+// card runs it for a Caster reference (modules/tether/cite.go); a ref no workspace holds is
+// an error, and the page then shows the record instead.
+func (m *mod) openRefCommand() module.Command {
+	return module.Command{
+		ID: "work.open-ref", Title: "Work: open a Caster reference", Section: "Work", Hidden: true,
+		Run: func(ctx context.Context, h module.Host, args map[string]any) (any, error) {
+			ref, _ := args["ref"].(string)
+			ws, item, ok := m.placeOf(ctx, ref)
+			if !ok {
+				return nil, fmt.Errorf("%s is not in a Work workspace", ref)
+			}
+			w, _ := m.st.workspace(ctx, ws)
+			cmd := appCommands[w.App]
+			if cmd == "" {
+				cmd = "work.open"
+			}
+			a := map[string]any{"workspace": ws}
+			if item != "" {
+				a["item"] = item
+			}
+			return h.RunCommand(ctx, cmd, a)
+		},
+	}
+}
+
+// placeOf finds the workspace (and item) a Caster ref is in, from the working copy.
+func (m *mod) placeOf(ctx context.Context, ref string) (ws, item string, ok bool) {
+	rest, found := strings.CutPrefix(ref, "caster://")
+	if !found {
+		return "", "", false
+	}
+	rest, _, _ = strings.Cut(rest, "@")
+	ns, name, found := strings.Cut(rest, "/")
+	if !found {
+		return "", "", false
+	}
+	if ns == IndexNS {
+		_, ok = m.st.workspace(ctx, name)
+		return name, "", ok
+	}
+	list, err := m.st.Workspaces(ctx, "")
+	if err != nil {
+		return "", "", false
+	}
+	for _, w := range list {
+		if w.NS != ns {
+			continue
+		}
+		if id, isItem := strings.CutPrefix(name, "i."); isItem && ValidID(id) {
+			return w.Slug, id, true
+		}
+		return w.Slug, "", true
+	}
+	return "", "", false
 }

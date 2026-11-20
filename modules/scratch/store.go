@@ -20,6 +20,8 @@ type Item struct {
 	Tags    string `json:"tags,omitempty"`
 	Created string `json:"created"`
 	Updated string `json:"updated"`
+	// CasterRef is where the item is kept in Caster once written there (sync.go).
+	CasterRef string `json:"caster_ref,omitempty"`
 }
 
 var kinds = map[string]bool{"note": true, "todo": true, "idea": true, "followup": true}
@@ -28,7 +30,8 @@ var errNotFound = errors.New("no such scratch item")
 
 type store struct{ db *sql.DB }
 
-func stamp() string { return time.Now().UTC().Format(time.RFC3339) }
+// stamp is now, to the nanosecond: an edit in the same second as the last is still a change (sync.go).
+func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 func newID() string {
 	b := make([]byte, 5)
@@ -79,7 +82,7 @@ func (s *store) list(ctx context.Context, q, kind string, includeDone bool, limi
 		limit = 200
 	}
 	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at FROM items WHERE `+ //nolint:gosec // the WHERE clause is joined from constant fragments; every value is bound
+	rows, err := s.db.QueryContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at, caster_ref FROM items WHERE `+ //nolint:gosec // the WHERE clause is joined from constant fragments; every value is bound
 		strings.Join(where, " AND ")+` ORDER BY created_at DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -88,7 +91,7 @@ func (s *store) list(ctx context.Context, q, kind string, includeDone bool, limi
 	out := []Item{}
 	for rows.Next() {
 		var it Item
-		if err := rows.Scan(&it.ID, &it.Text, &it.Kind, &it.Done, &it.Tags, &it.Created, &it.Updated); err != nil {
+		if err := rows.Scan(&it.ID, &it.Text, &it.Kind, &it.Done, &it.Tags, &it.Created, &it.Updated, &it.CasterRef); err != nil {
 			return nil, err
 		}
 		out = append(out, it)
@@ -97,13 +100,23 @@ func (s *store) list(ctx context.Context, q, kind string, includeDone bool, limi
 }
 
 func (s *store) get(ctx context.Context, id string) (Item, error) {
-	var it Item
-	err := s.db.QueryRowContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at FROM items WHERE id=? AND deleted_at IS NULL`, id).
-		Scan(&it.ID, &it.Text, &it.Kind, &it.Done, &it.Tags, &it.Created, &it.Updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return it, errNotFound
+	it, removed, err := s.anyItem(ctx, id)
+	if err == nil && removed {
+		err = errNotFound
 	}
 	return it, err
+}
+
+// anyItem is an item whether or not it was put away, and whether it was.
+func (s *store) anyItem(ctx context.Context, id string) (Item, bool, error) {
+	var it Item
+	var deleted sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, text, kind, done, tags, created_at, updated_at, caster_ref, deleted_at FROM items WHERE id=?`, id).
+		Scan(&it.ID, &it.Text, &it.Kind, &it.Done, &it.Tags, &it.Created, &it.Updated, &it.CasterRef, &deleted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return it, false, errNotFound
+	}
+	return it, deleted.Valid, err
 }
 
 // patch is the fields of an item that can change; nil leaves a field as it is.
@@ -143,9 +156,11 @@ func (s *store) update(ctx context.Context, id string, p patch) (Item, error) {
 	return it, err
 }
 
-// remove puts an item away. The row is kept, so it can be brought back.
+// remove puts an item away. The row is kept, so it can be brought back. updated_at moves, so
+// Caster hears of it (tagged archived).
 func (s *store) remove(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE items SET deleted_at=? WHERE id=? AND deleted_at IS NULL`, stamp(), id)
+	now := stamp()
+	res, err := s.db.ExecContext(ctx, `UPDATE items SET deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL`, now, now, id)
 	if err != nil {
 		return err
 	}
@@ -156,7 +171,7 @@ func (s *store) remove(ctx context.Context, id string) error {
 }
 
 func (s *store) restore(ctx context.Context, id string) (Item, error) {
-	if _, err := s.db.ExecContext(ctx, `UPDATE items SET deleted_at=NULL WHERE id=?`, id); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE items SET deleted_at=NULL, updated_at=? WHERE id=?`, stamp(), id); err != nil {
 		return Item{}, err
 	}
 	return s.get(ctx, id)

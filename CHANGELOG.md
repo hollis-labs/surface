@@ -5,6 +5,16 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.6.0] - 2026-11-20
+
+- **The agent's context files arrive whole.** The Context slot's budget is the per-turn block Surface assembles
+  (bounded as before) plus room sized at start for the agent directory's own `context/` files and the largest module
+  profile's. Before, a 2000-token cap trimmed or skipped authored context (a seat's carried-over notes, the Agent
+  Architect's facts). Changing context files takes effect at the next start.
+- **Nanite v0.9.0.** The latest tool step survives step compaction; a turn that reaches its step or turn limit ends
+  with a short closing reply; `max_tokens` and `max_steps` from the agent config reach Nanite as its limits.
+- **Fixed: a flaky approvals test** now waits on the module's events instead of time.
+
 ## [0.5.0] - 2026-11-20
 
 - **Nanite v0.8.0.** Conversations are created atomically by Nanite (`Agent.EnsureConversation`); Surface's own

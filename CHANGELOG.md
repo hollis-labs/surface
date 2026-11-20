@@ -5,6 +5,32 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.4.0] - 2026-11-20
+
+- **The agent runs on Nanite v0.7.0, and libs agent/host is gone.** With no `SURFACE_AGENT_RUNNER` set and a
+  complete agent config, every Surface app's agent is a Nanite agent on the conversation wire (`scripted` remains
+  for tests; any other value, including `host`, refuses to start with a clear error). Parity with the old engine:
+  compaction at `compact_at` 110000 keeping `compact_keep_tokens` 22000 (host.yaml), the Context slot never
+  compacted, turns interrupted by a restart recovered at start, Nanite steering in place of the old reflex path,
+  per-tool timeouts (5 min, 70 min for tools that wait on the owner). The `agent/host` runner, the legacy Engine
+  seam, the engine-served agent-host/1 routes under `/api/agent` and the page's agent-host/1 client
+  (`packages/chat` `wire.ts`/`store.ts`) are removed; `/api/agent` keeps setup, context, slots, profiles, reflexes,
+  rules and classify. An app with no model configured still starts and says so (setup `ready=false`, a turn 503).
+- **Conversations from the old engine carry over.** The transcript is kept as it was; the first Nanite turn starts
+  a fresh model history with a note that the earlier messages are in the transcript, and slot notes and standing
+  instructions carry the context.
+- **Fixed: a first turn could fail with 502 or 409.** Nanite conversation creation is serialized between turns and
+  event steering, and startup reconciles the conversation before it accepts turns.
+- **Desk shows the life of every message the owner sends** (`modules/assist`): Done for you → Sent has a timeline
+  per message (sent, queued, delivered, read, replied) from Tether's event stream, alert cards for a recipient
+  offline, a request not acknowledged and a reply that could not be delivered, and the request's Torque task when
+  there is one. Request states (acknowledged, in progress, done, declined, blocked) are read from the request.*
+  events as they land in Tether/Torque.
+- **Workbench on Nanite 0.7.0's public packages**: `agent/providers`, `agent/authored` validators and in-process
+  evals with stub tools replace Surface's stopgaps.
+- **Nanite v0.7.0** (tagged), Substrate BOM 0d8ca5d, libs agentdir v0.3.0.
+
+
 - **Module agent profiles (`Manifest.Profile`).** A module may ship an agent profile in `modules/<id>/profile/`: a
   Nanite agent directory without host.yaml or .mcp.json (agent.md; optionally context/, skills/, variants/,
   tools/, steering.json; evals/ is the Workbench's and ignored), embedded with `module.ProfileFS`. On the Nanite
@@ -18,7 +44,7 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   (subtasks), and the `subtasks` and `skills` groups are turned on when a profile needs them; tool packages are
   offered only when the agent config turns `tools` on. Off on the host runner. `steering.json` is checked, not
   applied yet. The Workbench names its profile (the Agent Architect, `modules/workbench/profile/`), so Studio works as the Architect while the Workbench is in front.
-- **Nanite main (v0.6.1-0.20261120160952-50b6e5fc121c)** until v0.7.0 is tagged: authored validators, tool
+- **Nanite main (v0.6.1-0.20261120160952-50b6e5fc121c)** (superseded by v0.7.0 in 0.4.0): authored validators, tool
   packages, steering and resume.
 - **Operations (`modules/ops`, in Desk): the owner's workstream board.** A workstream is a concept of any size,
   from one task to a mesh-wide change, and nests: an optional parent, children worked out from the copy (Tether's
@@ -78,15 +104,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   owner's action. Only a module whose manifest sets `Gateway: true` gets it.
 - **Nanite v0.6.0; Substrate's BOM 768e5f7; libs agent/steer v0.1.0.**
 
-- **The agent can run on libs agent/host on the conversation wire** (`SURFACE_AGENT_RUNNER=host`): Basalisk's
-  runtime, with every feature of the wire (late answers, module errands, the input lease, the run log, approvals in
-  the chat). The system prompt is fixed and the turn's context block goes in front of the owner's message in the
-  same stored message, so the history stays byte-stable and the provider's cache holds. A thread whose last request
-  passed `compact_at` tokens (default 110,000) has its older part summarized and its recent turns kept whole; the
-  panel is told, with the size before and after. `max_tokens`, `max_steps` and `compact_at` come from the agent
-  config. One host thread per conversation, in the core database; a restart resumes it. The run log keeps uncached
-  input, cache reads and cache writes apart. A conversation moved over from `nanite` starts a fresh thread whose
-  first turn says the earlier history is in the transcript. `nanite` is unchanged. See docs/agent.md.
+- **(Interim, removed in this release) the agent could run on libs agent/host on the conversation wire** while
+  Nanite caught up; superseded by the Nanite runner above.
 - **Fixed: an answer to the agent's question is no longer lost when the run that asked has ended.** A `card_ask`
   whose run ends while the card is up (stopped, the app shutting down or restarting) now ends the card
   `abandoned`, not `canceled`, which stays the owner declining; a question left open by a killed app is abandoned at

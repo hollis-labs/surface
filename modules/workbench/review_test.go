@@ -127,9 +127,12 @@ func TestStartRecoversLeftoversAndInterruptedRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(data, "crash", "agent")
-	_ = os.WriteFile(filepath.Join(dir, ".tmp-123"), []byte("half"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, ".wb-tmp-123"), []byte("half"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, ".tmp-owners"), []byte("the owner's"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, ".git", ".wb-tmp-x"), []byte("git's"), 0o600)
 	_ = os.MkdirAll(filepath.Join(dir, ".nanite"), 0o700)
-	_ = os.WriteFile(filepath.Join(dir, ".nanite", ".tmp-keep"), []byte("nanite's"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, ".nanite", ".wb-tmp-keep"), []byte("nanite's"), 0o600)
 	// An older Workbench crashed between moving agent aside and moving the new one in.
 	swap := filepath.Join(data, "swap", "agent")
 	if err := os.Rename(swap, swap+".old"); err != nil {
@@ -143,10 +146,15 @@ func TestStartRecoversLeftoversAndInterruptedRuns(t *testing.T) {
 	if err := m2.Start(t.Context(), h2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".tmp-123")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, ".wb-tmp-123")); err == nil {
 		t.Fatal("a temporary file was left")
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".nanite", ".tmp-keep")); err != nil {
+	for _, keep := range []string{".tmp-owners", ".git/.wb-tmp-x"} {
+		if _, err := os.Stat(filepath.Join(dir, keep)); err != nil {
+			t.Fatalf("recovery removed %s, which is not the Workbench's", keep)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nanite", ".wb-tmp-keep")); err != nil {
 		t.Fatal("recovery touched .nanite/")
 	}
 	if _, err := os.Stat(filepath.Join(swap, "agent.md")); err != nil {

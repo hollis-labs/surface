@@ -42,9 +42,10 @@ func fail(w http.ResponseWriter, err error) {
 	}
 }
 
-// ownerOnly refuses a request from anyone but the owner at the page: the routes that spend
-// money (a live run, a proposal), change the agent without its validation-plus-review path
-// (accept, rollback), delete, or read from disk (import-dir). A request with no Origin (MCP,
+// ownerOnly refuses a request from anyone but the owner at the page: every route that
+// changes something (an agent's files, suites, the library), spends money (a live run, a
+// proposal), decides (accept, rollback, cancel) or reads from disk (import-dir). Only
+// reads and offline runs stay open. A request with no Origin (MCP,
 // the HTTP tools, the CLI) is an outside client, a delegate; such a client uses the agent
 // tools, where the owner is asked.
 func ownerOnly(w http.ResponseWriter, r *http.Request, what string) bool {
@@ -235,6 +236,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, map[string]any{"agents": list, "root": root})
 	}))
 	h.Handle("POST /agents", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "making an agent") {
+			return
+		}
 		var in struct{ ID, Name, Template string }
 		if err := decode(r, &in); err != nil {
 			fail(w, err)
@@ -269,6 +273,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, map[string]any{"trash": dest})
 	}))
 	h.Handle("POST /agents/{id}/duplicate", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "duplicating an agent") {
+			return
+		}
 		src := r.PathValue("id")
 		var in struct{ ID string }
 		_ = decode(r, &in)
@@ -299,6 +306,9 @@ func (m *mod) routes(h module.Host) {
 	}))
 	// Save file changes. Body: {"changes": {"<path>": "<content>" | null}, "base": "<digest>", "note": "..."}
 	h.Handle("PUT /agents/{id}/files", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "changing an agent's files") {
+			return
+		}
 		id := r.PathValue("id")
 		var in struct {
 			Changes map[string]*string `json:"changes"`
@@ -414,6 +424,9 @@ func (m *mod) routes(h module.Host) {
 	}))
 	// Import an archive: the raw bytes, or JSON {"name": "...", "data": "<base64>", "id": "..."}.
 	h.Handle("POST /import", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "importing an archive") {
+			return
+		}
 		raw, err := io.ReadAll(io.LimitReader(r.Body, maxArchiveBytes*2+1))
 		if err != nil {
 			fail(w, err)
@@ -482,6 +495,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, s)
 	}))
 	h.Handle("PUT /agents/{id}/suites", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "saving an eval suite") {
+			return
+		}
 		var in struct{ Source string }
 		if err := decode(r, &in); err != nil {
 			fail(w, err)
@@ -496,6 +512,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, s)
 	}))
 	h.Handle("DELETE /agents/{id}/suites/{name}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "deleting an eval suite") {
+			return
+		}
 		if err := m.run.DeleteSuite(r.PathValue("id"), r.PathValue("name")); err != nil {
 			fail(w, err)
 			return
@@ -550,6 +569,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, run)
 	}))
 	h.Handle("POST /agents/{id}/runs/{run}/cancel", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "canceling a run") {
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"canceled": m.run.Cancel(r.PathValue("run"))})
 	}))
 	h.Handle("POST /agents/{id}/runs/{run}/rerun", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

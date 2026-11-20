@@ -111,7 +111,7 @@ func (m *mod) tools() []module.Tool {
 			Run: func(ctx context.Context, h module.Host, in json.RawMessage) (any, error) {
 				return m.writeTool(ctx, h, in, true)
 			}},
-		{Name: "workbench_import_dir", Level: module.LevelWrite,
+		{Name: "workbench_import_dir", Level: module.LevelConfirm,
 			Description: "Copy an agent directory from disk into the Workbench library. The source is only read, never changed; only its authored files are copied.",
 			Input:       schema(`{"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"absolute path"},"id":{"type":"string"}}}`),
 			Describe: func(in json.RawMessage) string {

@@ -57,7 +57,9 @@ a `keychain://`, `file://` or `env://` reference. Checked in `.mcp.json` env, he
 credential flag) and URLs; `host.yaml` `runtime.env`; `providers.yaml` `key_ref`, `base_url` and headers. A field named
 like a credential (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*AUTH*`, `*PASSWORD*`, `*_PAT`) with a literal value is refused, and
 so is any value shaped like a known credential (`sk-`, `sk-ant-`, `ghp_`/`github_pat_`, `xox?-`, `AKIA…`, a private key,
-`user:password@` in a URL, `api_key=`/`token=` in a query). Every other file (prompts, skills and their resources,
+`user:password@` in a URL, `api_key=`/`token=` in a query, `Bearer` and a 20-character token), in a field's value, in a
+command, or behind a reference (`file://sk-…`). A URL with a user part (`token@host`) is refused in configuration and a
+warning in prose; `providers.yaml` `key_env` must name a variable. Every other file (prompts, skills and their resources,
 context, suites) is scanned too: a known credential shape is a warning when saved and refuses an export; a
 credential-like assignment is a warning (sent with an export in `X-Workbench-Warnings`).
 
@@ -78,10 +80,17 @@ leaves out: variants, providers.yaml, skill resources and the sidecar. Runs are 
 
 ## Saving
 
-A save writes the agent's changed authored files in place, each through a temporary file and a rename, and removes the
-authored files the new state lacks. Nothing else in the directory is touched: Nanite's `.nanite/` (`nanite.db*`,
+Before a save or a rollback writes anything, authored files changed on disk by hand since the last version (added,
+edited or removed) are kept as a version of their own (`unsaved changes on disk, kept before: <note>`, author `disk`),
+so nothing is overwritten without a copy. The new version is then recorded first and the files written after it: if
+the app stops in the middle, the last version is what was being saved, the disk may hold a mix of old and new files,
+and the next save keeps that mix as its own version before writing; roll back to either to finish.
+
+A save writes the agent's changed authored files in place, each through a temporary file (`.wb-tmp-*`) and a rename,
+and removes the authored files the new state lacks. Nothing else in the directory is touched: Nanite's `.nanite/` (`nanite.db*`,
 `agent.lock`, `transcripts/`, `jobs/`), notes, backups. The directory itself is never moved, so a host running the agent
-from it keeps running. At start the Workbench removes an interrupted write's temporary files (never inside `.nanite/`),
+from it keeps running. At start the Workbench removes its own interrupted write's temporary files (`.wb-tmp-*` only, never inside a
+hidden directory such as `.nanite/` or `.git/`),
 puts back an agent directory an older version left aside, and marks runs left `running` as `interrupted`.
 
 ## Versions
@@ -167,7 +176,11 @@ usage plus `subtasks[].usage`); the tool calls and their arguments, and the tran
 **Every run happens in a child process**: the app's own binary started again with the hidden argument
 `workbench-eval` (`child.go`). `nanite/evals` changes the working directory for each case, which the app's server must
 never see. The parent sends the request as JSON on stdin (the gateway URL and the key file's path, never the key),
-reads progress and the result as JSON lines, and never changes directory. Cancelling a run kills the child.
+reads progress and the result as JSON lines, and never changes directory. Canceling a run kills the child. The child
+gets a minimal environment (`PATH`, `HOME`, the locale, `TMPDIR`), none of the server's other variables, and all its
+temporary files go under a root the parent makes and removes once the child has ended, canceled or not. One live run
+goes at a time in the app (each run's dollar cap is its own); a second is refused with a message. Offline runs: two at
+a time.
 
 **Offline** (the default) plays each case's `script`: earlier turns are answered "Noted.", a subtask returns at once,
 no model is called and nothing is spent. **Live** runs only when the owner presses Run live and confirms (or a
@@ -183,9 +196,10 @@ config; the key is read per request and never logged), with:
   whole output allowance), so requests running side by side cannot together pass it; a request that would is refused
   and the run is stopped.
 
-Only the owner, at the page, can start a live run or re-run, ask for a proposal, accept or reject one, roll back, delete
-or import a directory: a request with no Origin (MCP, the HTTP tools, the CLI) is an outside client and is refused
-there. Outside clients use the agent tools, where the owner is asked.
+Only the owner, at the page, can change anything through the routes: an agent's files, create, duplicate, delete,
+import (an archive or a directory), save or delete a suite, start a live run or re-run, cancel a run, ask for a
+proposal, accept or reject one, roll back. A request with no Origin (MCP, the HTTP tools, the CLI) is an outside client
+and is refused there; reads and offline runs stay open. Outside clients use the agent tools, where the owner is asked.
 
 ## runs/<run>.json
 
@@ -239,9 +253,10 @@ note, dry_run}`) · `GET agents/{id}/versions/{n}/diff?to=current|m` · `POST ag
 
 `workbench_list`, `_get`, `_validate`, `_versions`, `_suites`, `_estimate`, `_runs`, `_run_get`, `_compare`,
 `_proposals` (read); `workbench_create`, `_write_file` (the prompt, skills, variants, context, steering, options),
-`_import_dir`, `_write_suite` (write; the writes wait while the owner has unsaved changes to that agent and save over the
+`_write_suite` (write; the writes wait while the owner has unsaved changes to that agent and save over the
 state they read); `workbench_write_config` (`host.yaml`, `.mcp.json`, `permissions.yaml`, `providers.yaml`: what the
-agent may run and reach), `workbench_run_eval` and `workbench_propose` (confirm: asked every time). No tool accepts or rejects a proposal, rolls back, deletes or sets a mode: those are the
+agent may run and reach), `workbench_import_dir` (it reads from disk), `workbench_run_eval` and `workbench_propose`
+(confirm: asked every time). No tool accepts or rejects a proposal, rolls back, deletes or sets a mode: those are the
 owner's.
 
 ## Known gaps

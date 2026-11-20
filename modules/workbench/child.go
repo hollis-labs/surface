@@ -102,9 +102,16 @@ func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw modul
 	if err != nil {
 		return fail(err.Error())
 	}
+	// The child's temporary files (its own, the scenarios', nanite/evals') all go under a
+	// root the parent makes and removes after the child is gone, so a cancel leaks nothing.
+	root, err := os.MkdirTemp(x.tmpBase, "workbench-child-")
+	if err != nil {
+		return fail(err.Error())
+	}
+	defer func() { _ = os.RemoveAll(root) }()
 	cmd := exec.CommandContext(ctx, exe, childArg) //nolint:gosec // the app's own binary
-	cmd.Env = append(os.Environ(), childEnv+"=1")
-	cmd.Dir = os.TempDir()
+	cmd.Env = childEnviron(root)
+	cmd.Dir = root
 	cmd.Stdin = bytes.NewReader(body)
 	cmd.WaitDelay = 5 * time.Second
 	var stderr tail
@@ -160,6 +167,18 @@ func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw modul
 		return fail(fmt.Sprintf("the eval process ended: %v %s", waitErr, stderr.String()))
 	}
 	return fail("the eval process ended without a result")
+}
+
+// childEnviron is the child's whole environment: what it needs and nothing else of the
+// server's (no tokens or keys the app was started with). Its temporary directory is root.
+func childEnviron(root string) []string {
+	env := []string{childEnv + "=1", "TMPDIR=" + root}
+	for _, k := range []string{"PATH", "HOME", "LANG", "LC_ALL", "TZ"} {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
 }
 
 // ChildPID is the process id of a run's eval child while it runs, for tests and diagnosis.

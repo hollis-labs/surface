@@ -17,6 +17,7 @@ import {
   Mail,
   Maximize2,
   NotebookText,
+  Radar,
   Target,
   Zap,
 } from "lucide-react"
@@ -52,6 +53,7 @@ const ICONS: Record<string, LucideIcon> = {
   "caster.doc": NotebookText,
   "work.item": Target,
   "registry.record": Boxes,
+  "ops.workstream": Radar,
   path: FileText,
   "path.relative": FileText,
   url: Link2,

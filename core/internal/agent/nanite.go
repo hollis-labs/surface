@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hollis-labs/libs/agent/agentdir"
 	"github.com/hollis-labs/libs/agent/chat"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
 	"github.com/hollis-labs/libs/agent/steer"
@@ -183,6 +184,10 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
 		_ = os.Setenv("NANITE_DEFAULT_MODEL", c.Model)
 	}
+	compact, keep, err := naniteCompactionFallback(open)
+	if err != nil {
+		return nil, fmt.Errorf("agent: host config: %w", err)
+	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
 		Agent: nanite.Options{
@@ -190,11 +195,13 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			DataDir:         filepath.Join(s.k.DataDir(), "agents", w.agent),
 			GlobalSkillsDir: "-",
 			// The key is a reference to the file; Nanite reads it when it calls the gateway.
-			Gateway:     nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
-			Logger:      s.log.With("part", "nanite"),
-			Builtins:    groups,
-			SlotBudgets: map[nanite.SlotName]int{nanite.SlotContext: naniteContextTokens},
-			Steering:    s.naniteSteering(),
+			Gateway:           nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
+			Logger:            s.log.With("part", "nanite"),
+			Builtins:          groups,
+			CompactAt:         compact,
+			CompactKeepTokens: keep,
+			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: naniteContextTokens},
+			Steering:          s.naniteSteering(),
 		},
 		ContextSlot: nanite.SlotContext,
 		Tools:       s.runnerTools(),
@@ -229,6 +236,22 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups))
 	return r, nil
+}
+
+// naniteCompactionFallback supplies Surface defaults only for missing settings.
+// Zero options leave authored values to Nanite's own host.yaml loading.
+func naniteCompactionFallback(dir string) (compact, keep int, err error) {
+	snapshot, err := agentdir.Load(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	if snapshot.Profile.Runtime.CompactAt == 0 {
+		compact = 110000
+	}
+	if snapshot.Profile.Runtime.CompactKeepTokens == 0 {
+		keep = 22000
+	}
+	return compact, keep, nil
 }
 
 // runnerTools is the app's tools as the runner takes them: the same list, levels and

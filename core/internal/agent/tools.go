@@ -41,6 +41,18 @@ func (s *Service) ownTools() []kernel.BoundTool {
 				s.k.Events().Publish("agent.note", map[string]string{"slot": a.Slot})
 				return "Kept the note on " + a.Slot + ".", nil
 			}),
+		t("standing_get", "Read your standing instructions: the owner's rules that hold across all work (context/standing.md in your agent directory), and whether your system prompt has this text yet.",
+			module.LevelRead, `{"type":"object","properties":{}}`,
+			func(context.Context, json.RawMessage) (any, error) { return s.standingGet() }),
+		t("standing_update", "Replace your standing instructions (the owner's rules across all work) with the whole new text, when the owner sets or changes a rule, or an address, routing or tool quirk changes. Give the full text, not a part (standing_get reads the current one), and why. The old text is kept. Work state goes in slot notes (context_note), not here.",
+			module.LevelWrite, `{"type":"object","properties":{"text":{"type":"string","description":"The whole new standing text, at most 16,000 characters."},"why":{"type":"string","description":"What changed and why, in a line."}},"required":["text","why"]}`,
+			func(_ context.Context, in json.RawMessage) (any, error) {
+				var a struct{ Text, Why string }
+				if err := json.Unmarshal(in, &a); err != nil {
+					return nil, err
+				}
+				return s.standingUpdate(a.Text, a.Why)
+			}),
 		t("context_switch", "Move to another slot (kind of work) when the owner's work is plainly of that kind and the window in front does not say so. Holds until they bring a different window forward. Lists the slots when called with none.",
 			module.LevelAct, `{"type":"object","properties":{"slot":{"type":"string"}}}`,
 			func(ctx context.Context, in json.RawMessage) (any, error) {

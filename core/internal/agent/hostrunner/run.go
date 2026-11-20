@@ -471,6 +471,9 @@ func (t *translator) compactDone(out []chatstream.Event, final bool) []chatstrea
 	}
 	t.compacted = false
 	t.x.r.compacted(t.x.thread, t.x.before, after)
+	if f := t.x.r.opts.Compacted; f != nil {
+		f(t.x.turn.ConversationID, t.x.before, after)
+	}
 	return append(out, activity(ActivityCompact, v))
 }
 

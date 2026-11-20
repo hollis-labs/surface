@@ -30,6 +30,10 @@ import (
 // One host thread serves one conversation; the threads, their summaries and runs are the
 // host's tables in the app's database, so a restart resumes the same thread.
 
+// TopicCompacted is published on the app's bus when the host runner has summarized the older
+// part of a conversation's thread: {conversation_id, before, after}, sizes in tokens.
+const TopicCompacted = "agent.compacted"
+
 // RunnerHost names the host runner.
 const RunnerHost = "host"
 
@@ -48,12 +52,18 @@ func (s *Service) openHostRunner(ctx context.Context, w *wire) (*hostrunner.Runn
 		return nil, fmt.Errorf("agent: the host runner needs model, gateway_url and key_file in %s", ConfigPath(s.k.AppName()))
 	}
 	db := s.k.DB()
+	dir := c.AgentDir(s.k.AppName())
+	// The standing text the fixed system prompt is built with: a later change to it is
+	// carried in the context block until the app restarts (standing.go).
+	if dir != "" {
+		s.noteStandingLoaded(dir)
+	}
 	r, err := hostrunner.Open(ctx, hostrunner.Options{
 		Config: host.Config{
 			Model:     c.Model,
 			BaseURL:   c.GatewayURL,
 			KeyFile:   c.KeyFile,
-			System:    systemPrompt(s.k.AppName(), joinNonEmpty(agentDirText(c.AgentDir(s.k.AppName()), s.log), c.System)),
+			System:    systemPrompt(s.k.AppName(), joinNonEmpty(agentDirText(dir, s.log), c.System)),
 			MaxTokens: c.MaxTokens,
 			MaxSteps:  c.MaxSteps,
 			CompactAt: compactAt(c.CompactAt),
@@ -75,6 +85,11 @@ func (s *Service) openHostRunner(ctx context.Context, w *wire) (*hostrunner.Runn
 				return hostSeed
 			}
 			return ""
+		},
+		// A compaction is told on the app's bus (agent.compacted), where a reflex reminds the
+		// agent to bring its notes and standing up to date (the seeded save-state).
+		Compacted: func(conversation string, before, after int) {
+			s.k.Events().Publish(TopicCompacted, map[string]any{"conversation_id": conversation, "before": before, "after": after})
 		},
 		Logger: s.log.With("part", "host"),
 	})

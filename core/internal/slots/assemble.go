@@ -103,6 +103,13 @@ type Extra struct {
 	Routed       string
 	// Around is what the modules' Around said, already read and capped.
 	Around []AroundLine
+	// Standing is the <standing changed> section, when the owner's standing instructions
+	// changed after the runner's fixed system prompt was built ("" otherwise). It is not
+	// counted against the soft cap up to standingAllowance characters, so it does not crowd
+	// out what the modules know.
+	Standing string
+	// Asks are one-line requests of the agent from the app (bring a slot's note up to date).
+	Asks []string
 	// Limit, when above zero, is a hard cap on the block in bytes: the runner the block goes
 	// to has a fixed room for it and drops a block that does not fit, whole. Zero keeps the
 	// soft cap (budgetBlock characters), which only trims what the modules know.
@@ -129,6 +136,9 @@ const (
 	budgetSecondary = 1500
 	budgetBlock     = 12000
 	budgetNote      = 2000
+	// standingAllowance is how much of Extra.Standing the soft cap leaves out of its count.
+	// The block then stays under the host runner's 20,000-character clip.
+	standingAllowance = 6500
 )
 
 // Assemble builds the Assembly for a Selection.
@@ -175,7 +185,7 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 		if extra.Limit > 0 {
 			return len(a.Block) - extra.Limit
 		}
-		return len([]rune(a.Block)) - budgetBlock
+		return len([]rune(a.Block)) - budgetBlock - min(len([]rune(extra.Standing)), standingAllowance)
 	}
 	// Over the cap: drop what the modules know, the secondary slots' first, then trim the
 	// primary's. Under the soft cap, what is in front, the slots, the note and the reminders
@@ -302,6 +312,9 @@ func block(sit module.Situation, a Assembly, extra Extra) string {
 	if len(a.TopOfMind) > 0 {
 		b.WriteString("\nTop of mind: " + strings.Join(a.TopOfMind, ", ") + "\n")
 	}
+	if extra.Standing != "" {
+		b.WriteString("\n" + extra.Standing + "\n")
+	}
 	if extra.Instructions != "" {
 		b.WriteString("\nFor this layout: " + extra.Instructions + "\n")
 	}
@@ -310,6 +323,9 @@ func block(sit module.Situation, a Assembly, extra Extra) string {
 	}
 	if extra.Routed != "" {
 		b.WriteString("\n" + extra.Routed + "\n")
+	}
+	for _, x := range extra.Asks {
+		b.WriteString("\n" + x + "\n")
 	}
 	for _, r := range extra.Reminders {
 		b.WriteString("\nReminder: " + r + "\n")

@@ -277,6 +277,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 		return chat.Answer(out.Halt)
 	}
 	extra.Reminders = out.Reminders
+	extra.Asks = s.keepingAsks(ctx, sel.Primary().Name, !auto)
 	extra.Limit = s.contextLimit()
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)

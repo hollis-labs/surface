@@ -129,12 +129,15 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	m.sync.done.Add(1)
 	go func() { defer m.sync.done.Done(); m.sync.run(ctx) }()
 	h.Events().Subscribe("scratch.changed", func(module.Event) { m.sync.Kick() })
-	h.Config().Watch("caster_sync", func(any) { m.sync.Kick() })
+	h.Config().Watch("caster_sync", func(any) { m.sync.importSoon(false) })
 	changed := func(what string, id string) { h.Events().Publish("scratch.changed", map[string]any{what: id}) }
 
 	h.Handle("GET /items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		items, err := m.st.list(r.Context(), q.Get("q"), q.Get("kind"), h.Config().Bool("show_done"), 0)
+		if m.syncEnabled() {
+			m.sync.importSoon(true) // the list is open: read Caster's changes back soon
+		}
 		reply(w, items, err)
 	}))
 	h.Handle("POST /items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

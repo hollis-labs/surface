@@ -19,7 +19,7 @@ main ─▶ app.Main ─▶ Substrate boot (config, logging, health, database, c
 
 | Path | What |
 |---|---|
-| `module/` | The module contract. The only Surface package a module imports. `module/moduletest` is a fake Host for module tests. |
+| `module/` | The module contract. The only Surface package a module imports, with its helpers: `module/tetherlink` (Tether over MCP), `module/collab` (Caster's collab/v1 documents, shared with Basalisk). `module/moduletest` is a fake Host for module tests, `module/collab/collabtest` an in-memory Caster. |
 | `core/` | `core.New(Options)`: the public assembly an app's main calls. |
 | `core/internal/kernel` | Reads manifests, opens module stores, builds each module's Host, binds tools and slots, holds the core's own commands, tools and views. `Kernel` is the interface the core's services are given. |
 | `core/internal/desk` | The window manager: a reducer over the desk's state, and saved layouts. |
@@ -34,7 +34,8 @@ main ─▶ app.Main ─▶ Substrate boot (config, logging, health, database, c
 
 ## The seam
 
-A module imports `github.com/hollis-labs/surface/module` and nothing else of Surface. Two things enforce it:
+A module imports `github.com/hollis-labs/surface/module` and nothing else of Surface but the helpers beside it:
+`module/tetherlink` (reaching Tether: Caster, Torque, mail, over MCP), `module/collab` (Caster's collab namespace as Basalisk keeps it, collab/v1: documents with revisions, conflicts and marks, so Desk and Basalisk share them) and the test helpers `module/moduletest` and `module/collab/collabtest`. Two things enforce it:
 the core is under `core/internal`, which Go will not let `modules/` import, and `module/seam_test.go` fails on
 any other Surface import. What a module needs from the core it asks of its `Host`.
 

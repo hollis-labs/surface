@@ -5,6 +5,22 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Module agent profiles (`Manifest.Profile`).** A module may ship an agent profile in `modules/<id>/profile/`: a
+  Nanite agent directory without host.yaml or .mcp.json (agent.md; optionally context/, skills/, variants/,
+  tools/, steering.json; evals/ is the Workbench's and ignored), embedded with `module.ProfileFS`. On the Nanite
+  runner each turn runs as the conversation's pinned profile, else the focused module's, else the app's seat; the
+  owner pins one with the Profile picker beside the slot in the agent panel (`POST /api/agent/profiles/pin`), the
+  agent with `profile_switch` (act; a profile never changes tools, levels, grants or the Approver). Pins are kept per
+  conversation. Nanite opens on a staged directory (`<data dir>/agents/<app>.staged/`, the seat with the profile
+  over it, rewritten before each turn); the owner's agent directory is not changed. The run log has a `profile`
+  column; `agent.turn` carries it. Profiles are checked at boot with libs agentdir and Nanite's `agent/authored`
+  validators; one that fails is left out with the reason in the log. Variants are a profile's internal helpers
+  (subtasks), and the `subtasks` and `skills` groups are turned on when a profile needs them; tool packages are
+  offered only when the agent config turns `tools` on. Off on the host runner. `steering.json` is checked, not
+  applied yet. The Workbench names its profile (the Agent Architect, `modules/workbench/profile/`), so Studio works as the Architect while the Workbench is in front.
+- **Nanite main (v0.6.1-0.20261120160952-50b6e5fc121c)** until v0.7.0 is tagged: authored validators, tool
+  packages, steering and resume.
+
 - **Registry (`modules/registry`, in Desk): a read-only browser for the Registry.** Kinds with record counts, the
   review queue and the diagnostics; the records of a kind, filtered by lifecycle and owner or searched
   (registry_record_search); a record's fields (the Cite structured view, with its JSON), status and owner, relations

@@ -16,6 +16,7 @@ package workbench
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,12 @@ func init() {
 	module.Register(&mod{})
 }
 
+// profileFiles is the Workbench's agent profile, the Agent Architect (profile/): the app's
+// agent works as it while the Workbench is in front (module.Manifest.Profile).
+//
+//go:embed all:profile
+var profileFiles embed.FS
+
 type mod struct {
 	module.Base
 	h   module.Host
@@ -43,7 +50,8 @@ type mod struct {
 func (m *mod) Manifest() module.Manifest {
 	return module.Manifest{
 		ID: "workbench", Title: "Agent Workbench", Version: WorkbenchVersion, Gateway: true,
-		About: "Make, edit, evaluate and improve Nanite agents: prompt, skills, tools, variants, providers, reflexes and triggers, context; versions; import and export; eval runs and improvement proposals.",
+		Profile: module.ProfileFS(profileFiles, "profile"),
+		About:   "Make, edit, evaluate and improve Nanite agents: prompt, skills, tools, variants, providers, reflexes and triggers, context; versions; import and export; eval runs and improvement proposals.",
 		Views: []module.View{{
 			ID: "workbench", Title: "Agent Workbench", Icon: "flask-conical", Width: 1180, Height: 760, Menu: true, Bare: true,
 			Render: module.Component("workbench/main"),

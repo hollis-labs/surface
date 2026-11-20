@@ -25,6 +25,8 @@ export interface Assembly {
   layout?: string
   reminders?: string[]
   block: string
+  /** The module whose agent profile the next turn runs as; absent: the app's own. */
+  profile?: string
 }
 
 /** One slot in the app (agent.SlotInfo). */
@@ -36,6 +38,30 @@ export interface SlotInfo {
   tools?: string[]
   note?: string
   active: boolean
+}
+
+/** One module agent profile (agent.ProfileInfo). */
+export interface ProfileInfo {
+  id: string
+  title: string
+  name: string
+  description?: string
+  skills: string[]
+  variants: string[]
+  tools: string[]
+  active: boolean
+}
+
+/** The profiles and the one in play (agent.ProfileState). */
+export interface ProfileState {
+  /** Turns run as profiles (the Nanite runner); off, every turn is the app's own agent. */
+  on: boolean
+  runner?: string
+  /** id "" is the app's own; why is pinned, focus, default or off. */
+  active: { id: string; why: string }
+  /** A module id, "default", or absent. */
+  pinned?: string
+  profiles: ProfileInfo[]
 }
 
 export interface Setup {
@@ -79,4 +105,7 @@ export const agentApi = {
   slots: () => call<SlotInfo[]>("GET", "/slots"),
   /** Pin a slot; "" lets the window in front choose again. */
   pin: (slot: string) => call<Assembly>("POST", "/slots/pin", { slot }),
+  profiles: () => call<ProfileState>("GET", "/profiles"),
+  /** Pin a profile: a module id, "default" (the app's own), or "auto" to let the window in front choose. */
+  pinProfile: (profile: string) => call<ProfileState>("POST", "/profiles/pin", { profile }),
 }

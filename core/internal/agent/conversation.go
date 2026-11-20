@@ -280,6 +280,13 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	extra.Asks = s.keepingAsks(ctx, sel.Primary().Name, !auto)
 	extra.Limit = s.contextLimit()
 
+	// The profile this turn runs as, staged for the runner before the turn starts.
+	choice := s.chooseProfile(ctx, turn.ConversationID, sit)
+	if err := s.stageProfile(choice); err != nil {
+		s.log.Warn("the profile was not staged; the turn runs on the directory as it was", "profile", choice.ID, "err", err)
+	}
+	extra.Profile, extra.ProfileID = s.profileLine(choice), choice.ID
+
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
 	if len(asm.Trimmed) > 0 {
 		s.log.Info("the context block was trimmed to fit", "run_id", turn.RunID, "trimmed", asm.Trimmed, "bytes", len(asm.Block))
@@ -312,9 +319,9 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	} else if auto {
 		origin = "auto"
 	}
-	s.runs.turn(turn.RunID, origin, asm.Slot)
+	s.runs.turn(turn.RunID, origin, asm.Slot, profileName(choice.ID))
 	s.k.Events().Publish("agent.turn", map[string]any{"run_id": turn.RunID, "slot": asm.Slot, "slots": sel.Names(),
-		"top_of_mind": asm.TopOfMind, "fired": out.Fired, "routed": routed})
+		"top_of_mind": asm.TopOfMind, "fired": out.Fired, "routed": routed, "profile": profileName(choice.ID)})
 	return chat.Continue()
 }
 

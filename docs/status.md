@@ -18,6 +18,7 @@ The feature list by area, with what has landed, what is in review and what is pl
 | Collaboration marks | done | core marks on any module's refs, by the owner and the agent; Drafts adds review and revisions |
 | Notes, Files, Scratch, Drafts, Browser | done | each on the contract alone, with views, commands and tools |
 | Live app config | done | settings in the database; a change reaches the page and the module with no restart; `core/internal/config` tests |
+| Module agent profiles | in review | `Manifest.Profile` (`modules/<id>/profile/`); the agent works as the focused module's profile or the pinned one on the Nanite runner; `core/internal/agent/profile` tests (every `modules/*/profile` validates) and `core/profile_test.go` (a turn per profile through a fake gateway) |
 | Second app with the Interaction Builder | done | `studio`: describe a flow, the agent arranges and saves it, refine it as versions |
 
 ## In progress: the interface standard
@@ -55,8 +56,9 @@ key, stub tools in evals (nanite/evals has no hook), a live provider from Nanite
   nothing opens the pull request yet.
 - **Run-time loaded and generated modules.** The contract leaves room (`Render` kinds, a manifest that is plain
   data); nothing loads one.
-- **The later contract:** data and service dependencies, module-declared skills, reflexes and triggers, and
-  permissions put to the user at install.
+- **The rest of the later contract:** data and service dependencies, reflexes and triggers declared outside a
+  profile, and permissions put to the user at install. Module-declared skills and helpers are the agent profile
+  contract (`Manifest.Profile`, writing-a-module.md); a profile's `steering.json` is checked but not applied yet.
 - **Remote stores with a cache.** Modules have local stores only.
 - **Choosing slots by classification.** The selector is the window in front (and the mode); the interface
   takes another selector.

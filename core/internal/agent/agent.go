@@ -106,6 +106,8 @@ type Service struct {
 	wire *wire
 	// late delivers the owner's late answers to the agent's cards (late.go).
 	late *lateDelivery
+	// prof is the modules' agent profiles (profiles.go).
+	prof *profiles
 
 	wake    chan struct{}
 	stop    func()
@@ -170,6 +172,10 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if s.router, err = router.Open(ctx, k.DB()); err != nil {
 		return nil, fmt.Errorf("agent: router: %w", err)
 	}
+	if err = openProfilePins(ctx, k.DB()); err != nil {
+		return nil, fmt.Errorf("agent: profile pins: %w", err)
+	}
+	s.loadProfiles()
 	s.selector = o.Selector
 	if s.selector == nil {
 		s.pin = slots.NewFocusSelector()
@@ -197,6 +203,9 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 			return nil, err
 		}
 		log.Info("the agent is on the conversation wire", "runner", runner)
+	}
+	if len(s.prof.order) > 0 && !s.profilesOn() {
+		log.Info("module agent profiles need the Nanite runner; every turn runs as the app's own seat", "runner", runnerChoice(), "profiles", s.prof.order)
 	}
 
 	// The desk and the modules' events drive the focus and event reflexes and the panel's
@@ -295,7 +304,10 @@ func (s *Service) onEvent(ev module.Event) {
 func (s *Service) Preview(ctx context.Context) slots.Assembly {
 	sit := s.k.Situation(ctx)
 	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	return slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, s.extra(ctx, sit))
+	extra := s.extra(ctx, sit)
+	choice := s.chooseProfile(ctx, s.conversationID(ctx), sit)
+	extra.Profile, extra.ProfileID = s.profileLine(choice), choice.ID
+	return slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
 }
 
 // allTools is every tool the agent has: the app's and its own.

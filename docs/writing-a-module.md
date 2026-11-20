@@ -118,6 +118,52 @@ A slot is what the module feeds the agent when its kind of work is in front, so 
 hold everything at once. `Views` (and later `Modes`) say when it applies; `Tools` are put top of mind;
 `Knowledge` returns what the agent should know right now and must be quick (no network).
 
+### An agent profile
+
+A module may ship an **agent profile**: who the app's one agent is while the module is in front. It is a Nanite agent
+directory without `host.yaml` or `.mcp.json`, kept in `modules/<id>/profile/` and embedded:
+
+```go
+//go:embed all:profile
+var profileFiles embed.FS
+
+func (m *mod) Manifest() module.Manifest {
+	return module.Manifest{ID: "widgets", /* … */ Profile: module.ProfileFS(profileFiles, "profile")}
+}
+```
+
+| File | What it is |
+|---|---|
+| `agent.md` | Required. agentdef front matter (`schema_version`, `definition_id`, `name`, `description`, …) and the profile's instructions (the body). |
+| `context/*.md` | Standing context for the module's work. |
+| `skills/<name>/SKILL.md` | Skills, as Nanite reads them (`skill_list`, `skill_get`). |
+| `variants/<name>.md` | Nanite subtask variants: the profile's internal helpers (a reviewer, a researcher). They are not identities of their own; a variant only narrows the parent's tools, and may not name a `provider`. |
+| `tools/<name>/tool.yaml` | Nanite tool packages (and their entry). Offered only when the app's agent config turns Nanite's `tools` group on; each call asks the owner, and an approval holds for one digest of the package. |
+| `steering.json` | libs agent/steer v0.1.0 presets and reflexes (the Workbench's shape). Checked, not applied yet. |
+| `evals/*.yaml` | The Workbench's eval suites. The core ignores them. |
+| `README.md` | Notes for people. Ignored. |
+
+A profile may not carry `host.yaml`, `.mcp.json`, `permissions.yaml`, `providers.yaml` or `identity.yaml`: the app owns
+the runtime, the model, MCP, permissions and the identity, and every profile shares them, with the conversation and its
+history, the front desk, the mailbox, the tools and their levels, the standing approvals and the Approver. A profile
+brings words and helpers, never authority. A `profile/` with no `agent.md` (a README only) is an empty slot: declared,
+not written yet, and not offered.
+
+**How the agent works as it.** On the Nanite runner (`SURFACE_AGENT_RUNNER=nanite`) each turn runs as one profile:
+the conversation's pin when the owner (the Profile picker in the agent panel) or the agent (`profile_switch`) set one;
+else the profile of the module whose window is in front; else the app's own seat. Nanite opens on a staged directory
+under the app's data directory (`agents/<app>.staged/`), and before each turn Surface writes into it the app's seat
+with the profile laid over it: the seat's `agent.md` with the profile's instructions after it under `## Profile: <title>`,
+the profile's context as `context/profile.<name>.md`, its skills, variants and tool packages beside (replacing) the
+seat's. The owner's seat directory is never changed. The run log records which profile each run acted as (`profile`:
+the module's id, or `default`). On the host runner profiles are off: every turn is the seat, and the app says so in
+its log.
+
+**Checking it.** `core/internal/agent/profile` loads a profile as the app will (libs agentdir over the profile beside
+a stand-in `host.yaml`, then Nanite's `agent/authored` validators for variants and tool packages, and steer's for
+`steering.json`); `TestEveryModuleProfileValidates` runs it over every `modules/*/profile`. A profile that does not
+check out is left out at boot, with the reason in the log; the app still starts.
+
 ### Routes, events, marks
 
 - `h.Handle("GET /items", handler)` serves the module's views at `/api/m/<id>/items`. Call it in `Start`.

@@ -64,6 +64,8 @@ type Assembly struct {
 	// Slot is the primary slot; Slots are all the active ones, the primary first.
 	Slot  string     `json:"slot"`
 	Slots []SlotView `json:"slots"`
+	// Profile is the module whose agent profile the turn runs as; "" the app's own seat.
+	Profile string `json:"profile,omitempty"`
 	// Why is how the slots were chosen.
 	Why string `json:"why"`
 	// TopOfMind are the tools named by the active slots that the app has, in order.
@@ -110,6 +112,10 @@ type Extra struct {
 	Standing string
 	// Asks are one-line requests of the agent from the app (bring a slot's note up to date).
 	Asks []string
+	// Profile is one line on the agent profile the turn runs as ("" when the app has no
+	// module profiles), and ProfileID that profile's module ("" the app's own seat).
+	Profile   string
+	ProfileID string
 	// Limit, when above zero, is a hard cap on the block in bytes: the runner the block goes
 	// to has a fixed room for it and drops a block that does not fit, whole. Zero keeps the
 	// soft cap (budgetBlock characters), which only trims what the modules know.
@@ -147,7 +153,7 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 	for _, t := range tools {
 		have[t.Name] = true
 	}
-	a := Assembly{Slot: sel.Primary().Name, Why: sel.Why, Focused: sit.Focused, Mode: sit.Mode, Layout: sit.Layout, Reminders: extra.Reminders, Around: extra.Around}
+	a := Assembly{Slot: sel.Primary().Name, Profile: extra.ProfileID, Why: sel.Why, Focused: sit.Focused, Mode: sit.Mode, Layout: sit.Layout, Reminders: extra.Reminders, Around: extra.Around}
 	slots := sel.Slots
 	if len(slots) == 0 {
 		slots = []kernel.BoundSlot{General}
@@ -311,6 +317,9 @@ func block(sit module.Situation, a Assembly, extra Extra) string {
 	}
 	if len(a.TopOfMind) > 0 {
 		b.WriteString("\nTop of mind: " + strings.Join(a.TopOfMind, ", ") + "\n")
+	}
+	if extra.Profile != "" {
+		b.WriteString("\n" + extra.Profile + "\n")
 	}
 	if extra.Standing != "" {
 		b.WriteString("\n" + extra.Standing + "\n")

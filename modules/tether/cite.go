@@ -253,7 +253,7 @@ func torqueTask(ctx context.Context, c tetherlink.Caller, id string, full bool) 
 		tags[i] = tag.Name
 	}
 	e := module.RefEntity{
-		Title: t.Title, Subtitle: "Torque task · " + id, Description: excerpt(t.Description, 320),
+		Title: t.Title, Subtitle: "Torque task", Description: excerpt(t.Description, 320),
 		Status: status(t.Status), UpdatedAt: t.UpdatedAt, ChipLabel: "Task: " + t.Title,
 	}
 	e.Fields = addField(e.Fields, "Priority", fmt.Sprintf("P%d", t.Priority), false)
@@ -294,7 +294,7 @@ func torqueContainer(tool, label string) func(context.Context, tetherlink.Caller
 		}
 		description := pick(out.Data, "description", "goal", "summary")
 		e := module.RefEntity{
-			Title: title, Subtitle: "Torque " + strings.ToLower(label) + " · " + id, Description: excerpt(description, 320),
+			Title: title, Subtitle: "Torque " + strings.ToLower(label), Description: excerpt(description, 320),
 			UpdatedAt: pick(out.Data, "updated_at", "updatedAt"), ChipLabel: label + ": " + title,
 			Status: status(pick(out.Data, "status")),
 		}
@@ -462,10 +462,9 @@ func tetherAgent(ctx context.Context, c tetherlink.Caller, urn string, full bool
 		Title: name, Subtitle: "Tether " + strings.TrimSpace(pick(p, "kind")), Description: excerpt(pick(p, "description", "about", "summary"), 320),
 		ChipLabel: "Agent: " + name, Status: status(pick(p, "status")), UpdatedAt: pick(p, "updated_at"),
 	}
-	e.Fields = addField(e.Fields, "Address", urn, true)
 	e.Fields = addField(e.Fields, "Handle", pick(p, "handle"), true)
 	if full {
-		e.Body = "```json\n" + prettyJSON(p) + "\n```"
+		e.Body = prettyJSON(p) // a JSON document: the page draws it as fields
 	}
 	return e, nil
 }
@@ -498,9 +497,10 @@ func tetherMessage(ctx context.Context, c tetherlink.Caller, id string, full boo
 	}
 	e.Fields = addField(e.Fields, "From", from, true)
 	e.Fields = addField(e.Fields, "To", to, true)
-	e.Fields = addField(e.Fields, "Message", id, true)
 	if full {
-		e.Body = "The delivery trace (the message's text is read in its mailbox).\n\n```json\n" + prettyJSON(t) + "\n```"
+		// The delivery trace, as a JSON document (the message's text is read in its mailbox).
+		e.Subtitle = "Tether message · delivery trace"
+		e.Body = prettyJSON(t)
 	}
 	return e, nil
 }
@@ -508,44 +508,99 @@ func tetherMessage(ctx context.Context, c tetherlink.Caller, id string, full boo
 // casterMaxBytes bounds the text a Caster record is read with.
 const casterMaxBytes = 256 << 10
 
+// casterPreviewBytes is what a preview reads first: enough for a Markdown excerpt.
+const casterPreviewBytes = 4096
+
+// casterSummaryBytes is what a preview reads, once more, of a JSON document cut short at
+// casterPreviewBytes, to summarize it. A document longer than this is not summarized.
+const casterSummaryBytes = 64 << 10
+
+type casterAnswer struct {
+	Content   string `json:"content"`
+	State     string `json:"state"`
+	Revision  any    `json:"revision"`
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updated_at"`
+	Truncated bool   `json:"truncated"`
+}
+
+func casterRead(ctx context.Context, c tetherlink.Caller, ref string, limit int) (casterAnswer, error) {
+	raw, err := c.Call(ctx, "caster_get", map[string]any{"ref": ref, "max_bytes": limit})
+	if err != nil {
+		return casterAnswer{}, err
+	}
+	var d casterAnswer
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
+		return casterAnswer{}, errors.New("unreadable Caster document")
+	}
+	return d, nil
+}
+
+// casterDoc projects a Caster document. Its content is Markdown (front matter left out of the
+// preview) or a JSON document: then the preview is a summary of it (summaryOfJSON), never a
+// fragment of the text, and the record's Body is the JSON itself, which the page draws as
+// fields (module.RefEntity.Body).
 func casterDoc(ctx context.Context, c tetherlink.Caller, ref string, full bool) (module.RefEntity, error) {
-	limit := 4096
+	limit := casterPreviewBytes
 	if full {
 		limit = casterMaxBytes
 	}
-	raw, err := c.Call(ctx, "caster_get", map[string]any{"ref": ref, "max_bytes": limit})
+	d, err := casterRead(ctx, c, ref, limit)
 	if err != nil {
 		return module.RefEntity{}, err
 	}
-	var d struct {
-		Content   string `json:"content"`
-		State     string `json:"state"`
-		Revision  any    `json:"revision"`
-		Title     string `json:"title"`
-		Truncated bool   `json:"truncated"`
+	// The text past any front matter (a collab/v1 document has one) is Markdown or JSON.
+	text := stripFrontMatter(d.Content)
+	if !full && d.Truncated && looksLikeJSON(text) {
+		if more, err := casterRead(ctx, c, ref, casterSummaryBytes); err == nil {
+			d, text = more, stripFrontMatter(more.Content)
+		}
 	}
-	if err := json.Unmarshal([]byte(raw), &d); err != nil {
-		return module.RefEntity{}, errors.New("unreadable Caster document")
-	}
+	doc, isJSON := parseJSONDoc(text)
+	// JSON that does not parse because it was cut short; text that only starts like JSON
+	// ("[Spec](…)", "[ ] a task") and was not cut is Markdown.
+	cutJSON := !isJSON && d.Truncated && looksLikeJSON(text)
 	title := strings.TrimSpace(d.Title)
-	if title == "" {
-		title = firstLine(stripFrontMatter(d.Content))
+	if title == "" && isJSON {
+		if m, ok := doc.(map[string]any); ok {
+			title = pick(m, "title", "name", "subject")
+		}
+	}
+	if title == "" && !isJSON && !cutJSON {
+		title = firstLine(text)
 	}
 	if title == "" {
 		title = ref[strings.LastIndexByte(ref, '/')+1:]
 	}
 	e := module.RefEntity{
-		Title: title, Subtitle: "Caster document", Description: excerpt(stripFrontMatter(d.Content), 320),
-		ChipLabel: "Caster: " + title, Status: status(d.State),
+		Title: title, Subtitle: "Caster document", ChipLabel: "Caster: " + title,
+		Status: status(d.State), UpdatedAt: d.UpdatedAt,
 	}
-	e.Fields = addField(e.Fields, "Ref", ref, true)
+	switch {
+	case isJSON:
+		e.Description = summaryOfJSON(doc)
+	case cutJSON:
+		e.Description = "A JSON document, too long to summarize here."
+	default:
+		e.Description = excerpt(text, 320)
+	}
 	if d.Revision != nil {
 		e.Fields = addField(e.Fields, "Revision", fmt.Sprint(d.Revision), false)
 	}
+	if isJSON || cutJSON {
+		e.Fields = addField(e.Fields, "Format", "JSON", false)
+	}
 	if full {
-		e.Body = d.Content
-		if d.Truncated {
-			e.Body += "\n\n…(cut short)"
+		switch {
+		case isJSON:
+			e.Body = strings.TrimSpace(d.Content) // front matter and all: the page lays out both
+		case cutJSON: // no longer JSON, so shown as code
+			e.Body = "```json\n" + strings.TrimRight(text, "\n") + "\n```\n\n…(cut short)"
+		default:
+			e.Body = d.Content
+			if d.Truncated {
+				e.Body += "\n\n…(cut short)"
+			}
 		}
 	}
 	return e, nil

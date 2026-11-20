@@ -72,12 +72,28 @@ export function ago(iso?: string): string | undefined {
   return `${Math.round(h / 24)}d ago`
 }
 
+/** "updated 3m ago", as the card's foot says it. */
+export const updatedAgo = (iso?: string) => {
+  const a = ago(iso)
+  return a ? `updated ${a}` : undefined
+}
+
+/** A subtitle worth showing: not the kind's own name again ("Torque task" under "TORQUE TASK"). */
+export const subtitleFor = (kind: string, subtitle?: string) =>
+  subtitle && subtitle.trim().toLowerCase() !== kindLabel(kind).toLowerCase() ? subtitle : undefined
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host
   } catch {
     return url
   }
+}
+
+/** What the card says when there is nothing to show (Basalisk's wording). */
+const NOTES: Partial<Record<string, string>> = {
+  "not-found": "It may have been deleted, or it may not be readable.",
+  unresolved: "No preview for this kind yet.",
 }
 
 /** The hover card's body for a reference: what it is, as far as is known now. */
@@ -96,27 +112,40 @@ export function RefCard({ refId }: { refId: RefIdentity }) {
       ?.writeText(refId.canonical)
       .then(() => setCopied(true))
       .catch(() => undefined)
-  const openable = isURL || canResolve(refId.kind)
+  const openable = (isURL || canResolve(refId.kind)) && card.phase !== "not-found"
+  const title =
+    card.phase === "not-found"
+      ? "Not found"
+      : card.phase === "error"
+        ? "Could not be looked up"
+        : isURL
+          ? hostOf(refId.canonical)
+          : card.title
   return (
     <CiteCard
       phase={card.phase}
       icon={<Icon />}
       kindLabel={kindLabel(refId.kind)}
       canonical={refId.canonical}
-      title={isURL ? hostOf(refId.canonical) : card.title}
+      title={title}
       subtitle={
-        isURL ? "A web page. Its address is shown as written; nothing is fetched to preview it." : card.subtitle
+        isURL
+          ? "A web page. Its address is shown as written; nothing is fetched to preview it."
+          : card.phase === "ready"
+            ? subtitleFor(refId.kind, card.subtitle)
+            : undefined
       }
+      note={isURL ? undefined : NOTES[card.phase]}
       description={card.description}
       status={card.status ? { label: card.status.label, tone: card.status.tone as CiteTone } : undefined}
       fields={card.fields}
-      updated={ago(card.updatedAt)}
-      error={card.phase === "error" ? `Could not be looked up: ${card.error}` : undefined}
+      updated={updatedAgo(card.updatedAt)}
+      error={card.phase === "error" ? card.error : undefined}
       actions={
         <>
           <Button variant="ghost" size="xs" onClick={copy}>
             <Copy />
-            {copied ? "Copied" : "Copy"}
+            {copied ? "Copied" : "Copy id"}
           </Button>
           {entity?.url ? (
             <Button variant="ghost" size="xs" onClick={() => openURL(entity.url as string)}>
@@ -188,7 +217,7 @@ export function CiteRef({
           />
         }
       />
-      <HoverCardContent className="w-80" align="start">
+      <HoverCardContent className="w-92" align="start">
         <RefCard refId={refId} />
       </HoverCardContent>
     </HoverCard>

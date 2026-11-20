@@ -2,6 +2,7 @@ package tether
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -130,5 +131,144 @@ func TestCiteIsNotReadyWithoutAGateway(t *testing.T) {
 	r := refKind(t, h, "torque.task")
 	if r.Ready(context.Background(), h) {
 		t.Fatal("ready with no gateway configured")
+	}
+}
+
+// caster answers caster_get with one document, cut at max_bytes as Caster does.
+type caster struct {
+	content string
+	reads   []int
+}
+
+func (c *caster) Call(_ context.Context, tool string, args map[string]any) (string, error) {
+	if tool != "caster_get" {
+		return "", errors.New("unexpected tool " + tool)
+	}
+	limit, _ := args["max_bytes"].(int)
+	c.reads = append(c.reads, limit)
+	content, cut := c.content, false
+	if limit > 0 && len(content) > limit {
+		content, cut = content[:limit], true
+	}
+	b, _ := json.Marshal(map[string]any{"content": content, "truncated": cut, "revision": 1, "title": "Evidence", "state": "resolved"})
+	return string(b), nil
+}
+
+func (c *caster) List(context.Context) ([]tetherlink.ToolInfo, error) { return nil, nil }
+
+func TestCasterJSONDocumentIsSummarisedNotExcerpted(t *testing.T) {
+	long := strings.Repeat("A line of evidence.\n", 400) // past the preview's first read
+	doc, _ := json.MarshalIndent(map[string]any{
+		"status": "candidate evidence only",
+		"messages": []any{
+			map[string]any{"id": "m1", "subject": "First", "body": long},
+			map[string]any{"id": "m2", "subject": "Second", "body": "short"},
+			map[string]any{"id": "m3", "subject": "Third", "body": "short"},
+		},
+	}, "", "  ")
+	c := &caster{content: string(doc)}
+	h := moduletest.Start(t, &mod{link: c})
+	r := refKind(t, h, "caster.doc")
+	ref := "caster://chief/0078-evidence"
+	got, err := r.Resolve(context.Background(), h, []string{ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := got[ref]
+	if e.Description != "candidate evidence only\n3 messages" {
+		t.Fatalf("description %q", e.Description)
+	}
+	if strings.Contains(e.Description, "{") {
+		t.Fatal("the preview shows JSON text")
+	}
+	if len(c.reads) != 2 || c.reads[0] != casterPreviewBytes || c.reads[1] != casterSummaryBytes {
+		t.Fatalf("reads %v: a JSON preview cut short is read once more, at the summary size", c.reads)
+	}
+	for _, f := range e.Fields {
+		if f.Label == "Ref" {
+			t.Fatal("the ref is repeated as a field; the card shows it under the title")
+		}
+	}
+	rec, err := r.Record(context.Background(), h, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back map[string]any
+	if err := json.Unmarshal([]byte(rec.Body), &back); err != nil {
+		t.Fatalf("the record's body is not the JSON document: %v", err)
+	}
+
+	// Markdown keeps its excerpt, front matter left out.
+	c.content, c.reads = "---\ntitle: x\n---\n# Plan\n\nThe body.", nil
+	got, _ = r.Resolve(context.Background(), h, []string{ref})
+	if d := got[ref].Description; d != "# Plan\n\nThe body." {
+		t.Fatalf("markdown description %q", d)
+	}
+
+	// A collab/v1 document: front matter, then JSON. Summarized past the front matter.
+	c.content, c.reads = "---\ncollab: v1\nkind: diagram\ntitle: Map\n---\n"+`{"diagram":"v1","nodes":[{"id":"a"},{"id":"b"}],"edges":[{"from":"a","to":"b"}]}`, nil
+	got, _ = r.Resolve(context.Background(), h, []string{ref})
+	if d := got[ref].Description; d != "1 edge · 2 nodes" {
+		t.Fatalf("collab diagram description %q", d)
+	}
+
+	// Text that starts like JSON but is Markdown, not cut short: an excerpt and Markdown, never "cut short JSON".
+	for _, md := range []string{"[Spec](https://example.test/spec) is the source.\n\nMore.", "[ ] write the port\n[x] read it", "[1] Smith, 2020. A paper.", "{curly} is a word here"} {
+		c.content, c.reads = md, nil
+		got, _ = r.Resolve(context.Background(), h, []string{ref})
+		if e := got[ref]; strings.Contains(e.Description, "JSON") || len(c.reads) != 1 || e.Description != excerpt(md, 320) {
+			t.Fatalf("%q: description %q after %d reads", md, e.Description, len(c.reads))
+		}
+		rec, _ = r.Record(context.Background(), h, ref)
+		if rec.Body != md {
+			t.Fatalf("%q: body %q", md, rec.Body)
+		}
+	}
+
+	// A JSON document longer than the summary size: two reads, no summary, no fragment.
+	c.content, c.reads = `{"messages":[`+strings.Repeat(`"xxxxxxxx",`, casterSummaryBytes/8)+`"y"]}`, nil
+	got, _ = r.Resolve(context.Background(), h, []string{ref})
+	if d := got[ref].Description; d != "A JSON document, too long to summarize here." || len(c.reads) != 2 {
+		t.Fatalf("large JSON preview: %q after %v", d, c.reads)
+	}
+
+	// JSON cut short even at the record's size: shown as code, never as broken JSON.
+	c.content = `{"messages":[` + strings.Repeat(`"x",`, casterMaxBytes/4) + `"y"]}`
+	rec, _ = r.Record(context.Background(), h, ref)
+	if !strings.HasPrefix(rec.Body, "```json\n") {
+		t.Fatalf("cut JSON body starts %q", rec.Body[:20])
+	}
+}
+
+func TestSummaryOfJSON(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{`{"summary":"What it is.\n\nMore.","items":[1],"tags":["a","b"]}`, "What it is.\n1 item · 2 tags"},
+		{`{"a":1,"b":2}`, "2 fields: a, b"},
+		{`[{"x":1},{"x":2}]`, "2 items"},
+		{`{"open_items":[]}`, "0 open items"},
+	}
+	for _, c := range cases {
+		v, ok := parseJSONDoc(c.in)
+		if !ok {
+			t.Fatalf("%s did not parse", c.in)
+		}
+		if got := summaryOfJSON(v); got != c.want {
+			t.Fatalf("%s: %q, want %q", c.in, got, c.want)
+		}
+	}
+	for _, md := range []string{"[ ] buy milk", "[x] done", "{ not json", "[link](x)"} {
+		if looksLikeJSON(md) {
+			t.Fatalf("%q looks like JSON", md)
+		}
+	}
+	for _, js := range []string{`{"a":1}`, "[\n  {", "[]", `["a"`, "{}"} {
+		if !looksLikeJSON(js) {
+			t.Fatalf("%q does not look like JSON", js)
+		}
+	}
+	if _, ok := parseJSONDoc("# Not JSON {"); ok {
+		t.Fatal("markdown parsed as JSON")
 	}
 }

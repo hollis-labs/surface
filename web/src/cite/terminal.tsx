@@ -88,7 +88,7 @@ export function CiteFloat() {
     <div
       role="dialog"
       aria-label="Reference"
-      className="fixed z-50 w-80 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
+      className="fixed z-50 w-92 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
       style={below ? { left, top: f.y + 14 } : { left, bottom: window.innerHeight - f.y + 14 }}
       onMouseEnter={() => window.clearTimeout(hideTimer)}
       onMouseLeave={hideSoon}

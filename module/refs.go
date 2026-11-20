@@ -59,7 +59,10 @@ type RefEntity struct {
 	// Open is what opening the reference does in the app: a command and its arguments ("work.open"
 	// with the workspace and item). Nil: the core's record window shows it.
 	Open *RefOpen `json:"open,omitempty"`
-	// Body is the whole record as Markdown. Only a Record fills it.
+	// Body is the whole record, for the record window. Only a Record fills it. It is Markdown,
+	// or a JSON document (text that parses as a JSON object or array, such as a Caster doc a
+	// tool wrote): the page draws that as labeled fields and lists, with the raw JSON a toggle
+	// away. A Description is never a fragment of JSON text: summarize the document instead.
 	Body string `json:"body,omitempty"`
 }
 
@@ -93,7 +96,7 @@ func ValidRefKind(s string) bool { return len(s) <= 64 && refKindRe.MatchString(
 // For a module projecting its own records onto RefStatus.
 func StatusTone(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "done", "completed", "complete", "merged", "active", "approved", "saved", "published":
+	case "done", "completed", "complete", "merged", "active", "approved", "saved", "published", "resolved":
 		return "success"
 	case "doing", "in_progress", "in-progress", "running", "queued", "started", "open":
 		return "info"

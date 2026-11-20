@@ -2,16 +2,77 @@
  * The record window (surface.cite): a cited record read whole, for a reference whose module has
  * no window of its own to show it in (a Torque task, a Tesseract item, a fragment). Args: {kind, id}.
  */
-import { ExternalLink, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Braces, ExternalLink, ListTree, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CiteCard, type CiteTone } from "@/components/ui/cite-card"
+import { CiteRecordHeader, type CiteTone } from "@/components/ui/cite-card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Markdown } from "@/components/ui/markdown"
 import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { ViewProps } from "../sdk/types"
 import { type CiteRecord, kindLabel, loadRecord, openURL } from "./store.ts"
-import { ago, iconFor } from "./ui.tsx"
+import { fenced, fitsLayout, parseJSONDocument, splitFrontMatter, toDocNode } from "./structured.ts"
+import { DocFields, DocValue } from "./structured-view.tsx"
+import { CiteText, iconFor, subtitleFor, updatedAgo } from "./ui.tsx"
+
+/**
+ * A record's text: Markdown (its front matter, if any, as fields above it), or, when it is a
+ * JSON document (a collab/v1 one has front matter over it), its fields laid out to be read,
+ * with the JSON a toggle away, shown as it was written. A document too large to lay out is
+ * shown as its text.
+ */
+export function RecordBody({ body }: { body: string }) {
+  const front = useMemo(() => (parseJSONDocument(body) ? undefined : splitFrontMatter(body)), [body])
+  const json = front ? front.rest : body
+  const doc = useMemo(() => parseJSONDocument(json), [json])
+  const fits = useMemo(() => (doc ? fitsLayout(json, doc) : false), [json, doc])
+  const node = useMemo(() => (doc && fits ? toDocNode(doc) : undefined), [doc, fits])
+  const [mode, setMode] = useState<"fields" | "raw">("fields")
+  const head = front?.fields.length ? <DocFields fields={front.fields} /> : null
+  if (doc && !fits)
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        {head}
+        <p className="text-xs text-muted-foreground">
+          This JSON document is too large to lay out; it is shown as it is.
+        </p>
+        <pre className="font-mono text-xs break-all whitespace-pre-wrap">{json}</pre>
+      </div>
+    )
+  if (!node)
+    return front ? (
+      <div className="flex min-w-0 flex-col gap-4">
+        {head}
+        <Markdown>{front.rest}</Markdown>
+      </div>
+    ) : (
+      <Markdown>{body}</Markdown>
+    )
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {head}
+      <ToggleGroup
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={[mode]}
+        onValueChange={(v: string[]) => v[0] && setMode(v[0] as "fields" | "raw")}
+        aria-label="How the document is shown"
+      >
+        <ToggleGroupItem value="fields" aria-label="As fields">
+          <ListTree />
+          Fields
+        </ToggleGroupItem>
+        <ToggleGroupItem value="raw" aria-label="As raw JSON">
+          <Braces />
+          JSON
+        </ToggleGroupItem>
+      </ToggleGroup>
+      {mode === "fields" ? <DocValue node={node} /> : <Markdown>{fenced(json.trim(), "json")}</Markdown>}
+    </div>
+  )
+}
 
 export function CiteRecordView({ win, desk }: ViewProps) {
   const kind = String(win.args?.kind ?? "")
@@ -57,15 +118,16 @@ export function CiteRecordView({ win, desk }: ViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-border p-4">
-        <CiteCard
+        <CiteRecordHeader
           icon={<Icon />}
           kindLabel={kindLabel(kind)}
           canonical={id}
           title={rec.title}
-          subtitle={rec.subtitle}
+          subtitle={subtitleFor(kind, rec.subtitle)}
           status={rec.status ? { label: rec.status.label, tone: rec.status.tone as CiteTone } : undefined}
           fields={rec.fields}
-          updated={ago(rec.updatedAt)}
+          renderValue={(f) => (f.mono ? <CiteText text={f.value} /> : f.value)}
+          updated={updatedAgo(rec.updatedAt)}
           error={error || undefined}
           actions={
             <>
@@ -95,7 +157,7 @@ export function CiteRecordView({ win, desk }: ViewProps) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {rec.body ? (
-          <Markdown>{rec.body}</Markdown>
+          <RecordBody body={rec.body} />
         ) : (
           <p className="text-muted-foreground">{rec.description || "Nothing more to show."}</p>
         )}

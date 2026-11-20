@@ -3,7 +3,7 @@
  * mail, the owner's own answers on cards, rules), by day; and how the owner's mail is sorted
  * now (what waits on them, what was handed to the agent, what is held). Rules can be removed.
  */
-import { Icon, type ModuleWeb, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
+import { CiteRef, Icon, type ModuleWeb, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,7 +40,31 @@ interface Rule {
   note?: string
 }
 
-type Tab = "done" | "mail" | "rules"
+interface SentMessage {
+  id: string
+  kind: string
+  subject: string
+  to: string
+  at: string
+  task_id?: string
+  delivery: string
+  request?: string
+  alert?: string
+  events: { id: string; at: string; kind: string; state?: string; detail?: string; task_id?: string }[]
+}
+interface SentHistory {
+  messages: SentMessage[]
+  warning: string
+}
+
+type Tab = "done" | "sent" | "mail" | "rules"
+
+const receiptLabel = (kind: string, state?: string) => {
+  if (kind === "request.unacknowledged_alert") return "Not acknowledged"
+  if (kind === "routing.reply_undeliverable") return "Reply delivery failed"
+  if (state === "consumed") return "Taken from mailbox"
+  return state || "Delivery update"
+}
 
 const day = (at: string) =>
   new Date(at).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })
@@ -58,11 +82,13 @@ function DoneForYou({ win, desk, api }: ViewProps) {
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [mail, setMail] = useState<Record<string, Mail[]> | null>(null)
   const [rules, setRules] = useState<Rule[] | null>(null)
+  const [sent, setSent] = useState<SentHistory | null>(null)
   const [error, setError] = useState("")
 
   const load = useCallback(() => {
     const fail = (e: Error) => setError(e.message)
     void api.get<Entry[]>("activity").then(setEntries).catch(fail)
+    void api.get<SentHistory>("sent").then(setSent).catch(fail)
     void api.get<Record<string, Mail[]>>("mail").then(setMail).catch(fail)
     void api.get<Rule[]>("rules").then(setRules).catch(fail)
   }, [api])
@@ -83,6 +109,9 @@ function DoneForYou({ win, desk, api }: ViewProps) {
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1">
         <ToggleGroup size="sm" spacing={0} value={[tab]} onValueChange={(v: string[]) => v[0] && setTab(v[0] as Tab)}>
           <ToggleGroupItem value="done">Done for you</ToggleGroupItem>
+          <ToggleGroupItem value="sent">
+            Sent {sent?.messages.some((m) => m.alert) && "· needs attention"}
+          </ToggleGroupItem>
           <ToggleGroupItem value="mail">Your mail</ToggleGroupItem>
           <ToggleGroupItem value="rules">Rules</ToggleGroupItem>
         </ToggleGroup>
@@ -124,6 +153,63 @@ function DoneForYou({ win, desk, api }: ViewProps) {
               )
             })
           ))}
+        {tab === "sent" && (
+          <div className="flex flex-col gap-2">
+            {sent?.warning && (
+              <Item role="status">
+                <ItemContent>
+                  <ItemDescription>{sent.warning}</ItemDescription>
+                </ItemContent>
+              </Item>
+            )}
+            {sent?.messages.length === 0 && (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>No sent messages yet</EmptyTitle>
+                  <EmptyDescription>
+                    Messages sent in your name and their delivery receipts appear here. Request progress appears when
+                    the recipient reports it.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {(sent?.messages ?? []).map((m) => (
+              <Item key={m.id} variant="outline">
+                <ItemContent>
+                  <ItemTitle>{m.subject || "Message"}</ItemTitle>
+                  <ItemDescription>
+                    To {m.to} · {day(m.at)} {time(m.at)}
+                  </ItemDescription>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{receiptLabel("", m.delivery)}</Badge>
+                    {m.request && <Badge variant="outline">Request: {m.request}</Badge>}
+                    {m.task_id && <CiteRef refId={{ kind: "torque.task", canonical: m.task_id }} />}
+                  </div>
+                  {m.alert && <ItemDescription role="alert">{m.alert}</ItemDescription>}
+                  <details>
+                    <summary>Timeline ({m.events.length})</summary>
+                    {m.events.length === 0 && (
+                      <ItemDescription>Predates delivery tracking; no receipts recorded.</ItemDescription>
+                    )}
+                    {m.events.map((e) => (
+                      <Item key={e.id} size="sm">
+                        <ItemContent>
+                          <ItemTitle>{receiptLabel(e.kind, e.state)}</ItemTitle>
+                          <ItemDescription>
+                            <time dateTime={e.at} title={e.at}>
+                              {new Date(e.at).toLocaleString()}
+                            </time>
+                            {e.detail ? ` · ${e.detail}` : ""}
+                          </ItemDescription>
+                        </ItemContent>
+                      </Item>
+                    ))}
+                  </details>
+                </ItemContent>
+              </Item>
+            ))}
+          </div>
+        )}
         {tab === "mail" &&
           classes.map(([key, title]) => (
             <div key={key} className="pb-2">

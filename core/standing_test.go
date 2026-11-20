@@ -83,12 +83,8 @@ func TestNaniteReloadsStandingAndKeepsNotesCurrent(t *testing.T) {
 	turn := func(a *lateApp, text string) (system, last string) {
 		t.Helper()
 		before := len(a.runs())
-		// The run log can say finished a moment before the conversation is free (409).
-		code := 0
-		a.until("the turn was taken", func() bool {
-			code = do(t, a.srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, nil)
-			return code != 409
-		})
+		a.waitIdle()
+		code := do(t, a.srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, nil)
 		if code != 202 {
 			t.Fatalf("turn %q: %d", text, code)
 		}
@@ -96,6 +92,7 @@ func TestNaniteReloadsStandingAndKeepsNotesCurrent(t *testing.T) {
 			runs := a.runs()
 			return len(runs) > before && runs[0].Status == "finished"
 		})
+		a.waitIdle()
 		var req struct {
 			System   []struct{ Text string } `json:"system"`
 			Messages []struct {

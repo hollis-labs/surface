@@ -124,6 +124,22 @@ func (m *fakeModel) sentWith(s string) string {
 	return ""
 }
 
+// waitIdle observes the service's completion boundary, after the terminal
+// event has been consumed and the active run released. Text and run-log updates
+// happen earlier and do not mean the next turn can start yet.
+func (a *lateApp) waitIdle() {
+	a.t.Helper()
+	a.until("chat service released the run", func() bool {
+		var view struct {
+			ActiveRun *string `json:"active_run"`
+		}
+		if code := do(a.t, a.srv, "GET", "/api/agent/conversations/"+a.conv, "", &view); code != 200 {
+			a.t.Fatalf("conversation: %d", code)
+		}
+		return view.ActiveRun == nil
+	})
+}
+
 func TestNaniteStartsFreshForFormerHostAndPreservesTranscript(t *testing.T) {
 	model := newFakeModel(t)
 	naniteConfig(t, model.srv.URL)
@@ -160,6 +176,7 @@ func TestNaniteStartsFreshForFormerHostAndPreservesTranscript(t *testing.T) {
 		t.Fatalf("turn: %d", code)
 	}
 	a.partsUntil("Answer 1.")
+	a.waitIdle()
 	srv.CloseClientConnections()
 	srv.Close()
 	_ = app.Stop(ctx)
@@ -191,6 +208,7 @@ func TestNaniteStartsFreshForFormerHostAndPreservesTranscript(t *testing.T) {
 			t.Fatalf("turn: %d", code)
 		}
 		b.partsUntil(fmt.Sprintf("Answer %d.", i+2))
+		b.waitIdle()
 		b.until("the turn's run ended", func() bool {
 			n := 0
 			for _, r := range b.runs() {
@@ -342,6 +360,7 @@ func TestNaniteApprovalsAndCancelThroughTheService(t *testing.T) {
 		t.Fatalf("answering: %d", code)
 	}
 	ended(run)
+	a.waitIdle()
 	var grants []struct {
 		Tool string `json:"tool"`
 	}
@@ -353,6 +372,7 @@ func TestNaniteApprovalsAndCancelThroughTheService(t *testing.T) {
 	model.script("agent_reflex_put")
 	run = turn("another reflex")
 	ended(run)
+	a.waitIdle()
 	if n := countWith(a.streamUntil(run, `"verb":"run.finish"`), `"approval.request"`); n != 1 {
 		t.Errorf("%d approval requests, want 1", n)
 	}
@@ -367,6 +387,7 @@ func TestNaniteApprovalsAndCancelThroughTheService(t *testing.T) {
 	}
 	a.streamUntil(run, `"verb":"run.abort"`)
 	ended(run)
+	a.waitIdle()
 	next := model.count() + 1
 	turn("after the cancel")
 	a.partsUntil(fmt.Sprintf("Answer %d.", next))
@@ -471,6 +492,7 @@ func TestNaniteConversationUsageErrandsLateAnswersAndRestart(t *testing.T) {
 		t.Fatalf("turn: %d", code)
 	}
 	a.partsUntil("Answer 1.")
+	a.waitIdle()
 	first := model.request(1)
 	var req struct {
 		System   []struct{ Text string } `json:"system"`
@@ -530,6 +552,7 @@ func TestNaniteConversationUsageErrandsLateAnswersAndRestart(t *testing.T) {
 		return false
 	})
 
+	a.waitIdle()
 	// A module's errand runs as a turn on the same thread.
 	run, err := theErrandMod.h.Agent().Ask(ctx, module.Ask{Title: "Mail", Text: "Draft the two replies."})
 	if err != nil || run == "" {

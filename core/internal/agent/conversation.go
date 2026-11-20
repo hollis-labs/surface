@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	chat "github.com/hollis-labs/libs/agent/chat"
@@ -39,6 +40,8 @@ const RunnerScripted = "scripted"
 
 // wire is the conversation wire, when it is on.
 type wire struct {
+	naniteInitMu sync.Mutex // serializes first creation before turns and host events
+
 	svc      *chat.Service
 	store    *sqlitestore.Store
 	handler  http.Handler
@@ -130,8 +133,18 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 	// to nobody. Saying so bumps the conversation's generation: every earlier attachment is
 	// stale (live pages attach again on their own) and the lease is free, so a reload does
 	// not find a window that is gone holding the input.
-	if view, verr := w.svc.EnsureConversation(ctx, w.agent); verr == nil {
-		replaced <- view.ConversationID
+	view, err := w.svc.EnsureConversation(ctx, w.agent)
+	if err == nil {
+		_, err = st.Bump(ctx, view.ConversationID)
+	}
+	if err == nil {
+		// Reconcile before serving HTTP: an asynchronous Replaced signal can
+		// invalidate a new attachment created just after startup.
+		_, err = w.svc.Conversation(ctx, view.ConversationID)
+	}
+	if err != nil {
+		w.close(ctx)
+		return nil, fmt.Errorf("agent: invalidate previous attachments: %w", err)
 	}
 	if w.nanite != nil {
 		if _, err := w.nanite.RecoverTurns(ctx); err != nil {

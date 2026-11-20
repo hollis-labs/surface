@@ -12,7 +12,7 @@ import (
 // is read at every request, so fixing it takes effect without a restart. The key itself is
 // never read into the answer; only whether the file can be read.
 func (s *Service) SetupProblem() string {
-	if s.custom {
+	if s.wire != nil && s.wire.scripted != nil {
 		return ""
 	}
 	if s.cfgErr != nil {

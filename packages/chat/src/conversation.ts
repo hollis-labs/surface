@@ -5,7 +5,7 @@
  * the right to type. Nothing here knows which agent runs the turns: any server that speaks
  * the wire works, at any base URL.
  */
-import { HostError, parseFrame, type StreamEvent } from "./wire.ts"
+import { HostError, parseFrame, type StreamEvent } from "./stream.ts"
 
 export type Role = "viewer" | "controller"
 /** "deltas" takes text as it is written; "committed" takes each part once, whole. */

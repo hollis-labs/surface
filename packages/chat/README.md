@@ -9,9 +9,9 @@ has no dependency but React, and React only for `src/react.ts`.
 
 | File | What it is |
 |---|---|
-| `src/wire.ts` | The legacy agent-host/1 protocol routes and a follower for a run's chatstream/v1 events that resumes a dropped stream from the last event seen |
+| `src/stream.ts` | Shared conversation event types and SSE frame decoding |
 | `src/reduce.ts` | The conversation as data, and what each event does to it. Pure functions |
-| `src/store.ts` | The store: start, send, stop, answer an approval, new thread, reload, follow a turn started elsewhere |
+| `src/conversation-store.ts` | Durable conversation state, attachments, turns and approvals |
 | `src/react.ts` | `useChat(store, select)` and its shorthands; `useStickToBottom` |
 
 ## Why drawing stays cheap
@@ -28,16 +28,13 @@ row 73 commits, the list 2 (its two new items) and each of the four earlier mess
 
 ## History policy
 
-1. The thread is read once, by `start()`, and kept for the life of the page. Opening the panel again reads nothing.
-2. A run this store started, or found active, is drawn from its event stream, never from the stored copy.
-3. The thread is read again only when someone else changed it: a turn started outside this page
-   (`turnElsewhere`, wired to the host's `agent.turn` event) or an explicit `reload()`. Never on a timer or on focus.
-4. `newThread()` empties the store and reads nothing.
+The page attaches and reads the conversation stream from the beginning, then resumes from its last event.
+All turns arrive on that stream, including those sent by other clients. Resetting follows the successor
+conversation; there is no separate thread-history endpoint.
 
 ## Not here
 
-- **Page tools.** The wire lets a page declare tools and run them; Surface's tools are all server tools, so turns
-  declare none. Add a runner here if an app needs one.
+- **Page tools.** Surface tools run on the server.
 - **Cards.** The panel draws each item through a table (`web/src/agent/items.tsx`): a tool with a card of its own
   goes to that card, every other tool to the plain row.
 
@@ -48,7 +45,7 @@ row 73 commits, the list 2 (its two new items) and each of the four earlier mess
 `conversation.ts`, `conversation-reduce.ts` and `conversation-store.ts` bind the same reducer and
 components to a durable conversation instead of one run at a time: the page attaches as a viewer or a
 controller, reads one event stream from wherever it says, and submits turns when it holds the right to
-type. `createConversationStore` offers what `createChatStore` offers, so a panel draws either.
+type. `createConversationStore` is the panel's transport.
 
 | What it handles | How |
 |---|---|
@@ -63,8 +60,7 @@ type. `createConversationStore` offers what `createChatStore` offers, so a panel
 
 It assumes nothing about which agent runs the turns, only the wire (`github.com/hollis-labs/libs/agent/chat`),
 at any base URL. The tests run it against an in-memory host (`test/fake-host.ts`) that follows the wire's
-rules and event shapes. Surface's panel uses it when the server says the conversation wire is on, and the
-run store otherwise.
+rules and event shapes. Surface's panel uses it for every configured agent.
 
 A window that only watches (`role: "viewer"`) becomes a controller when it takes over. A page that is going
 away should call `dispose()`: it detaches, which releases the input for the next page.

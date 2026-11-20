@@ -1,9 +1,6 @@
 /**
- * The page's one conversation with the agent, whichever wire the server speaks. The server
- * says which in /api/agent/setup: the conversation wire (a durable conversation the page
- * attaches to, shared with other tabs) or the run-at-a-time one. Both stores offer the same
- * surface, so the panel draws either; this wrapper exists because the answer arrives after
- * the page has started, and callers want the session at once.
+ * The page's durable conversation. Setup supplies the agent and endpoint;
+ * an unconfigured app keeps the composer unavailable without opening a transport.
  *
  * Two address-bar switches, for looking at the conversation wire's other modes:
  * `?chat=viewer` attaches this page as a viewer (it watches and can take over), and
@@ -11,9 +8,7 @@
  */
 import {
   type ChatState,
-  type ChatStore,
   type ConversationStore,
-  createChatStore,
   createConversationStore,
   type Decision,
   initialState,
@@ -49,9 +44,9 @@ function mode(): { role: "controller" | "viewer"; stream: "deltas" | "committed"
 }
 
 export function createAgentSession(): AgentSession {
-  let run: ChatStore | null = null
+  let unavailable: ChatState = initialState
   let conv: ConversationStore | null = null
-  const inner = () => conv ?? run
+  const inner = () => conv
   const listeners = new Set<() => void>()
   const ends = new Set<(run: string, how: RunEnd) => void>()
   const tell = () => {
@@ -63,7 +58,7 @@ export function createAgentSession(): AgentSession {
     .setup()
     .catch(() => null)
     .then((setup) => {
-      if (setup?.wire === "conversation" && setup.agent) {
+      if (setup?.ready && setup.agent) {
         conv = createConversationStore({
           base: setup.wire_base ?? BASE,
           agent: setup.agent,
@@ -72,7 +67,14 @@ export function createAgentSession(): AgentSession {
           hostState: async () => ({ available: true, ready: setup.ready, model: setup.model }),
         })
       } else {
-        run = createChatStore({ base: BASE })
+        unavailable = {
+          ...initialState,
+          loaded: true,
+          host: { available: true, ready: false, model: setup?.model ?? "" },
+          error: setup?.reason ?? "The agent is not set up yet.",
+        }
+        tell()
+        return
       }
       // A page that goes away lets go of its attachment, and with it the input: otherwise a
       // reload would find its own earlier self still holding it.
@@ -80,7 +82,7 @@ export function createAgentSession(): AgentSession {
         const leaving = conv
         window.addEventListener("pagehide", () => leaving.dispose(), { once: true })
       }
-      const store = inner() as ChatStore | ConversationStore
+      const store = inner() as ConversationStore
       store.subscribe(tell)
       store.onRunEnd((id, how) => {
         for (const fn of [...ends]) fn(id, how)
@@ -90,7 +92,7 @@ export function createAgentSession(): AgentSession {
     })
 
   return {
-    get: () => inner()?.get() ?? initialState,
+    get: () => inner()?.get() ?? unavailable,
     subscribe: (fn) => {
       listeners.add(fn)
       return () => {
@@ -100,7 +102,7 @@ export function createAgentSession(): AgentSession {
     start: () => boot,
     send: async (text, how) => {
       await boot
-      return (inner() as ChatStore | ConversationStore).send(text, how)
+      return conv ? conv.send(text, how) : false
     },
     stop: () => inner()?.stop(),
     answer: async (decision) => {

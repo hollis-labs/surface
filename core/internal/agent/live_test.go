@@ -27,6 +27,7 @@ func TestLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.wire.close(context.Background())
 	s.cfg = cfg
 	s.wire, err = s.openWire(context.Background(), RunnerNanite)
 	if err != nil {

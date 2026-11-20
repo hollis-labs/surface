@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -90,7 +89,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		run = w.scripted
 	}
 	closeRunner := func() { closeRunnerNow(w) }
-	// Its runs announce themselves on the bus, as the host engine's do.
+	// Runs announce themselves on the app bus.
 	if s.runs, err = openRunLog(ctx, s.k.DB()); err != nil {
 		closeRunnerNow(w)
 		_ = st.Close()
@@ -215,7 +214,7 @@ func (s *Service) mountWire(mux *http.ServeMux) {
 }
 
 // intercept is the host hook: it sees every turn before it runs, wherever it came from (a
-// page, a reflex, another agent). It does what Send does on the engine: a routing rule may
+// page, a reflex, another agent). A routing rule may
 // run a call first, the reflexes may answer instead of the agent, and the context block for
 // what is in front is assembled and attached. The library can call it for a turn that then
 // loses the race to another; a routed call's effect stands either way, as it did before.
@@ -346,45 +345,7 @@ func (s *Service) priorMessages(ctx context.Context, conversation string) []libr
 		}
 		return nil // the scripted runner keeps no history
 	}
-	var prior []libreflex.MessageSignal
-	hist, err := s.engine.History(ctx, Owner)
-	if err != nil {
-		return nil
-	}
-	for i := len(hist) - 1; i >= 0 && len(prior) < 40; i-- {
-		h := hist[i]
-		if h.Role == "user" && h.Text == "" {
-			continue // tool results only
-		}
-		prior = append(prior, libreflex.MessageSignal{Role: h.Role, Content: h.Text, CreatedAt: h.CreatedAt,
-			ToolCalls: len(h.ToolNames), ToolNames: h.ToolNames})
-	}
-	return prior
-}
-
-// sendOnWire starts a turn from inside the app (a reflex, a trigger, another agent through
-// the tools): no attachment and no lease, the same hook, and every attached page sees it.
-func (s *Service) sendOnWire(ctx context.Context, text, auto string) (TurnResult, error) {
-	w := s.wire
-	view, err := w.svc.EnsureConversation(ctx, w.agent)
-	if err != nil {
-		return TurnResult{}, err
-	}
-	turn := chat.Turn{Text: text}
-	if auto != "" {
-		turn.Meta, _ = json.Marshal(map[string]string{"auto": auto})
-	}
-	receipt, err := w.svc.Submit(ctx, view.ConversationID, turn)
-	var rejected *chat.RejectedError
-	switch {
-	case errors.Is(err, chat.ErrBusy):
-		return TurnResult{}, ErrBusy
-	case errors.As(err, &rejected):
-		return TurnResult{Halted: rejected.Message}, nil
-	case err != nil:
-		return TurnResult{}, err
-	}
-	return TurnResult{RunID: receipt.RunID}, nil
+	return nil
 }
 
 // Standing approvals ("always"): the wire hands them to the host to keep, and the runner
@@ -459,7 +420,7 @@ const naniteContextBytes = naniteContextTokens*4 - 200
 // 0 when the runner has no fixed room for it. The config's extra standing instructions go
 // in front of the block, in the same slot, so they come out of the room.
 //
-// Custom and scripted engines have no Nanite context-slot cap.
+// Scripted runners have no Nanite context-slot cap.
 func (s *Service) contextLimit() int {
 	if s.wire == nil || s.wire.nanite == nil {
 		return 0

@@ -99,7 +99,7 @@
     },
     "cite-card": {
       "files": {
-        "web/src/components/ui/cite-card.tsx": "8cc01244bcade3a948a520ce64b840e9c2ec2f704ed3538038c83a5ab2d479a0"
+        "web/src/components/ui/cite-card.tsx": "b0e23b148ebf59542801b3607a2422ad5e4b7230ad08d561ac18bb617c9b3d6f"
       }
     },
     "cite-chip": {

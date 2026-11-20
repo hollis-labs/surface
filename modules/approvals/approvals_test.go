@@ -23,16 +23,17 @@ const ownerKey = "test-owner"
 // fakeGate is Gatecrasher for a surface: an event log served as a stream (from
 // Last-Event-ID), the cards, and decide.
 type fakeGate struct {
-	mu         sync.Mutex
-	events     []feedEvent
-	cards      map[string]map[string]any
-	decided    map[string]decideRequest
-	lastIDs    []string // the Last-Event-ID of each connection
-	ignoreLID  bool     // replay from the start whatever the client says
-	failDecide bool     // decide answers 503
-	failCard   bool     // the card route answers 503
-	push       chan struct{}
-	srv        *httptest.Server
+	mu          sync.Mutex
+	events      []feedEvent
+	cards       map[string]map[string]any
+	decided     map[string]decideRequest
+	lastIDs     []string // the Last-Event-ID of each connection
+	ignoreLID   bool     // replay from the start whatever the client says
+	failDecide  bool     // decide answers 503
+	failCard    bool     // the card route answers 503
+	failedCards chan struct{}
+	push        chan struct{}
+	srv         *httptest.Server
 }
 
 func newFake(t *testing.T) *fakeGate {
@@ -87,6 +88,10 @@ func (f *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathApprovals+"/"), "/card")
 		f.mu.Lock()
 		if f.failCard {
+			select {
+			case f.failedCards <- struct{}{}:
+			default:
+			}
 			f.mu.Unlock()
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -446,9 +451,23 @@ func TestASecretNeverReachesGatecrasherOrTheStore(t *testing.T) {
 // again, and the approval comes back once Gatecrasher answers (the next connection).
 func TestAnApprovalComesBackAfterGatecrasherWasDown(t *testing.T) {
 	f := newFake(t)
+	f.failedCards = make(chan struct{}, 8)
 	h, m := start(t, f)
+	// show publishes after recording the card in the module's store. Seeing
+	// the card alone is too early to answer it reliably.
+	shown := make(chan struct{}, 2)
+	unsub := h.Events().Subscribe("approvals.changed", func(ev module.Event) {
+		var change struct {
+			ApprovalID string `json:"approval_id"`
+			Status     string `json:"status"`
+		}
+		if json.Unmarshal(ev.Data, &change) == nil && change.ApprovalID == "apr_1" && change.Status == "pending" {
+			shown <- struct{}{}
+		}
+	})
+	t.Cleanup(unsub)
 	f.submit("apr_1", "approve", "elevated", nil)
-	eventually(t, "the card shows", func() bool { return len(openCards(h)) == 1 })
+	<-shown
 	c := openCards(h)[0]
 	f.mu.Lock()
 	f.failDecide, f.failCard = true, true
@@ -456,15 +475,22 @@ func TestAnApprovalComesBackAfterGatecrasherWasDown(t *testing.T) {
 	_, _ = h.CardStore.Respond(context.Background(), c.ID, module.CardOutcome{Status: "submitted", Decisions: []module.CardDecision{{ItemID: "approval", Action: "approve"}}})
 	got, _, _ := h.CardStore.Get(context.Background(), c.ID)
 	m.answered(context.Background(), got)
+	// Force the valid schedule where reconnect retries before recovery.
+	<-f.failedCards
+	<-f.failedCards
 	f.mu.Lock()
 	f.failDecide, f.failCard = false, false
 	f.mu.Unlock()
-	eventually(t, "the approval is shown again", func() bool {
-		for _, x := range openCards(h) {
-			if x.Subject == "approval:apr_1" {
-				return true
-			}
-		}
-		return false
-	})
+	// A retry while the server was down cannot discover its recovery. Start the
+	// next connection only after restoring it, then wait for the persisted card.
+	m.reconnect()
+	<-shown
+	sh, ok := m.shown(context.Background(), "apr_1")
+	if !ok || sh.status != "pending" || sh.card == "" || sh.card == c.ID {
+		t.Fatalf("approval was not shown again: %+v", sh)
+	}
+	card, ok, err := h.CardStore.Get(context.Background(), sh.card)
+	if err != nil || !ok || card.Subject != "approval:apr_1" || card.Status != "" {
+		t.Fatalf("restored card: %+v, found=%v, err=%v", card, ok, err)
+	}
 }

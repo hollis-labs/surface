@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { append, endRun, fromThread, initialState, reduceEvent, startRun } from "./reduce.ts"
+import { append, endRun, initialState, reduceEvent, startRun } from "./reduce.ts"
 
 const ev = (verb: string, more: Record<string, unknown> = {}) => ({ seq: 0, run_id: "r1", verb, ...more })
 
@@ -62,42 +62,4 @@ test("the end of a run settles what was still going", () => {
   assert.equal((s.items["r1:p1"] as { streaming: boolean }).streaming, false)
   assert.equal((s.items["r1:c1"] as { status: string }).status, "done")
   assert.deepEqual(s.items["r1:error"], { kind: "notice", id: "r1:error", text: "boom", tone: "error" })
-})
-
-test("the stored thread becomes items, leaving out the run still going", () => {
-  const t = fromThread(
-    [
-      { id: "m1", seq: 1, role: "user", blocks: [], meta: { text: "open notes" }, created_at: "" },
-      {
-        id: "m2",
-        seq: 2,
-        role: "assistant",
-        run_id: "r1",
-        created_at: "",
-        blocks: [
-          { type: "text", text: "Opening." },
-          { type: "tool_use", id: "t1", name: "desk_open", input: { view: "notes" } },
-        ],
-      },
-      {
-        id: "m3",
-        seq: 3,
-        role: "user",
-        run_id: "r1",
-        created_at: "",
-        blocks: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
-      },
-      { id: "m4", seq: 4, role: "assistant", run_id: "r2", created_at: "", blocks: [{ type: "text", text: "half" }] },
-    ],
-    "r2",
-  )
-  assert.deepEqual(t.ids, ["m1", "m2:0", "t1"])
-  assert.deepEqual(t.items.t1, {
-    kind: "tool",
-    id: "t1",
-    name: "desk_open",
-    input: { view: "notes" },
-    result: "ok",
-    status: "done",
-  })
 })

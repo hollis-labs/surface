@@ -241,7 +241,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
-	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.engineTools()), "builtins", len(groups), "compact_at", compact, "compact_keep_tokens", keep)
+	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups), "compact_at", compact, "compact_keep_tokens", keep)
 	return r, nil
 }
 
@@ -250,7 +250,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 func (s *Service) runnerTools() []chatrunner.Tool {
 	var out []chatrunner.Tool
 	seen := map[string]bool{}
-	for _, t := range s.engineTools() {
+	for _, t := range s.toolBindings() {
 		if seen[t.Name] {
 			continue
 		}
@@ -335,7 +335,7 @@ func (w *wire) naniteHistory(ctx context.Context, conversation string) []librefl
 const TopicCompacted = "agent.compacted"
 
 // Tools with an owner-facing timeout may wait longer than ordinary calls.
-func waitsForOwner(t EngineTool) bool {
+func waitsForOwner(t ToolBinding) bool {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	_, ok := props["timeout_seconds"]
 	return ok

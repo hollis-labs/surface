@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/hollis-labs/libs/agent/chat"
+	"github.com/hollis-labs/libs/agent/chat/chattest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/surface/core/internal/events"
 	"github.com/hollis-labs/surface/core/internal/kernel"
@@ -72,6 +75,7 @@ func (d *fakeDesk) focusOn(id string) {
 
 // fakeKernel is the kernel with a notes and a scratch module.
 type fakeKernel struct {
+	dataDir  string
 	db       *sql.DB
 	bus      *events.Bus
 	desk     *fakeDesk
@@ -85,7 +89,7 @@ type fakeKernel struct {
 }
 
 func (k *fakeKernel) AppName() string       { return "surface-test" }
-func (k *fakeKernel) DataDir() string       { return "" }
+func (k *fakeKernel) DataDir() string       { return k.dataDir }
 func (k *fakeKernel) DB() *sql.DB           { return k.db }
 func (k *fakeKernel) Log() *slog.Logger     { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 func (k *fakeKernel) Desk() module.Desk     { return k.desk }
@@ -138,32 +142,46 @@ func tool(name string, lvl module.Level, mod string, calls *[]string) kernel.Bou
 		}}
 }
 
-// fakeEngine records turns.
-type fakeEngine struct {
-	mu    sync.Mutex
-	tools []EngineTool
-	turns []Turn
+type testTurnResult struct{ RunID, Halted string }
+
+// sendTest waits for the scripted conversation service to release the run.
+func sendTest(ctx context.Context, t *testing.T, s *Service, text, _, auto string) (testTurnResult, error) {
+	t.Helper()
+	before := len(s.wire.scripted.Recorded())
+	view, err := s.wire.svc.EnsureConversation(ctx, s.wire.agent)
+	if err != nil {
+		return testTurnResult{}, err
+	}
+	turn := chat.Turn{Text: text}
+	if auto != "" {
+		turn.Meta, _ = json.Marshal(map[string]string{"auto": auto})
+	}
+	receipt, err := s.wire.svc.Submit(ctx, view.ConversationID, turn)
+	res := testTurnResult{RunID: receipt.RunID}
+	if err != nil {
+		return res, err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		view, err := s.wire.svc.EnsureConversation(ctx, s.wire.agent)
+		if err != nil {
+			return res, err
+		}
+		if view.ActiveRun == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("scripted run did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if recorded := s.wire.scripted.Recorded(); len(recorded) > before {
+		res.Halted = recorded[len(recorded)-1].Answer
+	}
+	return res, nil
 }
 
-func (e *fakeEngine) Ready() bool   { return true }
-func (e *fakeEngine) Model() string { return "fake" }
-func (e *fakeEngine) Close()        {}
-func (e *fakeEngine) AddTools(t ...EngineTool) error {
-	e.tools = append(e.tools, t...)
-	return nil
-}
-func (e *fakeEngine) Start(_ context.Context, t Turn) (string, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.turns = append(e.turns, t)
-	return "run_1", nil
-}
-func (e *fakeEngine) History(context.Context, string) ([]Said, error) { return nil, nil }
-func (e *fakeEngine) Handler(string, func(*http.Request) (string, error)) http.Handler {
-	return http.NotFoundHandler()
-}
-
-func setup(t *testing.T, o Options) (*Service, *fakeKernel, *fakeEngine, *[]string) {
+func setup(t *testing.T, o Options) (*Service, *fakeKernel, *chattest.Scripted, *[]string) {
 	t.Helper()
 	if os.Getenv("SURFACE_AGENT_CONFIG") == "" { // a test may name its own config file first
 		t.Setenv("SURFACE_AGENT_CONFIG", filepath.Join(t.TempDir(), "none.json"))
@@ -174,7 +192,7 @@ func setup(t *testing.T, o Options) (*Service, *fakeKernel, *fakeEngine, *[]stri
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	calls := &[]string{}
-	k := &fakeKernel{db: db, bus: events.New(), desk: &fakeDesk{layouts: map[string]module.Layout{}}}
+	k := &fakeKernel{dataDir: t.TempDir(), db: db, bus: events.New(), desk: &fakeDesk{layouts: map[string]module.Layout{}}}
 	k.desk.wins = []module.Window{
 		{ID: "w1", View: "notes", Module: "notes", Title: "ideas.md"},
 		{ID: "w2", View: "scratch", Module: "scratch", Title: "Scratch"},
@@ -195,17 +213,15 @@ func setup(t *testing.T, o Options) (*Service, *fakeKernel, *fakeEngine, *[]stri
 			}},
 		{Slot: module.Slot{Name: "scratch", About: "quick capture", Views: []string{"scratch"}, Tools: []string{"scratch_add", "scratch_list", "missing_tool"}}, Module: "scratch"},
 	}
-	fe := &fakeEngine{}
-	if o.Engine == nil {
-		o.Engine = fe
-	}
+	t.Setenv("SURFACE_AGENT_RUNNER", RunnerScripted)
+	t.Setenv("SURFACE_AGENT_SCRIPT_DELAY", "0s")
 	s, err := NewWith(k, o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	<-s.trained // the start-up training reads the trace; let it finish before the test writes
-	return s, k, fe, calls
+	return s, k, s.wire.scripted, calls
 }
 
 func TestFocusChangesSlotToolsAndBlock(t *testing.T) {
@@ -242,11 +258,11 @@ func TestFocusChangesSlotToolsAndBlock(t *testing.T) {
 func TestSendCarriesTheBlockAndPinHolds(t *testing.T) {
 	s, k, fe, _ := setup(t, Options{})
 	ctx := context.Background()
-	res, err := s.Send(ctx, "tidy this", "c1", "")
-	if err != nil || res.RunID != "run_1" {
+	res, err := sendTest(ctx, t, s, "tidy this", "c1", "")
+	if err != nil || res.RunID == "" {
 		t.Fatalf("send: %v %+v", err, res)
 	}
-	if got := describe(fe.turns[0].Context); !strings.Contains(got, "Slot: notes") {
+	if got := describe(fe.Turns()[0].Context); !strings.Contains(got, "Slot: notes") {
 		t.Fatalf("turn context: %s", got)
 	}
 	// The agent pins scratch; it holds while notes stays in front, and goes when the owner moves.
@@ -274,24 +290,24 @@ func TestSendCarriesTheBlockAndPinHolds(t *testing.T) {
 func TestRouterRunsLookingCallsDirectly(t *testing.T) {
 	s, k, fe, calls := setup(t, Options{})
 	ctx := context.Background()
-	res, err := s.Send(ctx, "/open scratch", "c1", "")
+	_, err := sendTest(ctx, t, s, "/open scratch", "c1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Routed == nil || res.Routed.Name != "desk_open" || len(*calls) != 1 || (*calls)[0] != `desk_open {"view":"scratch"}` {
-		t.Fatalf("routed %+v, calls %v", res.Routed, *calls)
+	if len(*calls) != 1 || (*calls)[0] != `desk_open {"view":"scratch"}` {
+		t.Fatalf("routed calls %v", *calls)
 	}
-	if !strings.Contains(describe(fe.turns[0].Context), "Already done for the owner") {
-		t.Fatalf("block: %s", describe(fe.turns[0].Context))
+	if !strings.Contains(describe(fe.Turns()[0].Context), "Already done for the owner") {
+		t.Fatalf("block: %s", describe(fe.Turns()[0].Context))
 	}
 	_ = k
 	// A writing tool is not run by a rule; the agent is told to call it.
 	if err := s.router.Put(ctx, mustRule(`{"id":"jot","when":[{"field":"slash","op":"eq","value":"jot"}],"target":"tool:scratch_add","auto":true,"params":{"text":"{arg}"}}`)); err != nil {
 		t.Fatal(err)
 	}
-	res, _ = s.Send(ctx, "/jot buy milk", "c1", "")
-	if len(*calls) != 1 || res.Routed == nil || !strings.Contains(describe(fe.turns[1].Context), "Call it.") {
-		t.Fatalf("write route ran: %v %s", *calls, describe(fe.turns[1].Context))
+	_, _ = sendTest(ctx, t, s, "/jot buy milk", "c1", "")
+	if len(*calls) != 1 || !strings.Contains(describe(fe.Turns()[1].Context), "Call it.") {
+		t.Fatalf("write route ran: %v %s", *calls, describe(fe.Turns()[1].Context))
 	}
 }
 
@@ -307,21 +323,21 @@ func TestReflexesRemindHaltAndFollowTheLayout(t *testing.T) {
 	put(`{"name":"cite","trigger_kind":"text","trigger":{"pattern":"(?i)summar"},"action_kind":"remind","action":{"body":"Cite the note you summarize."},"enabled":true}`)
 	put(`{"name":"no-deploys","trigger_kind":"text","trigger":{"pattern":"(?i)deploy"},"action_kind":"halt","action":{"message":"Not from here."}}`)
 
-	if _, err := s.Send(ctx, "summarize this", "c1", ""); err != nil {
+	if _, err := sendTest(ctx, t, s, "summarize this", "c1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(describe(fe.turns[0].Context), "Reminder: Cite the note") {
-		t.Fatalf("no reminder: %s", describe(fe.turns[0].Context))
+	if !strings.Contains(describe(fe.Turns()[0].Context), "Reminder: Cite the note") {
+		t.Fatalf("no reminder: %s", describe(fe.Turns()[0].Context))
 	}
 	// no-deploys is off until a layout that lists it is in use.
-	if res, _ := s.Send(ctx, "deploy it", "c1", ""); res.Halted != "" {
+	if res, _ := sendTest(ctx, t, s, "deploy it", "c1", ""); res.Halted != "" {
 		t.Fatal("halted while off")
 	}
 	k.desk.layouts["ops"] = module.Layout{Name: "ops", Setup: map[string]any{"reflexes": []any{"no-deploys"}, "instructions": "Ops only."}}
 	k.layout = "ops"
-	res, _ := s.Send(ctx, "deploy it", "c1", "")
-	if res.Halted != "Not from here." || len(fe.turns) != 2 {
-		t.Fatalf("halt: %+v, turns %d", res, len(fe.turns))
+	res, _ := sendTest(ctx, t, s, "deploy it", "c1", "")
+	if res.Halted != "Not from here." || len(fe.Turns()) != 2 {
+		t.Fatalf("halt: %+v, turns %d", res, len(fe.Turns()))
 	}
 	if !strings.Contains(s.Preview(ctx).Block, "For this layout: Ops only.") {
 		t.Fatal("layout instructions missing")
@@ -330,10 +346,10 @@ func TestReflexesRemindHaltAndFollowTheLayout(t *testing.T) {
 
 func TestApproverReplacesThePanelQuestion(t *testing.T) {
 	ap := &countingApprover{allow: false}
-	s, _, fe, calls := setup(t, Options{Approver: ap})
+	s, _, _, calls := setup(t, Options{Approver: ap})
 	_ = s
-	var write, read EngineTool
-	for _, et := range fe.tools {
+	var write, read ToolBinding
+	for _, et := range s.toolBindings() {
 		switch et.Name {
 		case "notes_write":
 			write = et
@@ -358,14 +374,22 @@ func TestMountServesTurnAndContext(t *testing.T) {
 	s.Mount(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	resp, err := http.Post(srv.URL+"/api/agent/turns", "application/json", strings.NewReader(`{"text":"hi","client_id":"c"}`))
-	if err != nil || resp.StatusCode != 200 {
-		t.Fatalf("turn: %v %v", err, resp.Status)
+	for _, route := range []struct{ method, path string }{{"GET", ""}, {"GET", "/thread"}, {"DELETE", "/thread"}, {"POST", "/turns"}, {"GET", "/runs/old/events"}, {"POST", "/runs/old/approvals"}, {"POST", "/runs/old/cancel"}} {
+		req, _ := http.NewRequest(route.method, srv.URL+Prefix+route.path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 404 {
+			t.Fatalf("retired route %s %s: %d", route.method, route.path, resp.StatusCode)
+		}
 	}
-	resp, err = http.Get(srv.URL + "/api/agent/context")
+	resp, err := http.Get(srv.URL + "/api/agent/context")
 	if err != nil || resp.StatusCode != 200 {
-		t.Fatalf("context: %v %v", err, resp.Status)
+		t.Fatalf("context: %v", err)
 	}
+	defer resp.Body.Close()
 	var a struct {
 		Slot string `json:"slot"`
 	}
@@ -404,8 +428,9 @@ func mustRule(js string) (r router.Rule) {
 // With no runtime config the agent is not ready,
 // and a turn says where to write one.
 func TestAgentWithoutConfig(t *testing.T) {
-	s, _, _, _ := setup(t, Options{Engine: nil})
-	s.engine = unavailableEngine{}
+	s, _, _, _ := setup(t, Options{})
+	s.wire.close(context.Background())
+	s.wire = nil
 	mux := http.NewServeMux()
 	s.Mount(mux)
 	srv := httptest.NewServer(mux)
@@ -414,20 +439,18 @@ func TestAgentWithoutConfig(t *testing.T) {
 	if err != nil || resp.StatusCode != 503 {
 		t.Fatalf("turn: %v %v", err, resp.Status)
 	}
-	resp, err = http.Get(srv.URL + "/api/agent")
+	resp, err = http.Get(srv.URL + "/api/agent/setup")
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("state: %v %v", err, resp.Status)
 	}
 	resp, err = http.Get(srv.URL + "/api/agent/thread")
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != 404 {
 		t.Fatalf("thread: %v %v", err, resp.Status)
 	}
 }
 
 func describe(raw json.RawMessage) string {
-	var c struct {
-		Block string `json:"block"`
-	}
-	_ = json.Unmarshal(raw, &c)
-	return c.Block
+	var text string
+	_ = json.Unmarshal(raw, &text)
+	return text
 }

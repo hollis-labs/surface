@@ -8,7 +8,7 @@
  * other item keeps its identity. So a view that draws the list from `ids` and each row from
  * its own item redraws only the row that changed: a streamed token redraws the last message.
  */
-import type { StoredMessage, StreamEvent } from "./wire.ts"
+import type { StreamEvent } from "./stream.ts"
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string; auto?: string }
@@ -87,38 +87,6 @@ export function remove(s: ChatState, id: string): ChatState {
 }
 
 /** The stored thread as items. The run still going is left out: its stream rebuilds it. */
-export function fromThread(messages: StoredMessage[], skipRun = ""): Pick<ChatState, "ids" | "items"> {
-  const ids: string[] = []
-  const items: Record<string, ChatItem> = {}
-  const add = (it: ChatItem) => {
-    ids.push(it.id)
-    items[it.id] = it
-  }
-  for (const m of messages) {
-    if (m.role === "user" && typeof m.meta?.text === "string") {
-      add(
-        m.meta.auto
-          ? { kind: "user", id: m.id, text: "", auto: m.meta.auto }
-          : { kind: "user", id: m.id, text: m.meta.text },
-      )
-      continue
-    }
-    if (skipRun && m.run_id === skipRun) continue
-    m.blocks.forEach((b, i) => {
-      if (b.type === "text" && b.text) add({ kind: "text", id: `${m.id}:${i}`, text: b.text, streaming: false })
-      else if (b.type === "tool_use" && b.id)
-        add({ kind: "tool", id: b.id, name: b.name ?? "", input: b.input, status: "done" })
-      else if (b.type === "tool_result" && b.tool_use_id) {
-        const call = items[b.tool_use_id]
-        if (call?.kind === "tool")
-          items[call.id] = { ...call, result: b.content ?? "", status: b.is_error ? "error" : "done" }
-      }
-    })
-  }
-  return { ids, items }
-}
-
-/** A run begins to be followed. */
 export function startRun(s: ChatState, run: string): ChatState {
   return { ...s, run, parts: {}, approval: null }
 }

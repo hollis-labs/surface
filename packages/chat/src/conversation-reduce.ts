@@ -10,7 +10,7 @@
  * cursor, the holder of the input and the generation are kept.
  */
 import { append, type ChatItem, type ChatState, endRun, patch, reduceEvent, remove, startRun } from "./reduce.ts"
-import type { StreamEvent } from "./wire.ts"
+import type { StreamEvent } from "./stream.ts"
 
 const TERMINAL = new Set(["run.finish", "run.error", "run.abort"])
 /** In `parts`: the item the user's message of this run is, while that message is open. */

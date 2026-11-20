@@ -14,16 +14,8 @@ import (
 	"github.com/hollis-labs/surface/module"
 )
 
-// Mount serves the agent under /api/agent/: the agent-host/1 wire (engine), with the turn
-// route Surface's own, plus the context, slots, reflexes and rules.
+// Mount serves conversation transport and the agent configuration/context routes.
 //
-//	GET    /api/agent                      {available, ready, model} (engine)
-//	GET    /api/agent/thread               the conversation (engine)
-//	DELETE /api/agent/thread               start a new one (engine)
-//	POST   /api/agent/turns                {text, client_id, auto?} → {run_id}; 422 {code:"halted"} when a reflex answered
-//	GET    /api/agent/runs/{id}/events     the run's chatstream/v1 events (engine)
-//	POST   /api/agent/runs/{id}/approvals  {approval_id, decision} (engine)
-//	POST   /api/agent/runs/{id}/cancel     (engine)
 //	GET    /api/agent/context              the context the next message would carry (slots.Assembly)
 //	GET    /api/agent/setup                {ready, model, config_path, reason?}
 //	GET    /api/agent/slots                every slot, with notes, the active one marked
@@ -39,11 +31,6 @@ import (
 //
 // The app is loopback-only and single-user: every request is the owner's.
 func (s *Service) Mount(mux *http.ServeMux) {
-	owner := func(*http.Request) (string, error) { return Owner, nil }
-	eng := s.engine.Handler(Prefix, owner)
-	mux.Handle(Prefix, eng)
-	mux.Handle(Prefix+"/", eng)
-
 	if s.cfg.Tether.URL != "" && s.cfgErr == nil {
 		s.mountTether(mux)
 	}
@@ -51,7 +38,11 @@ func (s *Service) Mount(mux *http.ServeMux) {
 		s.mountWire(mux)
 	}
 
-	mux.HandleFunc("POST "+Prefix+"/turns", s.turn)
+	if s.wire == nil && s.cfg.Tether.URL == "" {
+		mux.HandleFunc("POST "+Prefix+"/turns", func(w http.ResponseWriter, _ *http.Request) {
+			fail(w, 503, "The agent is not set up yet: write "+ConfigPath(s.k.AppName())+" and restart the app (see docs/agent.md).")
+		})
+	}
 	mux.HandleFunc("GET "+Prefix+"/context", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.Preview(r.Context())) })
 	mux.HandleFunc("GET "+Prefix+"/setup", func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Tether.URL != "" {
@@ -63,11 +54,9 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			reply(w, 200, result)
 			return
 		}
-		// ready is the engine's (a model, a gateway and a key file are named) and the key file
-		// can be read; reason says why not, in a sentence.
+		// Setup names the active transport or explains why no runner is configured.
 		if s.wire != nil {
-			// On the conversation wire the runner answers, not the engine: the page binds to
-			// the wire and the agent by these two fields.
+			// The page binds to this conversation wire and agent.
 			model := s.wire.runner
 			if s.wire.nanite != nil {
 				model = s.cfg.Model
@@ -77,14 +66,10 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			return
 		}
 		reason := s.SetupProblem()
-		if s.engine.Ready() && reason == "" {
-			reply(w, 200, map[string]any{"ready": true, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName())})
-			return
-		}
 		if reason == "" {
 			reason = "The agent has no model configured."
 		}
-		reply(w, 200, map[string]any{"ready": false, "model": s.engine.Model(), "config_path": ConfigPath(s.k.AppName()), "reason": reason})
+		reply(w, 200, map[string]any{"ready": false, "model": s.cfg.Model, "config_path": ConfigPath(s.k.AppName()), "reason": reason})
 	})
 	s.traceRoutes(mux)
 	// What the classifier makes of a draft in the situation now: for the composer as the
@@ -312,32 +297,6 @@ func (s *Service) callOwnCtx(ctx context.Context, name string, input json.RawMes
 		}
 	}
 	return nil, errors.New("no such tool")
-}
-
-// turn is the wire's POST /turns, with the context assembled here. A page's own context and
-// tools are ignored: the desk is the server's, and every tool is a server tool.
-func (s *Service) turn(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Text     string `json:"text"`
-		ClientID string `json:"client_id"`
-		Auto     string `json:"auto"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	res, err := s.Send(r.Context(), in.Text, in.ClientID, in.Auto)
-	switch {
-	case errors.Is(err, ErrNotReady):
-		fail(w, 503, "The agent is not set up yet: write "+ConfigPath(s.k.AppName())+" and restart the app (see docs/agent.md).")
-	case errors.Is(err, ErrBusy):
-		fail(w, 409, "The agent is still working on the last message.")
-	case err != nil:
-		fail(w, 400, err.Error())
-	case res.Halted != "":
-		reply(w, 422, map[string]any{"code": "halted", "message": res.Halted, "fired": res.Fired})
-	default:
-		reply(w, 200, res)
-	}
 }
 
 func reply(w http.ResponseWriter, status int, v any) {

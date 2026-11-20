@@ -41,4 +41,4 @@ once the shapes settle.
 
 Surface embeds Nanite through `nanite/chatrunner` and keeps its durable chat transcript separately.
 Substrate supplies the process and persistence mechanisms; Nanite supplies the model runtime.
-The optional `Engine` seam supports injected integrations and tests, without constructing a legacy runtime.
+Tests use the scripted conversation runner; no legacy runtime or HTTP transport is constructed.

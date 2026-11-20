@@ -3,16 +3,16 @@
  * scrolling list at its end while it grows.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import type { ConversationStore } from "./conversation-store.ts"
 import type { ChatItem, ChatState } from "./reduce.ts"
-import type { ChatStore } from "./store.ts"
 
 /**
  * A slice of the conversation; the component redraws only when the slice changes identity.
  * Select what the component draws and nothing more: `s => s.ids` for the list,
  * `s => s.items[id]` for one row, `s => s.run !== null` for the composer.
  */
-/** Anything that holds a conversation's state and tells when it changes: either store, or a wrapper. */
-export type ChatSource = Pick<ChatStore, "get" | "subscribe">
+/** Anything that holds a conversation's state and tells when it changes: the conversation store or a wrapper. */
+export type ChatSource = Pick<ConversationStore, "get" | "subscribe">
 
 export function useChat<T>(store: ChatSource, select: (s: ChatState) => T): T {
   const get = () => select(store.get())

@@ -1,5 +1,5 @@
 /**
- * The agent's own routes beside the agent-host/1 wire (core/internal/agent/http.go).
+ * The agent's own routes beside the conversation wire (core/internal/agent/http.go).
  */
 
 /** One active slot (slots.SlotView). */
@@ -70,7 +70,7 @@ export interface Setup {
   config_path: string
   /** Why the agent cannot answer, in a sentence, when it cannot. */
   reason?: string
-  /** "conversation" when the agent is on the conversation wire; absent on the run-at-a-time one. */
+  /** "conversation" when a configured agent is available. */
   wire?: string
   /** Same-origin attachment endpoint when the runner lives in Tether. */
   wire_base?: string

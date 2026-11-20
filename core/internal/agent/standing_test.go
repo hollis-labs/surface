@@ -135,60 +135,6 @@ func TestStandingUpdateCreatesTheFile(t *testing.T) {
 	}
 }
 
-// While standing.md differs from what the runner opened with, the block carries it; a
-// long one as its changes; a fresh open (a restart) has it in the system prompt and the
-// section stops.
-func TestTheChangedStandingRidesInTheBlockUntilAFreshOpen(t *testing.T) {
-	dir := standingDir(t, "- Chief goes first.")
-	s, _, _, _ := setup(t, Options{})
-	ctx := context.Background()
-	if strings.Contains(s.Preview(ctx).Block, "<standing changed>") {
-		t.Fatal("a section with no runner that fixed the prompt")
-	}
-	s.noteStandingLoaded(dir) // a fixed-prompt integration opens
-	if strings.Contains(s.Preview(ctx).Block, "<standing changed>") {
-		t.Fatal("a section before any change")
-	}
-	if _, err := callOwn(t, s, "standing_update", map[string]string{"text": "- Chief goes first.\n- Use the cards.", "why": "cards"}); err != nil {
-		t.Fatal(err)
-	}
-	b := s.Preview(ctx).Block
-	if !strings.Contains(b, "<standing changed>") || !strings.Contains(b, "- Use the cards.\n</standing changed>") {
-		t.Fatalf("no section with the new text: %s", b)
-	}
-	var st StandingState
-	got, _ := callOwn(t, s, "standing_get", map[string]any{})
-	if json.Unmarshal([]byte(got), &st) != nil || st.InSystemPrompt {
-		t.Fatalf("standing_get says the prompt has it: %s", got)
-	}
-
-	// Long: the changes, not the whole text.
-	long := "- Chief goes first.\n" + strings.Repeat("- A rule that is long enough to count.\n", 200) + "- The last new rule."
-	if _, err := callOwn(t, s, "standing_update", map[string]string{"text": long, "why": "long"}); err != nil {
-		t.Fatal(err)
-	}
-	b = s.Preview(ctx).Block
-	if !strings.Contains(b, "standing_get reads the whole") || !strings.Contains(b, "+ - A rule that is long") || strings.Contains(b, "- The last new rule.") ||
-		!strings.Contains(b, "read standing_get") {
-		t.Fatalf("the long section: %s", b[strings.Index(b, "<standing changed>"):])
-	}
-	if n := len([]rune(b)); n > 20_000 {
-		t.Fatalf("the block is %d characters, over the fixed-prompt integration's clip", n)
-	}
-
-	s.noteStandingLoaded(dir) // a fresh open: the prompt has it now
-	if strings.Contains(s.Preview(ctx).Block, "<standing changed>") {
-		t.Fatal("the section outlived a fresh open")
-	}
-	// Removed: said so.
-	if err := os.Remove(standingPath(dir)); err != nil {
-		t.Fatal(err)
-	}
-	if b = s.Preview(ctx).Block; !strings.Contains(b, "were removed") {
-		t.Fatalf("a removed file: %s", b)
-	}
-}
-
 // The first owner turn in another slot asks once for the note on the slot left; an
 // errand does not ask, nor count as the slot left.
 func TestTheNoteOnLeavingASlotIsAskedOncePerSwitch(t *testing.T) {
@@ -196,13 +142,13 @@ func TestTheNoteOnLeavingASlotIsAskedOncePerSwitch(t *testing.T) {
 	ctx := context.Background()
 	const ask = "You have just come from the"
 	block := func(i int) string {
-		var c struct{ Block string }
-		_ = json.Unmarshal(fe.turns[i].Context, &c)
-		return c.Block
+		var c string
+		_ = json.Unmarshal(fe.Turns()[i].Context, &c)
+		return c
 	}
 	send := func(text, auto string) {
 		t.Helper()
-		if _, err := s.Send(ctx, text, "c", auto); err != nil {
+		if _, err := sendTest(ctx, t, s, text, "c", auto); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -236,14 +182,14 @@ func TestAStaleNoteIsFlagged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range staleTurns + 1 {
-		if _, err := s.Send(ctx, "message", "c", ""); err != nil {
+		if _, err := sendTest(ctx, t, s, "message", "c", ""); err != nil {
 			t.Fatal(err)
 		}
-		var c struct{ Block string }
-		_ = json.Unmarshal(fe.turns[i].Context, &c)
-		flagged := strings.Contains(c.Block, "Your note on notes is from")
+		var c string
+		_ = json.Unmarshal(fe.Turns()[i].Context, &c)
+		flagged := strings.Contains(c, "Your note on notes is from")
 		if flagged != (i >= staleTurns) {
-			t.Fatalf("turn %d flagged=%v: %s", i, flagged, c.Block)
+			t.Fatalf("turn %d flagged=%v: %s", i, flagged, c)
 		}
 	}
 	// A fresh note is not.
@@ -263,16 +209,16 @@ func TestACompactionRemindsTheAgentToSaveState(t *testing.T) {
 	k.bus.Publish(TopicCompacted, map[string]any{"conversation_id": "c", "before": 120000, "after": 30000})
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := s.Send(ctx, "go on", "c", ""); err != nil {
+		if _, err := sendTest(ctx, t, s, "go on", "c", ""); err != nil {
 			t.Fatal(err)
 		}
-		var c struct{ Block string }
-		_ = json.Unmarshal(fe.turns[len(fe.turns)-1].Context, &c)
-		if strings.Contains(c.Block, "Reminder: Older turns were just summarized.") {
+		var c string
+		_ = json.Unmarshal(fe.Turns()[len(fe.Turns())-1].Context, &c)
+		if strings.Contains(c, "Reminder: Older turns were just summarized.") {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("no save-state reminder: %s", c.Block)
+			t.Fatalf("no save-state reminder: %s", c)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

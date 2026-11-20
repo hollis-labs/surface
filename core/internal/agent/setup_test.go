@@ -41,7 +41,4 @@ func TestSetupProblemSaysWhyTheKeyFileFails(t *testing.T) {
 	if got := (&Service{cfg: FileConfig{Path: "x", Model: "m"}}).SetupProblem(); !strings.Contains(got, "gateway") {
 		t.Fatalf("no gateway: %q", got)
 	}
-	if got := (&Service{custom: true}).SetupProblem(); got != "" {
-		t.Fatalf("a custom engine is not the config's: %q", got)
-	}
 }

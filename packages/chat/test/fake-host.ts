@@ -4,7 +4,7 @@
  * invalidates, history sent without deltas, a committed-only mode, a reset that closes the
  * old conversation. `run` scripts what the "agent" says for a turn.
  */
-import type { StreamEvent } from "../src/wire.ts"
+import type { StreamEvent } from "../src/stream.ts"
 
 type Ev = Omit<StreamEvent, "seq"> & { seq?: number }
 interface Sub {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"github.com/hollis-labs/surface/module"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -145,19 +146,30 @@ func TestTheConversationWireOnTheRealKernel(t *testing.T) {
 	// same stream, with no attachment and no lease.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		var res struct {
-			RunID string `json:"run_id"`
+		var asker interface {
+			AskFrom(context.Context, string, module.Ask) (string, error)
 		}
-		code := do(t, srv, "POST", base+"/turns", `{"text":"from inside","auto":"A reflex"}`, &res)
-		if code == 200 && res.RunID != "" {
+		for _, service := range app.services {
+			if candidate, ok := service.(interface {
+				AskFrom(context.Context, string, module.Ask) (string, error)
+			}); ok {
+				asker = candidate
+				break
+			}
+		}
+		if asker == nil {
+			t.Fatal("agent service missing")
+		}
+		run, err := asker.AskFrom(ctx, "scratch", module.Ask{Title: "A reflex", Text: "from inside"})
+		if err == nil && run != "" {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("a server-started turn: %d", code)
+			t.Fatalf("a server-started turn: %v", err)
 		}
 		time.Sleep(20 * time.Millisecond) // the run before it is still ending
 	}
-	events("part.end:You said: from inside")
+	events("part.end:You said: [An errand from the scratch module, not a message from the owner: A reflex]\n\nfrom inside")
 
 	// A standing approval is handed to the host and kept.
 	for turn("approval") != 202 {

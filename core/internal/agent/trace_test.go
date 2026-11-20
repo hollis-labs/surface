@@ -14,7 +14,7 @@ func TestEveryTurnIsTracedWithWhatFollowed(t *testing.T) {
 	s, k, fe, _ := setup(t, Options{})
 	ctx := context.Background()
 
-	res, err := s.Send(ctx, "tighten the second paragraph", "", "")
+	res, err := sendTest(ctx, t, s, "tighten the second paragraph", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,8 +42,8 @@ func TestEveryTurnIsTracedWithWhatFollowed(t *testing.T) {
 	if got.Why == "" || len(got.OpenViews) != 2 || got.BlockChars == 0 || len(got.TopOfMind) == 0 {
 		t.Errorf("the turn lacks its context: %+v", got)
 	}
-	if len(got.Signals) != 2 || got.Signals[0].Kind != "pin" || got.Signals[0].Actor != "owner" ||
-		!strings.Contains(string(got.Signals[0].Detail), `"from":"notes"`) || got.Signals[1].Kind != "focus" {
+	if len(got.Signals) != 3 || got.Signals[0].Kind != "run_end" || got.Signals[1].Kind != "pin" || got.Signals[1].Actor != "owner" ||
+		!strings.Contains(string(got.Signals[1].Detail), `"from":"notes"`) || got.Signals[2].Kind != "focus" {
 		t.Errorf("the signals: %+v", got.Signals)
 	}
 
@@ -61,14 +61,14 @@ func TestASignalWithNoTurnBeforeItIsDropped(t *testing.T) {
 	s, _, _, _ := setup(t, Options{})
 	ctx := context.Background()
 	s.signal(module.WithActor(ctx, module.ActorOwner), "unpin", nil)
-	if _, err := s.Send(ctx, "hello", "", ""); err != nil {
+	if _, err := sendTest(ctx, t, s, "hello", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	turns, err := s.trace.Recent(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(turns) != 1 || len(turns[0].Signals) != 0 {
+	if len(turns) != 1 || len(turns[0].Signals) != 1 || turns[0].Signals[0].Kind != "run_end" {
 		t.Errorf("a signal before any turn was kept: %+v", turns)
 	}
 }

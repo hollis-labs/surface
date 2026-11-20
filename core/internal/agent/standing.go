@@ -11,19 +11,8 @@ import (
 	"unicode/utf8"
 )
 
-// The agent's standing instructions: the owner's rules for all work, kept in
-// <agent dir>/context/standing.md. Nanite reloads these files for each turn. The optional
-// fixed-prompt integration helpers below can carry changes until an injected engine reloads:
-//
-//
-//   - standing_get and standing_update read and replace the file. An update is written
-//     atomically, and the text it replaces is kept in context/.history/ (a subdirectory, so
-//     the context/*.md the runner reads does not pick it up), with one line in
-//     .history/standing.log saying when and why.
-//   - The runner remembers the text it opened with. While the file says something else, each
-//     turn's context block carries a <standing changed> section with the current text (or,
-//     when that is long, a pointer and the changes), so an update reaches the model before a
-//     restart. Once the app restarts, the system prompt has the new text and the section stops.
+// Standing instructions live in context/standing.md. Nanite rereads them each
+// turn. Updates are atomic and retain the old text and rationale in .history.
 
 const (
 	// standingFile is the standing instructions' file, under the agent directory.
@@ -33,11 +22,6 @@ const (
 	// maxStandingChars bounds the standing instructions: they are in every request's system
 	// prompt.
 	maxStandingChars = 16_000
-	// standingInline is the longest standing text the <standing changed> section repeats
-	// whole; a longer one is given as its changes.
-	standingInline = 6_000
-	// standingDiffChars bounds the changes the section shows.
-	standingDiffChars = 4_000
 )
 
 // standingPath is the standing file of an agent directory.
@@ -67,23 +51,11 @@ func (s *Service) agentDir() (string, error) {
 	return dir, nil
 }
 
-// noteStandingLoaded remembers the standing text the runner's system prompt was built with.
-func (s *Service) noteStandingLoaded(dir string) {
-	text, err := readStanding(dir)
-	if err != nil {
-		s.log.Warn("standing instructions not read", "err", err)
-	}
-	s.standingMu.Lock()
-	s.standingLoaded, s.standingDir = &text, dir
-	s.standingMu.Unlock()
-}
-
 // StandingState is what standing_get says.
 type StandingState struct {
 	Path string `json:"path"`
 	Text string `json:"text"`
-	// InSystemPrompt says whether the system prompt has this text (false: it changed since
-	// the runner opened, and the context block carries it until a restart).
+	// InSystemPrompt reports that Nanite reads this text on its next turn.
 	InSystemPrompt bool `json:"in_system_prompt"`
 	Chars          int  `json:"chars"`
 }
@@ -97,11 +69,8 @@ func (s *Service) standingGet() (StandingState, error) {
 	if err != nil {
 		return StandingState{}, err
 	}
-	s.standingMu.Lock()
-	loaded := s.standingLoaded
-	s.standingMu.Unlock()
 	return StandingState{Path: standingPath(dir), Text: text, Chars: utf8.RuneCountInString(text),
-		InSystemPrompt: loaded == nil || *loaded == text}, nil
+		InSystemPrompt: true}, nil
 }
 
 // standingUpdate replaces the standing text, keeping the old one in the history.
@@ -164,7 +133,7 @@ func (s *Service) standingUpdate(text, why string) (string, error) {
 	if kept != "" {
 		fmt.Fprintf(&b, " The previous text is kept as %s/%s.", standingHistory, kept)
 	}
-	b.WriteString(" It applies from your next turn (the context block carries it until the app restarts).\n")
+	b.WriteString(" It applies from your next turn.\n")
 	b.WriteString(clip(d.text, 2000))
 	return strings.TrimSpace(b.String()), nil
 }
@@ -216,40 +185,6 @@ func writeAtomic(path string, body []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-// standingSection is the <standing changed> section of the context block: "" unless the
-// runner keeps the standing text it opened with and the file now says something else.
-func (s *Service) standingSection() string {
-	s.standingMu.Lock()
-	loaded, dir := s.standingLoaded, s.standingDir
-	s.standingMu.Unlock()
-	if loaded == nil {
-		return ""
-	}
-	now, err := readStanding(dir)
-	if err != nil || now == *loaded {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("<standing changed>\n")
-	switch {
-	case now == "":
-		b.WriteString("Your standing instructions (" + standingFile + ") were removed since this app started. The standing.md text in your system prompt no longer holds.\n")
-	case utf8.RuneCountInString(now) <= standingInline:
-		b.WriteString("Your standing instructions (" + standingFile + ") changed since this app started. The text below replaces the standing.md text in your system prompt:\n")
-		b.WriteString(now + "\n")
-	default:
-		b.WriteString("Your standing instructions (" + standingFile + ") changed since this app started. The standing.md text in your system prompt is the old one; these are the changes (standing_get reads the whole current text):\n")
-		d := lineDiff(*loaded, now)
-		text := d.text
-		if r := []rune(text); len(r) > standingDiffChars {
-			text = string(r[:standingDiffChars]) + "\n…(more changes: read standing_get)"
-		}
-		b.WriteString(text + "\n")
-	}
-	b.WriteString("</standing changed>")
-	return b.String()
 }
 
 // diff is a line diff: the lines removed and added, in order, as "- " and "+ " lines.

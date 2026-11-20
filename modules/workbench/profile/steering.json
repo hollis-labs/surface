@@ -4,42 +4,24 @@
       "name": "design",
       "about": "Designing a new agent or profile with the owner.",
       "instructions": "Research before proposing. Propose the whole design in one read, each part justified, pending features marked. Build only after the owner approves.",
-      "reflexes": [
-        "research-first"
-      ],
-      "tools": [
-        "workbench_list",
-        "workbench_get",
-        "workbench_create",
-        "workbench_validate"
-      ],
+      "reflexes": ["research-first"],
+      "tools": ["workbench_list", "workbench_get", "workbench_create", "workbench_validate"],
       "output_style": "detailed",
-      "dispatch": [
-        "subtask"
-      ]
+      "dispatch": ["subtask"]
     },
     {
       "name": "review",
       "about": "Reviewing an existing agent against the lessons.",
       "instructions": "Lead with what is wrong, worst first, each with the file and a one-line fix. End with what to tune first.",
-      "tools": [
-        "workbench_get",
-        "workbench_validate",
-        "workbench_runs",
-        "workbench_run_get"
-      ],
+      "tools": ["workbench_get", "workbench_validate", "workbench_runs", "workbench_run_get"],
       "output_style": "brief",
-      "dispatch": [
-        "subtask"
-      ]
+      "dispatch": ["subtask"]
     },
     {
       "name": "tune",
       "about": "Improving an agent from its eval runs.",
       "instructions": "Read the failed cases before changing anything. Change one thing at a time, re-run offline, and compare runs. Suggest a live run with its estimate; run it only when the owner asks.",
-      "reflexes": [
-        "live-run-costs"
-      ],
+      "reflexes": ["live-run-costs"],
       "tools": [
         "workbench_runs",
         "workbench_run_get",

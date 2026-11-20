@@ -68,6 +68,6 @@
   },
   "cite-card": {
     "title": "Cite Card",
-    "description": "What a reference stands for: its kind, title, status, a short preview, a few fields and actions. One card for every kind of reference; the hover card of a cite chip, or a record's header."
+    "description": "What a reference stands for: its kind, title, status, a short preview, a few fields and actions. One card for every kind of reference (the hover card of a cite chip), and the head of a record read whole (CiteRecordHeader)."
   }
 }

@@ -1,13 +1,16 @@
 package hostrunner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"iter"
 	"net/http"
+	"strconv"
 	"sync"
+	"time"
 
 	chat "github.com/hollis-labs/libs/agent/chat"
 	chatstream "github.com/hollis-labs/libs/ui/ui-go/chatstream"
@@ -17,12 +20,22 @@ import (
 // CodeTurnFailed is the run.error code of a turn whose stream could not be read.
 const CodeTurnFailed = "turn_failed"
 
+// How hard the runner tries to read a host run's events again when the read ends before
+// the run did (the host closes a reader that falls behind; a lookup can fail on a busy
+// database): resumeTries reads in a row that bring nothing, resumeWait apart.
+var (
+	resumeTries = 5
+	resumeWait  = 100 * time.Millisecond
+)
+
 // usageStep is the usage of one model request, as the gateway reported it. The tap fills
-// it as the response streams: input at message_start, output at message_delta.
+// it as the response streams: input at message_start, output at message_delta. summary
+// marks the host's compaction request.
 type usageStep struct {
 	mu                   sync.Mutex
 	in, read, write, out int
 	started, stopped     bool
+	summary              bool
 }
 
 func (u *usageStep) snapshot() (in, read, write, out int, started, stopped bool) {
@@ -30,6 +43,19 @@ func (u *usageStep) snapshot() (in, read, write, out int, started, stopped bool)
 	defer u.mu.Unlock()
 	return u.in, u.read, u.write, u.out, u.started, u.stopped
 }
+
+func (u *usageStep) isSummary() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.summary
+}
+
+// Approval states.
+const (
+	approvalOpen = iota
+	approvalAnswering
+	approvalAnswered
+)
 
 // run is one turn on the host.
 type run struct {
@@ -45,8 +71,8 @@ type run struct {
 
 	mu        sync.Mutex
 	canceled  bool
-	steps     []*usageStep    // the model requests of this run, as the tap saw them
-	approvals map[string]bool // approval ids the host asked; true once answered
+	steps     []*usageStep   // the model requests of this run, as the tap saw them
+	approvals map[string]int // approval ids the host asked, and their state
 
 	t translator
 }
@@ -54,13 +80,13 @@ type run struct {
 func newRun(r *Runner, turn chat.Turn, owner, thread string, before int) *run {
 	ctx, stop := context.WithCancel(r.ctx)
 	x := &run{r: r, turn: turn, owner: owner, thread: thread, ctx: ctx, stop: stop, before: before,
-		approvals: map[string]bool{}}
-	x.t = translator{x: x, callOf: map[string]string{}, textOf: map[string]string{}, results: map[string]*result{}}
+		approvals: map[string]int{}}
+	x.t = translator{x: x, callOf: map[string]string{}, textOf: map[string]string{}, results: map[string]*result{}, afterIdx: -1}
 	return x
 }
 
-func (x *run) newStep() *usageStep {
-	u := &usageStep{}
+func (x *run) newStep(summary bool) *usageStep {
+	u := &usageStep{summary: summary}
 	x.mu.Lock()
 	x.steps = append(x.steps, u)
 	x.mu.Unlock()
@@ -79,7 +105,9 @@ func (x *run) stepsFrom(i int) []*usageStep {
 
 func (x *run) asked(approvalID string) {
 	x.mu.Lock()
-	x.approvals[approvalID] = false
+	if _, ok := x.approvals[approvalID]; !ok {
+		x.approvals[approvalID] = approvalOpen
+	}
 	x.mu.Unlock()
 }
 
@@ -98,18 +126,19 @@ func (x *run) Cancel() {
 	_ = x.r.h.Cancel(x.owner, x.hostRun)
 }
 
-// Answer resolves an approval the host asked for in this run.
+// Answer resolves an approval the host asked for in this run. It is resolved only once the
+// host has taken the answer: an answer the host refused can be given again.
 func (x *run) Answer(_ context.Context, approvalID string, d chat.Decision) error {
 	x.mu.Lock()
-	answered, ok := x.approvals[approvalID]
-	if ok && !answered {
-		x.approvals[approvalID] = true
+	state, ok := x.approvals[approvalID]
+	if ok && state == approvalOpen {
+		x.approvals[approvalID] = approvalAnswering
 	}
 	x.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("hostrunner: no approval %q in this run", approvalID)
 	}
-	if answered {
+	if state != approvalOpen {
 		return fmt.Errorf("hostrunner: approval %q is already resolved", approvalID)
 	}
 	decision := "deny"
@@ -123,84 +152,178 @@ func (x *run) Answer(_ context.Context, approvalID string, d chat.Decision) erro
 			decision = "once"
 		}
 	}
-	if err := x.r.h.Approve(x.owner, x.hostRun, approvalID, decision); err != nil {
+	err := x.r.h.Approve(x.owner, x.hostRun, approvalID, decision)
+	x.mu.Lock()
+	if err != nil {
+		x.approvals[approvalID] = approvalOpen
+	} else {
+		x.approvals[approvalID] = approvalAnswered
+	}
+	x.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("hostrunner: approval %q: %w", approvalID, err)
 	}
 	return nil
 }
 
-// pipeWriter is the response of the host's own event route, read in process.
-type pipeWriter struct {
-	header http.Header
-	w      *io.PipeWriter
+// bufPipe is an in-memory pipe whose writer never waits for the reader: the host's
+// handler writes as fast as its run goes, so its subscription never falls behind however
+// slowly the Service takes the events.
+type bufPipe struct {
+	mu     sync.Mutex
+	cond   *sync.Cond
+	buf    bytes.Buffer
+	closed bool // by the writer
+	gone   bool // by the reader
 }
 
-func (p *pipeWriter) Header() http.Header         { return p.header }
-func (p *pipeWriter) Write(b []byte) (int, error) { return p.w.Write(b) }
-func (p *pipeWriter) WriteHeader(int)             {}
-func (p *pipeWriter) Flush()                      {}
+func newBufPipe() *bufPipe {
+	p := &bufPipe{}
+	p.cond = sync.NewCond(&p.mu)
+	return p
+}
 
-// hostEvents reads the host run's chatstream events from its handler, in process. A
-// finished run is kept by the host for a while, so nothing is missed by reading late.
-func (x *run) hostEvents(ctx context.Context) iter.Seq2[chatstream.Event, error] {
-	return func(yield func(chatstream.Event, error) bool) {
-		pr, pw := io.Pipe()
-		defer func() { _ = pr.Close() }()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, handlerPrefix+"/runs/"+x.hostRun+"/events", nil)
+func (p *bufPipe) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.gone {
+		return 0, io.ErrClosedPipe
+	}
+	n, _ := p.buf.Write(b)
+	p.cond.Broadcast()
+	return n, nil
+}
+
+func (p *bufPipe) Read(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for p.buf.Len() == 0 && !p.closed && !p.gone {
+		p.cond.Wait()
+	}
+	if p.buf.Len() > 0 {
+		return p.buf.Read(b)
+	}
+	if p.gone {
+		return 0, io.ErrClosedPipe
+	}
+	return 0, io.EOF
+}
+
+func (p *bufPipe) closeWrite() { p.mu.Lock(); p.closed = true; p.cond.Broadcast(); p.mu.Unlock() }
+func (p *bufPipe) closeRead() {
+	p.mu.Lock()
+	p.gone = true
+	p.buf.Reset()
+	p.cond.Broadcast()
+	p.mu.Unlock()
+}
+
+// respWriter is the response of the host's own event route, read in process.
+type respWriter struct {
+	header http.Header
+	p      *bufPipe
+}
+
+func (w *respWriter) Header() http.Header         { return w.header }
+func (w *respWriter) Write(b []byte) (int, error) { return w.p.Write(b) }
+func (w *respWriter) WriteHeader(int)             {}
+func (w *respWriter) Flush()                      {}
+
+// readOnce reads the host run's events after the event with id after, handing each to fn
+// with its id, until the reply ends or fn returns false. It reports how many it read.
+func (x *run) readOnce(ctx context.Context, after uint64, fn func(chatstream.Event, uint64) bool) int {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, handlerPrefix+"/runs/"+x.hostRun+"/events", nil)
+	if err != nil {
+		return 0
+	}
+	req.Header.Set(ownerHeader, x.owner)
+	if after > 0 {
+		req.Header.Set("Last-Event-ID", strconv.FormatUint(after, 10))
+	}
+	p := newBufPipe()
+	defer p.closeRead()
+	go func() {
+		defer p.closeWrite()
+		x.r.handler.ServeHTTP(&respWriter{header: http.Header{}, p: p}, req)
+	}()
+	n := 0
+	for sse, err := range ssekit.Read(p) {
 		if err != nil {
-			yield(chatstream.Event{}, err)
-			return
+			return n
 		}
-		req.Header.Set(ownerHeader, x.owner)
-		go func() {
-			x.r.handler.ServeHTTP(&pipeWriter{header: http.Header{}, w: pw}, req)
-			_ = pw.Close()
-		}()
-		for sse, err := range ssekit.Read(pr) {
-			if err != nil {
-				yield(chatstream.Event{}, err)
-				return
-			}
-			if len(sse.Data) == 0 {
-				continue
-			}
-			var ev chatstream.Event
-			if json.Unmarshal(sse.Data, &ev) != nil {
-				continue
-			}
-			if !yield(ev, nil) {
-				return
-			}
+		if len(sse.Data) == 0 {
+			continue
+		}
+		var ev chatstream.Event
+		if json.Unmarshal(sse.Data, &ev) != nil || ev.Verb == "" {
+			continue
+		}
+		id, _ := strconv.ParseUint(sse.ID, 10, 64)
+		n++
+		if !fn(ev, id) {
+			return n
 		}
 	}
+	return n
 }
 
 // Events yields the turn's events on the conversation wire. It is read once.
+//
+// A read of the host's events that ends before the run's terminal event is taken up again
+// where it stopped (Last-Event-ID). Only when that keeps failing is the host's run stopped,
+// so it frees the conversation, and the turn ended with run.error.
 func (x *run) Events() iter.Seq2[chatstream.Event, error] {
 	return func(yield func(chatstream.Event, error) bool) {
 		defer x.r.release(x)
 		defer x.stop()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		for ev, err := range x.hostEvents(ctx) {
-			if err != nil {
-				x.r.log.Warn("hostrunner: the run's events were not read", "run", x.turn.RunID, "err", err)
-				break
+		var after uint64
+		done, gone := false, false
+		handle := func(ev chatstream.Event, id uint64) bool {
+			if id > after {
+				after = id
 			}
-			terminal := false
 			for _, out := range x.t.translate(ev) {
-				terminal = terminal || out.IsTerminal()
+				done = done || out.IsTerminal()
 				if !yield(out, nil) {
-					// The Service is done with this run: stop it.
-					_ = x.r.h.Cancel(x.owner, x.hostRun)
-					return
+					gone = true
+					return false
 				}
 			}
-			if terminal {
-				return
-			}
+			return !done
 		}
-		for _, out := range x.t.end(chatstream.Event{Verb: chatstream.VerbRunError, Code: CodeTurnFailed, Message: "the turn ended without a result"}) {
+		fails, stopped := 0, false
+		for !done && !gone {
+			if x.readOnce(ctx, after, handle) > 0 {
+				fails = 0
+				continue
+			}
+			if done || gone {
+				break
+			}
+			if fails++; fails < resumeTries {
+				time.Sleep(time.Duration(fails) * resumeWait)
+				continue
+			}
+			if stopped {
+				break
+			}
+			// The run's events cannot be read: stop it, so it lets go of the conversation, and
+			// try once more for its own end.
+			x.r.log.Warn("hostrunner: the run's events could not be read; stopping it", "run", x.turn.RunID, "host_run", x.hostRun, "after", after)
+			_ = x.r.h.Cancel(x.owner, x.hostRun)
+			stopped, fails = true, 0
+		}
+		if gone {
+			// The Service is done with this run: stop it.
+			_ = x.r.h.Cancel(x.owner, x.hostRun)
+			return
+		}
+		if done {
+			return
+		}
+		for _, out := range x.t.end(chatstream.Event{Verb: chatstream.VerbRunError, Code: CodeTurnFailed, Message: "the turn's events could not be read"}) {
 			if !yield(out, nil) {
 				return
 			}
@@ -219,22 +342,22 @@ type result struct {
 // runner gives them: each model step is a step with one assistant message that holds its
 // text, its tool calls and their results. It is used only by the goroutine reading Events.
 type translator struct {
-	x           *run
-	step        int
-	stepOpen    bool
-	afterResult bool // the open step has a tool result: the next content is a new step
-	part        string
-	parts       int
-	callOf      map[string]string  // host tool_call part id -> the call's id
-	textOf      map[string]string  // host text part id -> the wire's
-	results     map[string]*result // host tool_result part id -> the result so far
+	x        *run
+	step     int
+	stepOpen bool
+	part     string
+	parts    int
+	callOf   map[string]string  // host tool_call part id -> the call's id
+	textOf   map[string]string  // host text part id -> the wire's
+	results  map[string]*result // host tool_result part id -> the result so far
 
 	// Usage: the tap's steps reported so far, and the totals reported.
 	usedSteps                  int
 	uncached, read, write, out int
-	// compacted: the thread was compacted in this run and the request after it has not
-	// been seen yet; done is the notice waiting for its size.
+	// compacted: the thread was compacted in this run and the notice waits for the size
+	// of the request after it, the step at afterIdx.
 	compacted bool
+	afterIdx  int
 }
 
 func raw(v any) json.RawMessage {
@@ -269,16 +392,13 @@ func (t *translator) closeStep(out []chatstream.Event) []chatstream.Event {
 	out = append(out,
 		chatstream.Event{Verb: chatstream.VerbMessageEnd, MessageID: t.messageID()},
 		chatstream.Event{Verb: chatstream.VerbStepFinish, StepID: t.stepID()})
-	t.stepOpen, t.afterResult = false, false
+	t.stepOpen = false
 	return out
 }
 
-// content makes sure a step and its assistant message are open for model output. Output
-// that follows a tool result belongs to the next model step.
+// content makes sure a step and its assistant message are open for model output. A step is
+// one model request: it closes when the host starts the next (message.start).
 func (t *translator) content(out []chatstream.Event) []chatstream.Event {
-	if t.stepOpen && t.afterResult {
-		out = t.closeStep(out)
-	}
 	if !t.stepOpen {
 		t.step++
 		t.stepOpen = true
@@ -301,6 +421,9 @@ func (t *translator) usage(out []chatstream.Event, hostTotal *chatstream.Usage, 
 		if !started && o == 0 {
 			continue
 		}
+		if !u.isSummary() {
+			t.x.r.observe(t.x.thread, in+read+write)
+		}
 		t.uncached += in
 		t.read += read
 		t.write += write
@@ -316,6 +439,9 @@ func (t *translator) usage(out []chatstream.Event, hostTotal *chatstream.Usage, 
 		missOut := hostTotal.Output - t.out
 		if missIn > 0 || missOut > 0 {
 			missIn, missOut = max(missIn, 0), max(missOut, 0)
+			if missIn > 0 {
+				t.x.r.log.Warn("hostrunner: usage the tap did not see is counted as uncached input", "run", t.x.turn.RunID, "tokens", missIn)
+			}
 			t.uncached += missIn
 			t.out += missOut
 			out = append(out, chatstream.Event{Verb: chatstream.VerbUsage, Usage: &chatstream.Usage{Scope: chatstream.UsageDelta,
@@ -332,16 +458,19 @@ func (t *translator) compactDone(out []chatstream.Event, final bool) []chatstrea
 		return out
 	}
 	v := map[string]any{"state": "done", "before": t.x.before}
-	for _, u := range t.x.stepsFrom(t.usedSteps) {
-		if in, read, write, _, started, _ := u.snapshot(); started {
-			v["after"] = in + read + write
-			break
+	if t.afterIdx >= 0 {
+		if next := t.x.stepsFrom(t.afterIdx); len(next) > 0 {
+			if in, read, write, _, started, _ := next[0].snapshot(); started {
+				v["after"] = in + read + write
+			}
 		}
 	}
-	if _, ok := v["after"]; !ok && !final {
+	after, ok := v["after"].(int)
+	if !ok && !final {
 		return out // not yet
 	}
 	t.compacted = false
+	t.x.r.compacted(t.x.thread, t.x.before, after)
 	return append(out, activity(ActivityCompact, v))
 }
 
@@ -366,9 +495,12 @@ func (t *translator) translate(ev chatstream.Event) []chatstream.Event {
 	case chatstream.VerbRunStart:
 		return append(out, chatstream.Event{Verb: chatstream.VerbRunStart, Provider: Provider, Model: ev.Model})
 
-	case chatstream.VerbMessageStart, chatstream.VerbMessageEnd:
-		// The host's message per model request: steps open on content and close after
-		// results, as on the rest of the wire.
+	case chatstream.VerbMessageStart:
+		// The host's message per model request: a step holds the request's text, its tool
+		// calls and their results, which the host writes after its message.end.
+		return t.closeStep(out)
+
+	case chatstream.VerbMessageEnd:
 		return out
 
 	case chatstream.VerbPartStart:
@@ -437,7 +569,6 @@ func (t *translator) translate(ev chatstream.Event) []chatstream.Event {
 				out = t.content(out)
 			}
 			out = t.closePart(out)
-			t.afterResult = true
 			id := res.call + "#result"
 			return append(out,
 				chatstream.Event{Verb: chatstream.VerbPartStart, PartID: id, Kind: string(chatstream.PartToolResult),
@@ -468,6 +599,13 @@ func (t *translator) translate(ev chatstream.Event) []chatstream.Event {
 				return append(out, activity(ActivityCompact, map[string]any{"state": "start", "before": t.x.before}))
 			case "done":
 				t.compacted = true
+				// The request after the summary is the one after the last summary request.
+				t.afterIdx = -1
+				for i, u := range t.x.stepsFrom(0) {
+					if u.isSummary() {
+						t.afterIdx = i + 1
+					}
+				}
 				out = t.usage(out, nil, false) // the summary's own request
 				return t.compactDone(out, false)
 			default:

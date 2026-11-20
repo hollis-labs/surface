@@ -51,10 +51,19 @@ const ActivityCompact = "host.compact"
 // compacted before the next.
 const DefaultCompactAt = 110_000
 
-// toolLongest bounds one call of an application tool. The host gives its server tools 90
-// seconds; an application tool that waits for the owner (a card that asks) needs longer,
-// so the runner runs it on its own clock, stopped with the run.
-const toolLongest = 70 * time.Minute
+// How long one call of an application tool may take. The host gives its server tools 90
+// seconds, which is too short for a tool that waits for the owner (a card that asks waits
+// up to an hour), so the runner runs every call on its own clock, stopped with the run: a
+// tool that waits for the owner gets ownerToolTimeout, any other toolTimeout, unless the
+// tool names its own. A call that runs out is given up and the model told so.
+const (
+	toolTimeout      = 5 * time.Minute
+	ownerToolTimeout = 70 * time.Minute
+)
+
+// maxContextChars bounds the context put in front of a message, as the host bounds its own
+// default rendering: the block is stored in every turn of the thread.
+const maxContextChars = 20_000
 
 // Levels, as the host and the chat wire name them.
 const (
@@ -71,8 +80,23 @@ type Tool struct {
 	InputSchema map[string]any
 	// Level is read, act, write or confirm. Empty or unknown is write.
 	Level string
+	// WaitsForOwner marks a tool that waits for the owner's answer (a card that asks): it
+	// may run up to 70 minutes instead of 5.
+	WaitsForOwner bool
+	// Timeout, when set, is how long one call may take instead.
+	Timeout time.Duration
 	// Run returns what the model is told. An error is told to the model as a failure.
 	Run func(ctx context.Context, input json.RawMessage) (string, error)
+}
+
+func (t Tool) timeout() time.Duration {
+	switch {
+	case t.Timeout > 0:
+		return t.Timeout
+	case t.WaitsForOwner:
+		return ownerToolTimeout
+	}
+	return toolTimeout
 }
 
 // Call identifies a tool call for Ask and Granted.
@@ -122,6 +146,8 @@ type Runner struct {
 	active   map[string]*run   // by owner key
 	byThread map[string]*run   // by host thread
 	threads  map[string]string // conversation -> thread
+	sizes    map[string]*threadSize
+	warned   map[string]int // thread -> the request size compaction was last skipped at
 }
 
 var _ chat.Runner = (*Runner)(nil)
@@ -157,7 +183,8 @@ func Open(ctx context.Context, opts Options) (*Runner, error) {
 	}
 	rctx, stop := context.WithCancel(context.Background())
 	r := &Runner{opts: opts, store: st, levels: map[string]string{}, log: log, ctx: rctx, stop: stop,
-		replaced: make(chan string), active: map[string]*run{}, byThread: map[string]*run{}, threads: map[string]string{}}
+		replaced: make(chan string), active: map[string]*run{}, byThread: map[string]*run{}, threads: map[string]string{},
+		sizes: map[string]*threadSize{}, warned: map[string]int{}}
 	r.tap, err = openTap(c.BaseURL, r.step, log)
 	if err != nil {
 		stop()
@@ -284,7 +311,7 @@ func (r *Runner) seed(ctx context.Context, conversationID, thread string) string
 }
 
 // contextText is the turn's context as the model sees it, ahead of the message: a JSON
-// string's value, or any other JSON as written.
+// string's value, or any other JSON as written, at most maxContextChars characters.
 func contextText(raw json.RawMessage) string {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" || trimmed == `""` {
@@ -292,7 +319,10 @@ func contextText(raw json.RawMessage) string {
 	}
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
-		return strings.TrimSpace(s)
+		trimmed = strings.TrimSpace(s)
+	}
+	if r := []rune(trimmed); len(r) > maxContextChars {
+		trimmed = string(r[:maxContextChars]) + "…"
 	}
 	return trimmed
 }
@@ -379,14 +409,82 @@ func (r *Runner) activeRun(owner string) *run {
 }
 
 // step is the tap asking where the usage of one model request on a thread goes.
-func (r *Runner) step(thread string) *usageStep {
+func (r *Runner) step(thread string, summary bool) *usageStep {
 	r.mu.Lock()
 	x := r.byThread[thread]
 	r.mu.Unlock()
 	if x == nil {
-		return &usageStep{}
+		return &usageStep{summary: summary}
 	}
-	return x.newStep()
+	return x.newStep(summary)
+}
+
+// threadSize is what a thread's requests cannot go below, as far as this process has seen:
+// the smallest request it sent (the tools and the system prompt are in every one), and the
+// size of the first request after its last compaction.
+type threadSize struct{ least, compacted int }
+
+func (z *threadSize) floor() int { return max(z.least, z.compacted) }
+
+// observe notes the size of one of a thread's requests, in tokens.
+func (r *Runner) observe(thread string, tokens int) {
+	if tokens <= 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	z := r.sizes[thread]
+	if z == nil {
+		z = &threadSize{}
+		r.sizes[thread] = z
+	}
+	if z.least == 0 || tokens < z.least {
+		z.least = tokens
+	}
+}
+
+// compacted notes what a compaction of a thread gained.
+func (r *Runner) compacted(thread string, before, after int) {
+	if after <= 0 {
+		return
+	}
+	r.mu.Lock()
+	z := r.sizes[thread]
+	if z == nil {
+		z = &threadSize{}
+		r.sizes[thread] = z
+	}
+	z.compacted = after
+	r.mu.Unlock()
+	at := r.h.Config().CompactAt
+	if after >= at || before-after < before/10 {
+		r.log.Warn("hostrunner: compaction gained little; compact_at must exceed the tools and the system prompt by a margin",
+			"thread", thread, "before", before, "after", after, "compact_at", at)
+	}
+}
+
+// futile reports whether compacting a thread whose last request was n tokens would gain
+// under a tenth: the thread is within 10% of what it cannot go below.
+func (r *Runner) futile(thread string, n int) bool {
+	r.mu.Lock()
+	z := r.sizes[thread]
+	floor := 0
+	if z != nil {
+		floor = z.floor()
+	}
+	warn := floor > 0 && n < floor+floor/10 && r.warned[thread] != n
+	if warn {
+		r.warned[thread] = n
+	}
+	r.mu.Unlock()
+	if floor == 0 || n >= floor+floor/10 {
+		return false
+	}
+	if warn {
+		r.log.Warn("hostrunner: compaction skipped: the thread cannot get much smaller; raise compact_at above the tools and the system prompt",
+			"thread", thread, "last_request", n, "floor", floor, "compact_at", r.h.Config().CompactAt)
+	}
+	return true
 }
 
 // level is a tool's level as the application gave it.
@@ -420,7 +518,7 @@ func (r *Runner) serverTools(tools []Tool) []host.ServerTool {
 		if lvl == LevelConfirm {
 			hostLevel = LevelConfirm
 		}
-		run := t.Run
+		run, limit := t.Run, t.timeout()
 		out = append(out, host.ServerTool{
 			Spec: host.ToolSpec{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, Level: hostLevel},
 			Run: func(toolCtx context.Context, owner string, input map[string]any) (string, error) {
@@ -430,7 +528,7 @@ func (r *Runner) serverTools(tools []Tool) []host.ServerTool {
 				}
 				// The host's 90-second bound is for quick server tools; this call runs on the
 				// runner's clock, stopped with its run or the runner.
-				ctx, cancel := context.WithTimeout(context.WithoutCancel(toolCtx), toolLongest)
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(toolCtx), limit)
 				defer cancel()
 				defer context.AfterFunc(r.ctx, cancel)()
 				defer context.AfterFunc(toolCtx, func() {
@@ -442,7 +540,11 @@ func (r *Runner) serverTools(tools []Tool) []host.ServerTool {
 					defer context.AfterFunc(x.ctx, cancel)()
 					ctx = context.WithValue(ctx, turnKey{}, x.turn)
 				}
-				return run(ctx, raw)
+				text, err := run(ctx, raw)
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return "", fmt.Errorf("this took longer than %s and was given up on; whether it ran is unknown, so check before trying again", limit)
+				}
+				return text, err
 			},
 		})
 	}
@@ -478,6 +580,17 @@ func (s store) Granted(ctx context.Context, owner, tool string) (bool, error) {
 		}
 	}
 	return r.opts.Granted != nil && r.opts.Granted(ctx, call), nil
+}
+
+// LastPrefix is the size of the thread's last request, which the host compacts the thread
+// past CompactAt; 0 (do not compact) when compacting would gain under a tenth, so a thread
+// whose tools and system prompt alone pass CompactAt is not summarized on every turn.
+func (s store) LastPrefix(ctx context.Context, thread string) (int, error) {
+	n, err := s.SQLite.LastPrefix(ctx, thread)
+	if err != nil || n < s.r.h.Config().CompactAt || !s.r.futile(thread, n) {
+		return n, err
+	}
+	return 0, nil
 }
 
 // Grant keeps nothing: an "always" answer is kept by the chat Service in the host

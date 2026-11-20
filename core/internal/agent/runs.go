@@ -80,6 +80,36 @@ type watchedRunner struct {
 	// log keeps the run log (nil: none); model is the app's configured model, for the log.
 	log   *runLog
 	model string
+	// replaced is the runner's own Replaced signal merged with the app's: at start, the
+	// agent's side is new, so every attachment and lease from before is void (relaunched).
+	replaced chan string
+}
+
+// Replaced is the runner's signal and the app's start, on one channel.
+func (w watchedRunner) Replaced() <-chan string { return w.replaced }
+
+// mergeReplaced forwards the runner's own Replaced signal into out until ctx ends.
+func mergeReplaced(ctx context.Context, inner <-chan string, out chan<- string) {
+	if inner == nil {
+		return
+	}
+	go func() {
+		for {
+			select {
+			case id, ok := <-inner:
+				if !ok {
+					return
+				}
+				select {
+				case out <- id:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, error) {

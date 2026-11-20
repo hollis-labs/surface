@@ -95,7 +95,9 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		_ = st.Close()
 		return nil, err
 	}
-	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model}
+	replaced := make(chan string, 4)
+	mergeReplaced(context.WithoutCancel(ctx), run.Replaced(), replaced)
+	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model, replaced: replaced}
 	w.svc, err = chat.NewService(chat.Config{
 		Runner:  run,
 		Log:     st,
@@ -124,6 +126,14 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		closeRunner()
 		_ = st.Close()
 		return nil, err
+	}
+	// The app has just started, so the agent's side is new: an attachment or an input lease
+	// kept from before (a page the old process served, which never got to let go) belongs
+	// to nobody. Saying so bumps the conversation's generation: every earlier attachment is
+	// stale (live pages attach again on their own) and the lease is free, so a reload does
+	// not find a window that is gone holding the input.
+	if view, verr := w.svc.EnsureConversation(ctx, w.agent); verr == nil {
+		replaced <- view.ConversationID
 	}
 	return w, nil
 }

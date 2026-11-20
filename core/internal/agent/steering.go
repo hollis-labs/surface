@@ -7,6 +7,7 @@ import (
 
 	"github.com/hollis-labs/libs/agent/steer"
 	nanite "github.com/hollis-labs/nanite/agent"
+	"github.com/hollis-labs/nanite/chatrunner"
 	"github.com/hollis-labs/surface/core/internal/reflex"
 )
 
@@ -68,7 +69,7 @@ func (s *Service) steerHostEvent(ctx context.Context, topic, focus string) {
 	if err != nil {
 		return
 	}
-	if err := w.ensureNaniteConversation(ctx, id); err != nil {
+	if _, err := w.nanite.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id)); err != nil {
 		s.log.Warn("event conversation initialization failed", "err", err)
 		return
 	}

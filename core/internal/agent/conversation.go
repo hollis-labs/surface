@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	chat "github.com/hollis-labs/libs/agent/chat"
@@ -39,8 +38,6 @@ const RunnerScripted = "scripted"
 
 // wire is the conversation wire, when it is on.
 type wire struct {
-	naniteInitMu sync.Mutex // serializes first creation before turns and host events
-
 	svc      *chat.Service
 	store    *sqlitestore.Store
 	handler  http.Handler

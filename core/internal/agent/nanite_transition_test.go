@@ -22,14 +22,17 @@ func TestNaniteConcurrentFirstUseCreatesOneConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = runner.Close() }()
-	w := &wire{nanite: runner}
 	const rounds, callers = 10, 32
 	for round := range rounds {
 		start := make(chan struct{})
 		results := make(chan error, callers)
 		id := fmt.Sprintf("first-use-%d", round)
 		for range callers {
-			go func() { <-start; results <- w.ensureNaniteConversation(t.Context(), id) }()
+			go func() {
+				<-start
+				_, err := runner.Agent().EnsureConversation(t.Context(), chatrunner.ConversationID(id))
+				results <- err
+			}()
 		}
 		close(start)
 		for range callers {
@@ -37,7 +40,7 @@ func TestNaniteConcurrentFirstUseCreatesOneConversation(t *testing.T) {
 				t.Fatal(initErr)
 			}
 		}
-		c, getErr := runner.Agent().Conversation(t.Context(), chatrunner.ConversationID(id))
+		c, getErr := runner.Agent().EnsureConversation(t.Context(), chatrunner.ConversationID(id))
 		if getErr != nil {
 			t.Fatal(getErr)
 		}

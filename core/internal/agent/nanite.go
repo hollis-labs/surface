@@ -184,14 +184,15 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
 		_ = os.Setenv("NANITE_DEFAULT_MODEL", c.Model)
 	}
-	compact, keep, err := naniteCompactionFallback(open)
+	compact, keep, effectiveCompact, effectiveKeep, err := naniteCompactionFallback(open)
 	if err != nil {
 		return nil, fmt.Errorf("agent: host config: %w", err)
 	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
 		Agent: nanite.Options{
-			Dir:             open,
+			Dir: open,
+			// Keep runtime state and tool approvals outside the authored/staged directory.
 			DataDir:         filepath.Join(s.k.DataDir(), "agents", w.agent),
 			GlobalSkillsDir: "-",
 			// The key is a reference to the file; Nanite reads it when it calls the gateway.
@@ -234,16 +235,17 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
-	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups))
+	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
+		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep)
 	return r, nil
 }
 
 // naniteCompactionFallback supplies Surface defaults only for missing settings.
 // Zero options leave authored values to Nanite's own host.yaml loading.
-func naniteCompactionFallback(dir string) (compact, keep int, err error) {
+func naniteCompactionFallback(dir string) (compact, keep, effectiveCompact, effectiveKeep int, err error) {
 	snapshot, err := agentdir.Load(dir)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	if snapshot.Profile.Runtime.CompactAt == 0 {
 		compact = 110000
@@ -251,7 +253,15 @@ func naniteCompactionFallback(dir string) (compact, keep int, err error) {
 	if snapshot.Profile.Runtime.CompactKeepTokens == 0 {
 		keep = 22000
 	}
-	return compact, keep, nil
+	effectiveCompact = snapshot.Profile.Runtime.CompactAt
+	if effectiveCompact == 0 {
+		effectiveCompact = compact
+	}
+	effectiveKeep = snapshot.Profile.Runtime.CompactKeepTokens
+	if effectiveKeep == 0 {
+		effectiveKeep = keep
+	}
+	return compact, keep, effectiveCompact, effectiveKeep, nil
 }
 
 // runnerTools is the app's tools as the runner takes them: the same list, levels and
@@ -310,9 +320,9 @@ func (w *wire) naniteHistory(ctx context.Context, conversation string) []librefl
 	if err != nil {
 		return nil
 	}
-	c, err := w.nanite.Agent().Conversation(ctx, chatrunner.ConversationID(id))
+	c, err := w.nanite.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id))
 	if err != nil {
-		return nil // no turn yet
+		return nil // history unavailable
 	}
 	hist, err := c.History(ctx)
 	if err != nil {

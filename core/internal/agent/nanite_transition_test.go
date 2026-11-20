@@ -30,8 +30,8 @@ func TestNaniteConcurrentFirstUseCreatesOneConversation(t *testing.T) {
 		for range callers {
 			go func() {
 				<-start
-				_, err := runner.Agent().EnsureConversation(t.Context(), chatrunner.ConversationID(id))
-				results <- err
+				_, ensureErr := runner.Agent().EnsureConversation(t.Context(), chatrunner.ConversationID(id))
+				results <- ensureErr
 			}()
 		}
 		close(start)

@@ -88,7 +88,8 @@ Licensed under the [MIT License](LICENSE).
 
 ## Choosing embedded chat or a Tether seat
 
-`SURFACE_AGENT_RUNNER=nanite` keeps the embedded runner and its approval panel.
+`SURFACE_AGENT_RUNNER=host` (libs agent/host, Basalisk's runtime) or `SURFACE_AGENT_RUNNER=nanite` keeps
+an embedded runner and its approval panel (docs/agent.md).
 To attach the same chat page to a statically app-bound Tether CLI seat instead,
 add this to the app's `agent.json` (or the file `SURFACE_AGENT_CONFIG` names):
 

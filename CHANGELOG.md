@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The agent can run on libs agent/host on the conversation wire** (`SURFACE_AGENT_RUNNER=host`): Basalisk's
+  runtime, with every feature of the wire (late answers, module errands, the input lease, the run log, approvals in
+  the chat). The system prompt is fixed and the turn's context block goes in front of the owner's message in the
+  same stored message, so the history stays byte-stable and the provider's cache holds. A thread whose last request
+  passed `compact_at` tokens (default 110,000) has its older part summarized and its recent turns kept whole; the
+  panel is told, with the size before and after. `max_tokens`, `max_steps` and `compact_at` come from the agent
+  config. One host thread per conversation, in the core database; a restart resumes it. The run log keeps uncached
+  input, cache reads and cache writes apart. A conversation moved over from `nanite` starts a fresh thread whose
+  first turn says the earlier history is in the transcript. `nanite` is unchanged. See docs/agent.md.
 - **Fixed: an answer to the agent's question is no longer lost when the run that asked has ended.** A `card_ask`
   whose run ends while the card is up (stopped, the app shutting down or restarting) now ends the card
   `abandoned`, not `canceled`, which stays the owner declining; a question left open by a killed app is abandoned at

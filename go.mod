@@ -3,14 +3,19 @@ module github.com/hollis-labs/surface
 go 1.26.11
 
 require (
+	github.com/coder/websocket v1.8.15
+	github.com/creack/pty v1.1.24
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/host v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
+	github.com/hollis-labs/libs/llm/core v0.4.0
+	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/nanite v0.5.0
 	github.com/hollis-labs/substrate v0.1.1-0.20261119160643-9fd1a312ed78
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )
@@ -21,8 +26,6 @@ require (
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.15 // indirect
-	github.com/creack/pty v1.1.24 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
@@ -37,14 +40,12 @@ require (
 	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/store v0.1.0 // indirect
 	github.com/hollis-labs/libs/harness/core v0.17.1-0.20261115212742-8f2ed31176b0 // indirect
-	github.com/hollis-labs/libs/llm/core v0.4.0 // indirect
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.6.0 // indirect
 	github.com/hollis-labs/libs/mesh/core v0.11.0 // indirect
 	github.com/hollis-labs/libs/security/auth v0.3.1 // indirect
 	github.com/hollis-labs/libs/security/policy v0.1.0 // indirect
 	github.com/hollis-labs/libs/security/redact v0.2.0 // indirect
 	github.com/hollis-labs/libs/security/secrets v0.1.0 // indirect
-	github.com/hollis-labs/libs/ui/ui-go v0.4.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -91,7 +92,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect

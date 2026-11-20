@@ -73,6 +73,7 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [x] **Context inspector** (#37): the `surface.context` window. Now shows `GET /api/agent/context`, History shows `/api/agent/trace`, and corrections are flagged.
 - [x] **Run end states** (#36, CW-20261119-0011): each run announces how it ended (working, unread, failed)
 - [~] **Conversation wire** (`libs/agent/chat`): durable conversations, viewer and controller attach, `agent_grants` for "Always". It is on when `SURFACE_AGENT_RUNNER` is set. Desk runs it with `nanite`. Not the default yet. (CW-20261118-0006, in review)
+- [~] **Host runner** (`core/internal/agent/hostrunner`, `SURFACE_AGENT_RUNNER=host`): the conversation wire on libs agent/host, Basalisk's runtime. Fixed system prompt, the context block in front of the owner's message, compaction at `compact_at` (default 110,000), `max_tokens` and `max_steps` from the config, usage with the cache apart in the run log. (CW-20261120-0011, in review)
 - [~] **Nanite runner** (`nanite/chatrunner`): the agent directory (`agent.md`, `host.yaml`), app tools with their levels, `card_ask` for questions. Not yet carried over: `max_tokens`, `max_steps`, `compact_at`. A lease from a killed page is held until it lapses. (CW-20261118-0005, in review)
 - [ ] **Classifier-driven Selector**: the owner has an agent building it overnight, and its PR(s) are expected. Nothing in the 33 audited repos does this.
 - [ ] The engine as an MCP client (the `mcp` config field is reserved)

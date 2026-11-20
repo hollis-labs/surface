@@ -259,6 +259,19 @@ agent may run and reach), `workbench_import_dir` (it reads from disk), `workbenc
 (confirm: asked every time). No tool accepts or rejects a proposal, rolls back, deletes or sets a mode: those are the
 owner's.
 
+## The Workbench's own profile: the Agent Architect
+
+`profile/` is the agent the app uses when the Workbench leads: the **Agent Architect**, an expert in setting up
+Nanite agents for Surface. It designs an agent or a module profile with the owner, builds it through the
+`workbench_*` tools, writes its evals, and reviews it against what worked in Surface Desk, Basalisk and Nanite.
+
+It is a module profile: a Nanite agent directory without `host.yaml` or `.mcp.json` (the app owns the runtime,
+identity, MCP and permissions), with `steering.json` (agent/steer v0.1.0 presets and reflexes) and `evals/` at its
+root. `agent.md` and `context/` stand alone, for a runtime that loads only those. Skills, variants and steering
+add to it under the Nanite runner. `TestProfileValidates` checks it with the Workbench's validation and parses
+its suites. The app will select it once Surface core has module profiles. Until then it can be used as an
+agent directory: copy it with a `host.yaml` into the app's agent directory, or import it into the Workbench.
+
 ## Known gaps
 
 Stopgaps, labeled as such in the code, pending Nanite exports (asked of Nanite):

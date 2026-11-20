@@ -56,6 +56,14 @@ func TestPlantSeatWritesAStarterNaniteOpensAndNeverOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Nanite does not open the starter: %v", err)
 	}
+	info, err := a.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := info.Definition.Profile.Runtime
+	if runtime.CompactAt != 110000 || runtime.CompactKeepTokens != 22000 {
+		t.Fatalf("starter compaction: got %d/%d, want 110000/22000", runtime.CompactAt, runtime.CompactKeepTokens)
+	}
 	_ = a.Close()
 
 	if err = os.WriteFile(filepath.Join(dir, "agent.md"), []byte("mine"), 0o600); err != nil {
@@ -123,5 +131,35 @@ func TestAskFirstCoversOneToolForTheTurnInProgress(t *testing.T) {
 	a.set("c1", "") // the next turn matched no ask rule
 	if a.has("c1", "desk_windows") {
 		t.Fatal("ask-first outlived its turn")
+	}
+}
+
+func TestNaniteCompactionFallbackPreservesAuthoredValues(t *testing.T) {
+	for _, tt := range []struct {
+		name, settings string
+		compact, keep  int
+	}{
+		{"missing", "", 110000, 22000},
+		{"authored", "  compact_at: 18000\n  compact_keep_tokens: 6000\n", 0, 0},
+		{"threshold_only", "  compact_at: 90000\n", 0, 22000},
+		{"keep_only", "  compact_keep_tokens: 6000\n", 110000, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "seat")
+			if _, err := plantSeat(dir, "desk"); err != nil {
+				t.Fatal(err)
+			}
+			host := "kind: embedded\nlifetime: application\napplication_id: desk\nruntime:\n  provider: anthropic\n" + tt.settings
+			if err := os.WriteFile(filepath.Join(dir, "host.yaml"), []byte(host), 0600); err != nil {
+				t.Fatal(err)
+			}
+			compact, keep, err := naniteCompactionFallback(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compact != tt.compact || keep != tt.keep {
+				t.Fatalf("fallback options = %d/%d, want %d/%d", compact, keep, tt.compact, tt.keep)
+			}
+		})
 	}
 }

@@ -53,7 +53,7 @@ func (s *Service) openHostRunner(ctx context.Context, w *wire) (*hostrunner.Runn
 			Model:     c.Model,
 			BaseURL:   c.GatewayURL,
 			KeyFile:   c.KeyFile,
-			System:    systemPrompt(s.k.AppName(), c.System),
+			System:    systemPrompt(s.k.AppName(), joinNonEmpty(agentDirText(c.AgentDir(s.k.AppName()), s.log), c.System)),
 			MaxTokens: c.MaxTokens,
 			MaxSteps:  c.MaxSteps,
 			CompactAt: compactAt(c.CompactAt),

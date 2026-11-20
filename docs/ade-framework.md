@@ -24,7 +24,8 @@ Load-bearing decisions:
 - **The module seam.** A module imports only `surface/module` (plus `moduletest` and `tetherlink`). Two things enforce this: the Go `internal` rule and `module/seam_test.go`. A manifest is plain data plus handlers, so run-time loaded and agent-generated modules can come later without changing the core.
 - **The desk belongs to the server.** Window state lives in `core/internal/desk`. The page draws it and posts actions. So the embedded agent, the palette, the CLI and outside agents over MCP or HTTP all drive the same desk the same way. This is the deliberate break from Basalisk.
 - **Every tool is a server tool.** The same tools are served at `/api/tools` and `/mcp` and through the CLI.
-- **Engine seam.** The agent sits behind `Engine`. Today it is `libs/agent/host`. Nanite is coming in through the conversation wire (`SURFACE_AGENT_RUNNER=nanite`).
+- **Engine seam.** The agent sits behind `Engine`. Today it is `libs/agent/host`. Nanite is coming in through the conversation wire (`SURFACE_AGENT_RUNNER=nanite`), on a pseudo-version of Nanite main until v0.7.0 is tagged.
+- **Module profiles.** One agent, many profiles: a module's profile changes what the agent is told and which helpers it has, never its tools, approvals or identity.
 - **Two kinds of config.** App settings live in the DB and change live. The agent and harness config lives in a file (`~/.config/<app>/agent.json`).
 - **Data.** One core SQLite DB, plus a store and a data dir per module.
 - **Approvals belong to Gatecrasher.** Surface only leaves the `agent.Approver` hook.
@@ -60,7 +61,8 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [ ] Reader's Fragments Engine half
 - [ ] Move Design onto `module/tetherlink`
 - [ ] Run-time loaded and generated modules (the contract leaves room for them)
-- [ ] The later contract: data and service dependencies, skills/reflexes/triggers declared by modules, install-time permissions
+- [~] **Module agent profiles** (CW-20261120-0128, in review): the contract for module-declared skills and helpers. A module ships an optional profile, `modules/<id>/profile/` (a Nanite agent directory without host.yaml or .mcp.json: agent.md, context/, skills/, variants/, tools/, steering.json; evals/ is the Workbench's), embedded and named by `Manifest.Profile` (`module.ProfileFS`). On the Nanite runner each turn runs as the pinned profile (the panel's Profile picker, or the agent's `profile_switch`, act level; kept per conversation in `agent_profile_pins`), else the focused module's, else the app's seat. All profiles share the conversation, front desk, mailbox, tools, levels, grants, the Approver and the identity (one ADE, one Warden grant); internal helpers are Nanite variants inside a profile, not identities. The run log's `profile` column says which profile acted. Off on the host runner. Not yet: steering.json applied (Nanite takes steering once, at open), a per-request header naming the profile (Nanite's gateway headers are static), split grants per profile (Warden token exchange). Format: writing-a-module.md, "An agent profile"
+- [ ] The rest of the later contract: data and service dependencies, module-declared reflexes and triggers outside a profile, install-time permissions
 
 ### Embedded agent
 - [x] Agent panel: one agent beside the windows, asks before a write

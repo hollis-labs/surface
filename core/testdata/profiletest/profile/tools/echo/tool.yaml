@@ -1,0 +1,4 @@
+name: echo
+description: Echo the arguments back.
+kind: command
+entry: run.sh

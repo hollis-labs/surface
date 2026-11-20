@@ -61,6 +61,7 @@ type App struct {
 	tools    []BoundTool
 	slots    []BoundSlot
 	arounds  []BoundAround
+	profiles []BoundProfile
 	refs     map[string]*boundRef
 	cite     citeCache
 	asker    atomic.Pointer[askerBox]
@@ -241,6 +242,9 @@ func New(ctx context.Context, o Options) (*App, error) {
 		if err := a.addRefs(h); err != nil {
 			return nil, a.fail(err)
 		}
+		if h.man.Profile != nil {
+			a.profiles = append(a.profiles, BoundProfile{Module: h.id, Title: h.man.Title, Files: h.man.Profile})
+		}
 		if h.man.Around != nil {
 			hh, fn := h, h.man.Around
 			a.arounds = append(a.arounds, BoundAround{Module: h.id, Read: func(ctx context.Context) (string, error) { return fn(ctx, hh) }})
@@ -416,6 +420,9 @@ func (a *App) Slots() []BoundSlot { return append([]BoundSlot(nil), a.slots...) 
 
 // Arounds is every module's Around, bound to its Host.
 func (a *App) Arounds() []BoundAround { return append([]BoundAround(nil), a.arounds...) }
+
+// Profiles is every module's agent profile.
+func (a *App) Profiles() []BoundProfile { return append([]BoundProfile(nil), a.profiles...) }
 
 type askerBox struct{ Asker }
 

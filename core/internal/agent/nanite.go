@@ -163,6 +163,19 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if err != nil {
 		return nil, err
 	}
+	// With module profiles the agent opens on a staged directory: the seat, with the active
+	// profile over it, written again before each turn (profiles.go).
+	open := dir
+	if len(s.prof.order) > 0 {
+		s.prof.seat, s.prof.stage = dir, s.stageDir(w.agent)
+		if err := s.stageProfile(ProfileChoice{Why: "default"}); err != nil {
+			s.prof.stage = ""
+			return nil, fmt.Errorf("agent: staged agent directory: %w", err)
+		}
+		open = s.prof.stage
+		groups = s.profileBuiltins(groups)
+		s.log.Info("module agent profiles are on", "profiles", s.prof.order, "staged", open)
+	}
 	// Nanite takes the model from host.yaml, or from this variable when the file names
 	// none (the starter names none): the app's agent config stays the one place it is set.
 	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
@@ -171,7 +184,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
 		Agent: nanite.Options{
-			Dir:             dir,
+			Dir:             open,
 			DataDir:         filepath.Join(s.k.DataDir(), "agents", w.agent),
 			GlobalSkillsDir: "-",
 			// The key is a reference to the file; Nanite reads it when it calls the gateway.
@@ -192,6 +205,9 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		},
 	})
 	if err != nil {
+		if s.prof != nil {
+			s.prof.stage = ""
+		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.engineTools()), "builtins", len(groups))

@@ -126,6 +126,17 @@ func (t Tree) check() error {
 		return fmt.Errorf("an agent has at most %d files", maxTreeFiles)
 	}
 	total := 0
+	lower := map[string]string{}
+	for p := range t {
+		if prev, dup := lower[strings.ToLower(p)]; dup {
+			a, b := prev, p
+			if a > b {
+				a, b = b, a
+			}
+			return fmt.Errorf("%s and %s name the same file on a case-insensitive disk", a, b)
+		}
+		lower[strings.ToLower(p)] = p
+	}
 	for p, b := range t {
 		if !authoredPath(p) {
 			return fmt.Errorf("%s is not an authored path", p)
@@ -248,9 +259,12 @@ func writeSidecar(side string, t Tree) error {
 	return nil
 }
 
+// tmpPrefix names the Workbench's own temporary files; Recover removes only these.
+const tmpPrefix = ".wb-tmp-"
+
 // writeFileAtomic writes a file through a temporary file and a rename.
 func writeFileAtomic(name string, b []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(name), ".tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(name), tmpPrefix+"*")
 	if err != nil {
 		return err
 	}

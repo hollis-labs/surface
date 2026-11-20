@@ -285,24 +285,48 @@ func (l *Library) Save(id string, t Tree, base, note, author string) (Version, R
 	if base != "" && cur.Digest() != base {
 		return Version{}, rep, errors.New("workbench: the agent changed since you opened it; reload before saving")
 	}
-	if cur.Digest() == rep.Digest {
-		vs, _ := l.Versions(id)
-		if len(vs) > 0 {
-			return vs[len(vs)-1], rep, nil
+	vs, _ := l.Versions(id)
+	var last *Version
+	if len(vs) > 0 {
+		last = &vs[len(vs)-1]
+	}
+	if last != nil && cur.Digest() == rep.Digest && last.Digest == rep.Digest {
+		return *last, rep, nil // nothing changes
+	}
+	// Files changed on disk by hand since the last version (added, edited, removed) are kept
+	// as a version of their own before anything overwrites them.
+	if last == nil || cur.Digest() != last.Digest {
+		what := strings.TrimSpace(note)
+		if what == "" {
+			what = "a save"
 		}
+		if _, err = l.addVersion(side, cur, Validate(cur), "unsaved changes on disk, kept before: "+what, "disk"); err != nil {
+			return Version{}, rep, err
+		}
+		if cur.Digest() == rep.Digest {
+			v, verr := l.Versions(id)
+			if verr == nil && len(v) > 0 {
+				return v[len(v)-1], rep, nil
+			}
+		}
+	}
+	// The version is written first, then the files: after a crash in between, the last
+	// version is what was being saved, and the next save keeps whatever is on disk.
+	v, err := l.addVersion(side, t, rep, note, author)
+	if err != nil {
+		return Version{}, rep, err
 	}
 	// In place, file by file: changed authored files are replaced atomically, removed ones
 	// deleted, and nothing else in the directory is touched (Nanite's .nanite/ state, notes,
 	// anything that is not an authored file). The directory itself is never moved, so a host
 	// running the agent from it keeps running, and there is no moment without it.
 	if err = applyTree(agentDir, cur, t); err != nil {
-		return Version{}, rep, err
+		return v, rep, err
 	}
 	if err = writeSidecar(side, t); err != nil {
-		return Version{}, rep, err
+		return v, rep, err
 	}
-	v, err := l.addVersion(side, t, rep, note, author)
-	return v, rep, err
+	return v, rep, nil
 }
 
 //nolint:gosec // every path is inside the agent's sidecar; tree paths are authored paths
@@ -408,6 +432,8 @@ func (l *Library) Rollback(id string, n int, author string) (Version, Report, er
 	if err != nil {
 		return Version{}, Report{}, err
 	}
+	// No base: a rollback is a decision about the whole agent. What is on disk and not yet
+	// in a version is kept first, by Save.
 	return l.Save(id, t, "", fmt.Sprintf("rolled back to version %d", n), author)
 }
 
@@ -537,10 +563,11 @@ func (l *Library) Recover() error {
 				if err != nil {
 					return nil //nolint:nilerr // best effort: a part that cannot be read is left as it is
 				}
-				if de.IsDir() && de.Name() == ".nanite" {
-					return filepath.SkipDir // Nanite's own state is never touched
+				// Hidden directories (.nanite/, .git/, the owner's own) are never entered.
+				if de.IsDir() && p != d && strings.HasPrefix(de.Name(), ".") {
+					return filepath.SkipDir
 				}
-				if de.Type().IsRegular() && strings.HasPrefix(de.Name(), ".tmp-") {
+				if de.Type().IsRegular() && strings.HasPrefix(de.Name(), tmpPrefix) {
 					_ = os.Remove(p)
 				}
 				return nil

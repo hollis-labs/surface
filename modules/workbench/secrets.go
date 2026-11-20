@@ -27,7 +27,10 @@ var (
 		{"a private key", regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
 		{"a password in a URL", regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@'"]+:[^/\s@'"$]+@`)},
 		{"a credential in a URL query", regexp.MustCompile(`(?i)[?&](api[_-]?key|access[_-]?token|token|secret|password|key)=[^&\s'"$]{6,}`)},
+		{"a bearer token", regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}`)},
 	}
+	// userinfoRe is a URL with a user part (a token often goes there): a warning.
+	userinfoRe = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@'"$]{6,}@`)
 	// lowConfidence looks like a credential assignment in prose or a resource file: a warning.
 	lowConfidence = regexp.MustCompile(`(?i)\b(api[_-]?key|secret|password|passwd|token|bearer)\b["']?\s*[:=]\s*["']?([A-Za-z0-9_\-./+]{16,})`)
 
@@ -71,12 +74,16 @@ func secretName(k string) bool {
 }
 
 // secretValue says why the value of field name is a credential written in the file, or "".
+// A known credential shape counts even inside a reference (file://sk-...).
 func secretValue(name, v string) string {
-	if strings.TrimSpace(v) == "" || isRef(v) {
+	if strings.TrimSpace(v) == "" {
 		return ""
 	}
 	if p := pattern(v); p != "" {
 		return "holds " + p
+	}
+	if isRef(v) {
+		return ""
 	}
 	if secretName(name) {
 		return "holds a literal value where a credential is named"
@@ -92,6 +99,9 @@ func urlSecret(raw string) string {
 	if u, err := url.Parse(raw); err == nil {
 		if pw, set := u.User.Password(); set && pw != "" && !isRef(pw) {
 			return "holds a password (user:password@)"
+		}
+		if u.User != nil && u.User.Username() != "" && !isRef(u.User.Username()) {
+			return "holds a user part (user@), where tokens are often put; pass it by reference"
 		}
 		for k, vs := range u.Query() {
 			for _, v := range vs {
@@ -127,6 +137,10 @@ func scanTree(t Tree) []ScanFinding {
 			}
 			if m := lowConfidence.FindStringSubmatch(line); m != nil && !isRef(m[2]) && !strings.Contains(m[2], "${") {
 				out = append(out, ScanFinding{File: p, Line: i + 1, What: "what looks like a " + strings.ToLower(m[1]) + " assignment"})
+				continue
+			}
+			if userinfoRe.MatchString(line) {
+				out = append(out, ScanFinding{File: p, Line: i + 1, What: "a URL with a user part, where tokens are often put"})
 			}
 		}
 	}

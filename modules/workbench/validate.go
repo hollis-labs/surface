@@ -227,6 +227,9 @@ func checkMCPSecrets(rep *Report, c agentdir.MCPConfig) {
 		if why := urlSecret(s.URL); why != "" {
 			rep.add(".mcp.json", "error", "server %s: url %s", name, why)
 		}
+		if p := pattern(s.Command); p != "" {
+			rep.add(".mcp.json", "error", "server %s: command holds %s; pass credentials through env with ${VARIABLE}", name, p)
+		}
 	}
 }
 
@@ -257,6 +260,7 @@ type variantFront struct {
 }
 
 var (
+	envNameRe       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 	variantNameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
 	builtinVariants = []string{"code", "research", "worker", "planner", "chat"}
 )
@@ -351,7 +355,10 @@ func checkProviders(raw []byte) ([]string, error) {
 		if err := spec.Validate(); err != nil {
 			return nil, err
 		}
-		if spec.KeyRef != "" && !isRef(spec.KeyRef) {
+		if spec.KeyEnv != "" && !envNameRe.MatchString(spec.KeyEnv) {
+			return nil, fmt.Errorf("provider %s: key_env names an environment variable (such as MY_KEY), not a value", name)
+		}
+		if spec.KeyRef != "" && (!isRef(spec.KeyRef) || pattern(spec.KeyRef) != "") {
 			return nil, fmt.Errorf("provider %s: key_ref must be a secret reference (keychain://, file://, env://), not a key", name)
 		}
 		if why := urlSecret(spec.BaseURL); why != "" {

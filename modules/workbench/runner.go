@@ -180,9 +180,25 @@ type Runner struct {
 
 	mu       sync.Mutex
 	running  map[string]context.CancelFunc
-	children map[string]int // run id -> eval child's pid
+	children map[string]int    // run id -> eval child's pid
+	modes    map[string]string // run id -> mode, for the runs going now
+	// tmpBase is where eval children's temporary roots are made; empty: the system's.
+	tmpBase string
 	// wg tracks runs in progress, so a test (or Stop) can wait for them.
 	wg sync.WaitGroup
+}
+
+// maxRunning is how many runs of each mode may go at once in the app: one live run (each
+// run's dollar cap is its own, so two would together pass one cap), two offline.
+var maxRunning = map[string]int{"live": 1, "offline": 2}
+
+// deleteRun removes a run's record (a run refused before it started).
+func (x *Runner) deleteRun(r Run) error {
+	dir, err := x.runsDir(r.Agent)
+	if err != nil {
+		return err
+	}
+	return os.Remove(filepath.Join(dir, r.ID+".json")) //nolint:gosec // a run id the runner made
 }
 
 // Defaults and ceilings of the cost guard.
@@ -562,8 +578,25 @@ func (x *Runner) Start(ctx context.Context, agent, suiteName, mode string, want 
 	x.mu.Lock()
 	if x.running == nil {
 		x.running = map[string]context.CancelFunc{}
+		x.modes = map[string]string{}
+	}
+	busy := 0
+	for _, m := range x.modes {
+		if m == mode {
+			busy++
+		}
+	}
+	if limit := maxRunning[mode]; busy >= limit {
+		x.mu.Unlock()
+		cancel()
+		_ = x.deleteRun(run)
+		if mode == "live" {
+			return Run{}, errors.New("workbench: a live eval run is already going; one live run at a time (its dollar cap is its own). Wait for it, or cancel it")
+		}
+		return Run{}, fmt.Errorf("workbench: %d offline runs are already going; wait for one to finish", busy)
 	}
 	x.running[run.ID] = cancel
+	x.modes[run.ID] = mode
 	x.mu.Unlock()
 	x.wg.Add(1)
 	go func() {
@@ -572,6 +605,7 @@ func (x *Runner) Start(ctx context.Context, agent, suiteName, mode string, want 
 		final := x.execute(runCtx, run, s, t, gw)
 		x.mu.Lock()
 		delete(x.running, run.ID)
+		delete(x.modes, run.ID)
 		x.mu.Unlock()
 		if err := x.saveRun(final); err != nil {
 			x.h.Log().Warn("workbench: run not saved", "run", run.ID, "err", err)

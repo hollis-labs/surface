@@ -1,5 +1,6 @@
 // Package scratch is the Scratch module: quick notes, to-dos, ideas and follow-ups as small
-// items, kept in the module's own store.
+// items, kept in the module's own store and, with caster_sync on, in Caster as Basalisk keeps
+// them (caster://scratch/<id>, sync.go).
 //
 // It is also the smallest complete example of a Surface module: a view, a command, agent
 // tools, a local store, live settings and a context slot, on the module contract alone.
@@ -15,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/surface/module"
+	"github.com/hollis-labs/surface/module/tetherlink"
 )
 
 //go:embed migrations/*.sql
@@ -24,7 +26,10 @@ func init() { module.Register(&mod{}) }
 
 type mod struct {
 	module.Base
-	st *store
+	st   *store
+	h    module.Host
+	link tetherlink.Caller // tests: Caster's stand-in; else from the settings
+	sync *syncer
 }
 
 func (m *mod) Manifest() module.Manifest {
@@ -71,6 +76,7 @@ func (m *mod) Manifest() module.Manifest {
 		Settings: []module.Setting{
 			{Key: "show_done", Title: "Show finished items", About: "Keep items in the list after they are ticked.", Type: module.SettingBool, Default: true},
 			{Key: "default_kind", Title: "New items are", Type: module.SettingEnum, Default: "note", Options: []string{"note", "todo", "idea", "followup"}},
+			syncSettings[0], syncSettings[1], syncSettings[2], syncSettings[3],
 		},
 		Slots: []module.Slot{{
 			Name: "scratch", About: "quick capture: things the owner jotted down to deal with later (notes, to-dos, ideas, follow-ups)",
@@ -116,12 +122,22 @@ func (m *mod) add(ctx context.Context, h module.Host, text, kind, tags string) (
 }
 
 func (m *mod) Start(_ context.Context, h module.Host) error {
-	m.st = &store{db: h.Store()}
+	m.st, m.h = &store{db: h.Store()}, h
+	// The syncer writes behind every change (sync.go); it does nothing while caster_sync is off.
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel is kept in the syncer and called by Stop
+	m.sync = &syncer{m: m, kick: make(chan struct{}, 1), stop: cancel}
+	m.sync.done.Add(1)
+	go func() { defer m.sync.done.Done(); m.sync.run(ctx) }()
+	h.Events().Subscribe("scratch.changed", func(module.Event) { m.sync.Kick() })
+	h.Config().Watch("caster_sync", func(any) { m.sync.importSoon(false) })
 	changed := func(what string, id string) { h.Events().Publish("scratch.changed", map[string]any{what: id}) }
 
 	h.Handle("GET /items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		items, err := m.st.list(r.Context(), q.Get("q"), q.Get("kind"), h.Config().Bool("show_done"), 0)
+		if m.syncEnabled() {
+			m.sync.importSoon(true) // the list is open: read Caster's changes back soon
+		}
 		reply(w, items, err)
 	}))
 	h.Handle("POST /items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -258,4 +274,13 @@ func (m *mod) tools() []module.Tool {
 				return "put away", nil
 			}},
 	}
+}
+
+// Stop ends the Caster syncer.
+func (m *mod) Stop(context.Context) error {
+	if m.sync != nil {
+		m.sync.stop()
+		m.sync.done.Wait()
+	}
+	return nil
 }

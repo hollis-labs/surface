@@ -231,4 +231,4 @@ modules:
 ## Tests
 
 `module/moduletest` gives a module a Host without the core. The seam test (`module/seam_test.go`) fails if a
-module imports anything of Surface but `module`.
+module imports anything of Surface but `module` and the helpers beside it: `module/tetherlink` (reaching Tether: Caster, Torque, mail, over MCP), `module/collab` (Caster's collab namespace as Basalisk keeps it, collab/v1: documents with revisions, conflicts and marks, so Desk and Basalisk share them) and the test helpers `module/moduletest` and `module/collab/collabtest`.

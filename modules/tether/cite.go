@@ -574,7 +574,7 @@ func casterDoc(ctx context.Context, c tetherlink.Caller, ref string, full bool) 
 	}
 	e := module.RefEntity{
 		Title: title, Subtitle: "Caster document", ChipLabel: "Caster: " + title,
-		Status: status(d.State), UpdatedAt: d.UpdatedAt,
+		Status: status(d.State), UpdatedAt: d.UpdatedAt, Open: casterOpen(ref),
 	}
 	switch {
 	case isJSON:
@@ -604,6 +604,33 @@ func casterDoc(ctx context.Context, c tetherlink.Caller, ref string, full bool) 
 		}
 	}
 	return e, nil
+}
+
+// casterOpen is the module that shows a Caster document as its own, by its namespace: a collab
+// diagram in Diagram, a collab draft in Drafts, Work's index ("work") and workspace namespaces
+// ("w-<slug>") in Work (work.open-ref). The page runs the command when the app has it and falls
+// back to the record window when it fails; scratch items and anything else with no window of
+// its own are shown in the record window.
+func casterOpen(ref string) *module.RefOpen {
+	rest := strings.TrimPrefix(ref, "caster://")
+	rest, _, _ = strings.Cut(rest, "@")
+	ns, name, _ := strings.Cut(rest, "/")
+	switch ns {
+	case "collab":
+		switch {
+		case strings.HasPrefix(name, "diagram.") && !strings.HasSuffix(name, ".marks"):
+			return &module.RefOpen{Command: "diagram.open", Args: map[string]any{"id": name}}
+		case strings.HasPrefix(name, "draft.") && !strings.HasSuffix(name, ".marks"):
+			return &module.RefOpen{Command: "drafts.open", Args: map[string]any{"id": name}}
+		}
+		return nil
+	case "work":
+		return &module.RefOpen{Command: "work.open-ref", Args: map[string]any{"ref": ref}}
+	}
+	if strings.HasPrefix(ns, "w-") { // a Work workspace's own namespace
+		return &module.RefOpen{Command: "work.open-ref", Args: map[string]any{"ref": ref}}
+	}
+	return nil
 }
 
 func stripFrontMatter(s string) string {

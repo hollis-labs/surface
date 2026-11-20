@@ -192,7 +192,6 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				m.st.sent(ctx, id, "status_ask", about, to)
 				m.h.Events().Publish("assist.activity", map[string]string{"kind": "status_ask"})
 				return map[string]any{"sent": id, "note": "The answer comes back to you with a later message."}, nil
 			}},
@@ -291,7 +290,6 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				m.st.sent(ctx, id, a.Kind, subject, to)
 				m.h.Events().Publish("assist.activity", map[string]string{"kind": "send"})
 				return map[string]any{"sent": id, "from": account, "note": "A reply to this comes back to you with a later message."}, nil
 			}},

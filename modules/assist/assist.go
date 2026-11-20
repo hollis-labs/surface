@@ -42,13 +42,17 @@ type mod struct {
 	// link replaces the configured client (tests).
 	link tetherlink.Caller
 
-	mu       sync.Mutex
-	namesMu  sync.Mutex
-	names    map[string]profile
-	lastHand time.Time
-	stop     context.CancelFunc
-	done     chan struct{}
-	unsub    func()
+	mu               sync.Mutex
+	namesMu          sync.Mutex
+	names            map[string]profile
+	lastHand         time.Time
+	stop             context.CancelFunc
+	done             chan struct{}
+	lifecycleDone    chan struct{}
+	lifecycleMu      sync.Mutex
+	lifecycleWarning string
+	alertMu          sync.Mutex
+	unsub            func()
 }
 
 const viewID = "assist"
@@ -114,6 +118,13 @@ func (m *mod) Start(ctx context.Context, h module.Host) error {
 		}
 		go m.answered(context.Background(), c)
 	})
+	h.Handle("GET /sent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		list, err := m.st.sentMessages(r.Context(), m.addresses())
+		m.lifecycleMu.Lock()
+		warning := m.lifecycleWarning
+		m.lifecycleMu.Unlock()
+		reply(w, map[string]any{"messages": list, "warning": warning}, err)
+	}))
 	h.Handle("GET /activity", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
 		list, err := m.st.recent(r.Context(), before, 100)
@@ -141,6 +152,8 @@ func (m *mod) Start(ctx context.Context, h module.Host) error {
 	}))
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.stop, m.done = cancel, make(chan struct{})
+	m.lifecycleDone = make(chan struct{})
+	go m.lifecycleLoop(run)
 	go m.loop(run)
 	return nil
 }
@@ -152,6 +165,7 @@ func (m *mod) Stop(context.Context) error {
 	if m.stop != nil {
 		m.stop()
 		<-m.done
+		<-m.lifecycleDone
 	}
 	return nil
 }
@@ -192,16 +206,21 @@ func (m *mod) box() (*mailbox, error) {
 			s.Timeout = 60 * time.Second
 		}
 	}
+	addrs := m.addresses()
+	if len(addrs) == 0 {
+		return nil, errors.New("the owner has no addresses: set assist.addresses in Settings")
+	}
+	return &mailbox{link: link, addresses: addrs, mu: &m.namesMu, names: m.names, track: m.trackSend}, nil
+}
+
+func (m *mod) addresses() []string {
 	var addrs []string
 	for _, a := range strings.Split(m.h.Config().String("addresses"), ",") {
 		if a = strings.TrimSpace(a); strings.HasPrefix(a, "msg://") {
 			addrs = append(addrs, a)
 		}
 	}
-	if len(addrs) == 0 {
-		return nil, errors.New("the owner has no addresses: set assist.addresses in Settings")
-	}
-	return &mailbox{link: link, addresses: addrs, mu: &m.namesMu, names: m.names}, nil
+	return addrs
 }
 
 func reply(w http.ResponseWriter, v any, err error) {

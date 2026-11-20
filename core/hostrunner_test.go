@@ -27,6 +27,9 @@ type fakeModel struct {
 	// next is what the next answers are instead of text: a tool to call, or "hold" (an
 	// answer that never ends).
 	next []string
+	// inputs, when set, are the uncached input tokens the n-th request (from 1) reports
+	// instead of 120.
+	inputs map[int]int
 }
 
 func (m *fakeModel) script(next ...string) {
@@ -46,13 +49,17 @@ func newFakeModel(t *testing.T) *fakeModel {
 		if len(m.next) > 0 {
 			next, m.next = m.next[0], m.next[1:]
 		}
+		in := 120
+		if v, ok := m.inputs[n]; ok {
+			in = v
+		}
 		m.mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
 		frame := func(typ, data string) {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, data)
 			w.(http.Flusher).Flush()
 		}
-		frame("message_start", `{"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}`)
+		frame("message_start", fmt.Sprintf(`{"type":"message_start","message":{"usage":{"input_tokens":%d,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}`, in))
 		switch next {
 		case "":
 		case "hold":

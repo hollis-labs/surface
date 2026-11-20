@@ -122,7 +122,11 @@ type Options struct {
 	Granted func(ctx context.Context, call Call) bool
 	// Seed is the text put ahead of the context on the first turn of a conversation's
 	// thread ("" for none): what the agent should know about the conversation before it.
-	Seed   func(ctx context.Context, conversationID string) string
+	Seed func(ctx context.Context, conversationID string) string
+	// Compacted, when set, is told when a conversation's thread was compacted: the size in
+	// tokens of its last request before, and of the first request after (0 when the run
+	// ended before one was sent). It must not block.
+	Compacted func(conversationID string, before, after int)
 	Logger *slog.Logger
 }
 

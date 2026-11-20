@@ -235,6 +235,9 @@ The assembler turns a selection into the `<context>` block that leads the owner'
   now (`Knowledge`);
 - the top-of-mind tools: the active slots' `Tools` that the app has;
 - the layout's standing instructions;
+- a `<standing changed>` section, while the standing instructions differ from what the host runner's system prompt
+  was built with (below);
+- one-line asks to keep state current (below);
 - a routed call, and reflex reminders.
 
 `Knowledge` runs on every message, so it must be quick. Each call has a 1.5 s timeout, and its output is cut to a
@@ -257,6 +260,42 @@ The agent keeps a short note per slot, saying where that work stands, with `cont
 whenever the slot is active, so the agent can pick the work up again later. `context_switch` pins a slot, or lists
 the slots when called with none. The panel shows the active slot, the top-of-mind tools and the block itself,
 updated live: the service publishes `agent.context` whenever the desk changes it.
+
+### Keeping state current
+
+The agent carries two kinds of state across turns, compactions and restarts: its note on each slot (above), and
+its **standing instructions**, the owner's rules for all work, in `context/standing.md` in the agent directory
+(`<agents.dir>/<app>`). Neither should drift.
+
+- `standing_get` (read) returns the text, and whether the system prompt has it yet. `standing_update` (write, so
+  the owner is asked unless they granted it) takes the whole new text and a `why`. It refuses empty text and text
+  over 16,000 characters, keeps the text it replaces in `context/.history/standing-<UTC time>.md` with a line in
+  `context/.history/standing.log` (time, kept file, lines added and removed, why), writes the file atomically,
+  publishes `agent.standing` and returns the changes. `.history` is a subdirectory, so the runner's
+  `context/*.md` does not read it. Both are top of mind in the general slot.
+- The host runner puts the agent directory in the system prompt when it opens, and the prompt is then fixed. It
+  remembers the standing text it opened with; while the file says something else, every turn's block carries
+  `<standing changed>` with the current text, or, over 6,000 characters, a pointer to `standing_get` and the
+  changed lines (at most 4,000 characters). Up to 6,500 characters of the section are left out of the block's
+  12,000 soft cap, so it does not push out what the modules know and the block stays under the runner's 20,000
+  clip. After a restart the prompt has the new text and the section stops. Nanite and the engine do not put the
+  agent directory in a fixed prompt, so they get no section.
+- **Note on leaving a slot.** When the owner's message lands in a different primary slot from their previous
+  message, the block asks once, in one line, for the note on the slot left to be brought up to date with
+  `context_note`. Errands and automatic turns neither ask nor count as the previous message. What the previous
+  slot was is kept in memory, so the first message after a restart does not ask.
+- **A note that may be behind.** When the primary slot's note is over 24 hours old and the trace has at least
+  five of the owner's messages in that slot since, the block says so in a line. With the trace off, it does not.
+- **After a compaction.** The host runner publishes `agent.compacted` (`{conversation_id, before, after}`, in
+  tokens) when it has summarized a thread's older turns. The seeded reflex `save-state` (event trigger on that
+  topic) reminds the agent, with the next message, to bring the slot note and standing up to date.
+- **When the owner sets a rule.** The seeded reflex `standing-rule` (text trigger on phrasing such as "from now
+  on", "going forward", "standing rule", "don't ever", or "always"/"never" opening a sentence) reminds the agent
+  to record the rule with `standing_update` in that turn and confirm it in a line.
+
+Both reflexes are seeded on and once, by a migration (`core/internal/reflex/migrations/0002_seed_keep_state.sql`):
+a reflex of the same name the owner already has is left as it is, and one the owner deletes is not put back.
+Change them like any other reflex.
 
 ### The context trace
 
@@ -455,6 +494,7 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 The agent's own tools:
 
 - `context_note`, `context_switch`;
+- `standing_get`, `standing_update`;
 - `agent_reflex_list`, `agent_reflex_put`, `agent_reflex_enable`, `agent_reflex_delete`;
 - `agent_rule_list`, `agent_rule_put`, `agent_rule_delete`.
 

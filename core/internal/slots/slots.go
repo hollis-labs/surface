@@ -32,7 +32,7 @@ var General = kernel.BoundSlot{Slot: module.Slot{
 	Name:  "general",
 	About: "whatever is in front of the owner",
 	Where: "the open windows (desk_windows) and what each shows (window_context); collaboration marks (marks_list)",
-	Tools: []string{"desk_windows", "desk_open", "desk_focus", "window_context", "desk_layout_list", "desk_run_command"},
+	Tools: []string{"desk_windows", "desk_open", "desk_focus", "window_context", "desk_layout_list", "desk_run_command", "standing_get", "standing_update"},
 }}
 
 // Selection is the slots active for a turn, the first being the primary one.

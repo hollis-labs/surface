@@ -175,6 +175,8 @@ type fixture struct {
 	ran     chan string
 	grants  map[string]bool
 	askTool string
+	// compactions are what Options.Compacted was told: "<conversation> <before> <after>".
+	compactions chan string
 }
 
 func newFixture(t *testing.T, db *sql.DB, compactAt int) *fixture {
@@ -198,7 +200,7 @@ func openFixture(t *testing.T, g *gateway, db *sql.DB, compactAt int) *fixture {
 	if err := os.WriteFile(key, []byte("test-key"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{t: t, g: g, db: db, ran: make(chan string, 8), grants: map[string]bool{}}
+	f := &fixture{t: t, g: g, db: db, ran: make(chan string, 8), grants: map[string]bool{}, compactions: make(chan string, 4)}
 	var mu sync.Mutex
 	tool := func(name, level string) Tool {
 		return Tool{Name: name, Description: "The " + name + " tool.", Level: level,
@@ -234,6 +236,9 @@ func openFixture(t *testing.T, g *gateway, db *sql.DB, compactAt int) *fixture {
 			return f.grants[c.Tool]
 		},
 		Seed: func(context.Context, string) string { return "" },
+		Compacted: func(conv string, before, after int) {
+			f.compactions <- fmt.Sprintf("%s %d %d", conv, before, after)
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -544,6 +549,18 @@ func TestCompaction(t *testing.T) {
 	}
 	if done["before"] != float64(605) || done["after"] != float64(150) {
 		t.Errorf("compaction sizes: %v", done)
+	}
+	// The host application is told too, once (Desk publishes agent.compacted from it).
+	select {
+	case got := <-f.compactions:
+		if got != "c1 605 150" {
+			t.Errorf("Compacted was told %q, want c1 605 150", got)
+		}
+	default:
+		t.Error("Compacted was not called")
+	}
+	if len(f.compactions) != 0 {
+		t.Errorf("Compacted was called %d more times", len(f.compactions))
 	}
 
 	reqs := f.g.requests()

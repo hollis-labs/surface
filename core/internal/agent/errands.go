@@ -20,7 +20,7 @@ const aroundTimeout = 1500 * time.Millisecond
 
 // extra is what goes into the context block beside the slots, before routing and reflexes.
 func (s *Service) extra(ctx context.Context, sit module.Situation) slots.Extra {
-	return slots.Extra{Instructions: s.layoutInstructions(ctx, sit), Around: s.around(ctx)}
+	return slots.Extra{Instructions: s.layoutInstructions(ctx, sit), Around: s.around(ctx), Standing: s.standingSection()}
 }
 
 // around reads every module's Around.

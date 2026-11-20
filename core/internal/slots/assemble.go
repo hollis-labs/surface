@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/core/internal/storage"
@@ -102,6 +103,10 @@ type Extra struct {
 	Routed       string
 	// Around is what the modules' Around said, already read and capped.
 	Around []AroundLine
+	// Limit, when above zero, is a hard cap on the block in bytes: the runner the block goes
+	// to has a fixed room for it and drops a block that does not fit, whole. Zero keeps the
+	// soft cap (budgetBlock characters), which only trims what the modules know.
+	Limit int
 }
 
 // AroundLine is one module's Around for this message.
@@ -166,10 +171,17 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 		}
 	}
 	a.Block = block(sit, a, extra)
+	over := func() int {
+		if extra.Limit > 0 {
+			return len(a.Block) - extra.Limit
+		}
+		return len([]rune(a.Block)) - budgetBlock
+	}
 	// Over the cap: drop what the modules know, the secondary slots' first, then trim the
-	// primary's. What is in front, the slots, the note and the reminders always stay.
-	for i := len(a.Slots) - 1; i >= 0 && len([]rune(a.Block)) > budgetBlock; i-- {
-		over := len([]rune(a.Block)) - budgetBlock
+	// primary's. Under the soft cap, what is in front, the slots, the note and the reminders
+	// always stay; under a hard Limit they give way too, in fitHard.
+	for i := len(a.Slots) - 1; i >= 0 && over() > 0; i-- {
+		over := over()
 		k := []rune(a.Slots[i].Knowledge)
 		if len(k) == 0 {
 			continue
@@ -183,7 +195,57 @@ func Assemble(ctx context.Context, sit module.Situation, sel Selection, tools []
 		}
 		a.Block = block(sit, a, extra)
 	}
+	if extra.Limit > 0 && over() > 0 {
+		fitHard(sit, &a, extra, over)
+	}
 	return a
+}
+
+// fitHard makes the block fit a hard Limit once the modules' knowledge is gone: the
+// modules' Around lines go (the last first), then the secondary slots' notes, then the
+// primary's note is clipped, and as a last resort the block is cut, with a marker, so it
+// is never dropped whole. Each step is recorded in Trimmed.
+func fitHard(sit module.Situation, a *Assembly, extra Extra, over func() int) {
+	for len(extra.Around) > 0 && over() > 0 {
+		last := extra.Around[len(extra.Around)-1]
+		extra.Around = extra.Around[:len(extra.Around)-1]
+		a.Around = extra.Around
+		a.Trimmed = append(a.Trimmed, "around:"+last.Module+":dropped")
+		a.Block = block(sit, *a, extra)
+	}
+	for i := len(a.Slots) - 1; i >= 0 && over() > 0; i-- {
+		n := []rune(a.Slots[i].Note)
+		if len(n) == 0 {
+			continue
+		}
+		if i > 0 || over() >= len(string(n)) {
+			a.Slots[i].Note = ""
+			a.Trimmed = append(a.Trimmed, a.Slots[i].Name+":note:dropped")
+		} else {
+			a.Slots[i].Note = clipBytes(string(n), len(string(n))-over()-8)
+			a.Trimmed = append(a.Trimmed, a.Slots[i].Name+":note:trimmed")
+		}
+		a.Block = block(sit, *a, extra)
+	}
+	if over() > 0 {
+		const tail = "\n…(context cut to fit)\n</context>"
+		a.Block = clipBytes(a.Block, extra.Limit-len(tail)) + tail
+		a.Trimmed = append(a.Trimmed, "block:cut")
+	}
+}
+
+// clipBytes cuts s to at most n bytes, on a character boundary.
+func clipBytes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func block(sit module.Situation, a Assembly, extra Extra) string {

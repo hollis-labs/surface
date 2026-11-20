@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.4.1] - 2026-11-20
+
+- **The npm packages carry the version.** 0.4.0 was tagged without the package version bump, so its npm packages
+  were not published; 0.4.1 is 0.4.0 with `@hollis-labs/surface-*` at 0.4.1. No code change.
+
 ## [0.4.0] - 2026-11-20
 
 - **The agent runs on Nanite v0.7.0, and libs agent/host is gone.** With no `SURFACE_AGENT_RUNNER` set and a

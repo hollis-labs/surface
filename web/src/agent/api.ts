@@ -65,6 +65,8 @@ export interface ProfileState {
 }
 
 export interface Setup {
+  /** Whether the embedded Nanite runner bypasses approval asks (testing only). */
+  auto_approve?: boolean
   ready: boolean
   model: string
   config_path: string

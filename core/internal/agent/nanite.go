@@ -205,6 +205,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			Builtins:          groups,
 			MaxOutputTokens:   c.MaxTokens,
 			MaxSteps:          c.MaxSteps,
+			AutoApprove:       c.AutoApprove,
 			CompactAt:         compact,
 			CompactKeepTokens: keep,
 			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: contextBudget},
@@ -250,7 +251,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			"needed_tokens", needed, "budget_tokens", available, "turn_tokens", naniteContextTokens)
 	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
-		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget)
+		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget, "auto_approve", c.AutoApprove)
 	return r, nil
 }
 

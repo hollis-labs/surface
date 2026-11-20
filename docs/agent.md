@@ -56,6 +56,8 @@ Then restart the app. `system` adds standing instructions. Nanite runtime settin
 `host.yaml`, including `runtime.max_output_tokens`, `max_steps`, and `compact_at` (tokens before older turns are
 summarised). Positive `max_tokens` and `max_steps` in `agent.json` override Nanite's output-token and step limits; zero leaves the authored/default runtime limits in effect.
 
+For testing, `auto_approve: true` in `agent.json` bypasses Nanite approval asks, including host-tool asks. It defaults to false and takes effect on restart. Explicit denies and Warden access checks still apply; automatic approvals do not persist grants. The startup log and `/api/agent/setup` expose `auto_approve`. Only the owner should opt a seat into this mode. The wire emits `auto-approved` activities; the panel does not yet render those activities.
+
 Surface reserves 2,000 tokens for its per-turn context block, plus room for the seat's context files and the largest loaded module profile. Profile facts do not compete with the turn block for that allowance.
 
 - `gateway_url` is an Anthropic-compatible endpoint. Nanite posts to `<gateway_url>/v1/messages`.

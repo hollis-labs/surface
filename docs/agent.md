@@ -35,10 +35,9 @@ type Engine interface {
 }
 ```
 
-Today the engine is `github.com/hollis-labs/libs/agent/host`. It runs the model loop, keeps the thread in the core
-database (its `agenthost_*` tables), asks for approvals, compacts long threads and serves the run streams. Its wire
-is `agent-host/1`, which the page's `packages/chat` client speaks. The direction is Nanite's embeddable
-package. When it ships, it becomes a second `Engine`, and nothing above the seam changes.
+Embedded agents use `nanite/chatrunner` on the durable conversation wire. Nanite owns the model loop,
+approvals, compaction, and model history; Surface owns `chat.db`, context assembly, routing, and app tools.
+`Engine` remains an optional injection seam for custom integrations and tests. No legacy runtime is constructed.
 
 Every tool is a server tool. The page declares none and runs none: the desk is the server's, so a tool that arranges
 windows changes server state that the page draws. The same tools are offered to outside agents at `/mcp` and
@@ -67,15 +66,14 @@ $EDITOR ~/.config/desk/agent.json          # the three fields above
 printf '%s' "$YOUR_KEY" > ~/.config/desk/agent-key && chmod 600 ~/.config/desk/agent-key
 ```
 
-Then restart the app. Optional fields: `system` (extra standing instructions), `max_tokens` (default 8192),
-`max_steps` (tool rounds per message, default 24) and `compact_at` (thread size in tokens before older turns are
+Then restart the app. `system` adds standing instructions. Nanite runtime settings belong in the agent directory's
+`host.yaml`, including `runtime.max_output_tokens`, `max_steps`, and `compact_at` (tokens before older turns are
 summarised).
 
 - `gateway_url` is an Anthropic-compatible endpoint. The engine posts to `<gateway_url>/v1/messages`.
 - `key_file` holds the bearer key. It is read on every request, so it can be rotated without a restart. The key
   never reaches the page.
-- `mcp` is reserved for outside MCP servers whose tools the agent should get. The engine does not speak MCP as a
-  client yet.
+- Configure outside MCP servers in the Nanite agent directory's `.mcp.json`; the old agent.json `mcp` field is reserved.
 - For a development run, `SURFACE_AGENT_GATEWAY`, `SURFACE_AGENT_MODEL` and `SURFACE_AGENT_KEY_FILE` override
   single fields.
 
@@ -235,8 +233,6 @@ The assembler turns a selection into the `<context>` block that leads the owner'
   now (`Knowledge`);
 - the top-of-mind tools: the active slots' `Tools` that the app has;
 - the layout's standing instructions;
-- a `<standing changed>` section, while the standing instructions differ from what the host runner's system prompt
-  was built with (below);
 - one-line asks to keep state current (below);
 - a routed call, and reflex reminders.
 
@@ -273,20 +269,15 @@ its **standing instructions**, the owner's rules for all work, in `context/stand
   `context/.history/standing.log` (time, kept file, lines added and removed, why), writes the file atomically,
   publishes `agent.standing` and returns the changes. `.history` is a subdirectory, so the runner's
   `context/*.md` does not read it. Both are top of mind in the general slot.
-- The host runner puts the agent directory in the system prompt when it opens, and the prompt is then fixed. It
-  remembers the standing text it opened with; while the file says something else, every turn's block carries
-  `<standing changed>` with the current text, or, over 6,000 characters, a pointer to `standing_get` and the
-  changed lines (at most 4,000 characters). Up to 6,500 characters of the section are left out of the block's
-  12,000 soft cap, so it does not push out what the modules know and the block stays under the runner's 20,000
-  clip. After a restart the prompt has the new text and the section stops. Nanite and the engine do not put the
-  agent directory in a fixed prompt, so they get no section.
+- Nanite reloads the authored agent directory for each turn, so updated standing instructions reach the next
+  request without a restart. It does not need a `<standing changed>` overlay.
 - **Note on leaving a slot.** When the owner's message lands in a different primary slot from their previous
   message, the block asks once, in one line, for the note on the slot left to be brought up to date with
   `context_note`. Errands and automatic turns neither ask nor count as the previous message. What the previous
   slot was is kept in memory, so the first message after a restart does not ask.
 - **A note that may be behind.** When the primary slot's note is over 24 hours old and the trace has at least
   five of the owner's messages in that slot since, the block says so in a line. With the trace off, it does not.
-- **After a compaction.** The host runner publishes `agent.compacted` (`{conversation_id, before, after}`, in
+- **After a compaction.** Nanite publishes `agent.compacted` (`{conversation_id, before, after}`, in
   tokens) when it has summarized a thread's older turns. The seeded reflex `save-state` (event trigger on that
   topic) reminds the agent, with the next message, to bring the slot note and standing up to date.
 - **When the owner sets a rule.** The seeded reflex `standing-rule` (text trigger on phrasing such as "from now
@@ -536,50 +527,8 @@ library's handler under `/api/agent` and supplies what varies:
 | The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
 | Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
 
-It defaults to Nanite when `SURFACE_AGENT_RUNNER` is unset. Explicit choices are `host`, `nanite` or `scripted`.
+It defaults to Nanite when `SURFACE_AGENT_RUNNER` is unset. Explicit choices are `nanite` or `scripted`; `host` is rejected.
 An unconfigured app remains usable without opening a model.
-
-### `host`: the app's agent on libs agent/host (Basalisk's runtime)
-
-`SURFACE_AGENT_RUNNER=host` runs the app's agent on `github.com/hollis-labs/libs/agent/host`, the runtime
-Basalisk ran on, behind the conversation wire (`core/internal/agent/hostrunner`, wired in
-`core/internal/agent/hostwire.go`). Everything the wire does stays: late card answers, module errands
-(`Host.Agent().Ask`), the multi-window input lease, the run log, approvals in the chat.
-
-What it does with context, as Basalisk did:
-
-- **The system prompt is fixed**: Surface's own, then the config's `system`. Nothing per turn goes in it.
-- **The context block goes in front of the owner's message**, in the same stored message. The history the model
-  is sent is then the same, byte for byte, from one request to the next, and the provider's cache holds. The block
-  is not capped to a slot's size (`contextLimit` is 0); it is clipped at 20,000 characters, as the host clips its
-  own, since it is stored in every turn.
-- **Compaction**: when the thread's last request passed `compact_at` tokens (default 110,000, Basalisk's; negative
-  turns it off), the older part is summarized once and the model is sent the summary, then the recent turns whole.
-  Nothing is deleted. The panel is told (`host.compact`, with `before` and `after` in tokens).
-  `compact_at` must exceed what every request carries anyway (the tool definitions and the system prompt, plus the
-  summary and the turns compaction keeps) by a clear margin. When compacting would gain under a tenth (the thread
-  is within 10% of the smallest request it has sent, or of the size the last compaction left), the runner skips it
-  and logs a warning instead of summarizing on every turn.
-
-| What | Where it comes from |
-|---|---|
-| Model, gateway, key | The app's agent config: `model`, `gateway_url`, `key_file` |
-| `max_tokens`, `max_steps`, `compact_at` | The app's agent config (defaults 8192, 24, 110,000) |
-| The thread | One host thread per conversation (host owner `chat:<conversation id>`), in the host's `agenthost_*` tables in the core database. Its id is the conversation's `runner_ref`. A restart resumes it, summary included |
-| Tools | The app's tools, run in the app, with their levels: `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time. A call may take 5 minutes, or 70 for a tool that waits for the owner (one that takes `timeout_seconds`: `card_ask`, `genui_show`, `design_approve`); one that runs out is given up and the model told. Every call stops with the run |
-| Ask first, standing approvals | As for `nanite`: a routing rule's ask-first, and `agent_grants` read before asking |
-| Usage | Uncached input, cache reads and cache writes, per model request (the summary's included), in the run log |
-| A turn the host answers (a halting reflex) | Recorded in the thread |
-
-Usage is read on its way from the gateway: the host's model client reaches the gateway through a loopback port in
-the app that passes every request through unchanged and notes the usage the gateway reports, which the host itself
-sums into one number. The host's run events are read from its own handler, in process.
-
-**Moving a conversation over from `nanite`.** The host thread starts fresh: Nanite's transcript is not imported.
-The first turn of a thread on a conversation that already had runs carries a short note ahead of the context
-block: the earlier messages are in the conversation's transcript (the owner can scroll back through it), and what
-carries over is in the context block (the slot notes and the slot's standing instructions). Nanite's store under
-`<data dir>/agents/<app>/` is left as it is, so switching back to `nanite` finds it again.
 
 ### `nanite`: the app's agent as a Nanite agent
 
@@ -630,3 +579,8 @@ after the service is ready, exposing interrupted turns for owner action. Success
 activities publish `agent.compacted` on the app bus. Nanite steering matches live Surface reflexes;
 Surface performs their command/tool actions and records firing counts. Event and focus reflexes use
 Nanite's conversation steering, and compaction reflexes run once from Nanite's own event.
+
+When a conversation last used a host thread, Surface selects a fresh Nanite history while keeping its
+chat ID and transcript. The first model turn says earlier messages remain in that transcript and points
+to the slot notes and standing instructions. The saved runner reference preserves the new history across
+restarts. No old model history, `agenthost_*` tables, or `chat.db` transcript records are deleted.

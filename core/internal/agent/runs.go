@@ -6,7 +6,6 @@ import (
 	"iter"
 
 	"github.com/hollis-labs/libs/agent/chat"
-	"github.com/hollis-labs/libs/agent/host"
 	chatstream "github.com/hollis-labs/libs/ui/ui-go/chatstream"
 	"github.com/hollis-labs/nanite/chatrunner"
 )
@@ -17,8 +16,7 @@ import (
 //	agent.run.started  {run_id}
 //	agent.run.ended    {run_id, status, reason}   status: finished | canceled | failed
 //
-// Neither engine offers a hook for this, so each is watched through what Surface hands it:
-// the store the host engine keeps its runs in, and the runner the conversation wire drives.
+// Surface watches the conversation runner and runner-initiated recovery/notice runs.
 
 // Run statuses as the bus carries them.
 const (
@@ -26,14 +24,6 @@ const (
 	RunCanceled = "canceled"
 	RunFailed   = "failed"
 )
-
-// runWatch is what an engine calls as its runs start and end.
-type runWatch struct {
-	started func(id string)
-	ended   func(id, status, reason string)
-}
-
-func (s *Service) watch() runWatch { return runWatch{started: s.runStarted, ended: s.runEnded} }
 
 // runStarted and runEnded publish a run's start and end.
 func (s *Service) runStarted(id string) {
@@ -43,34 +33,6 @@ func (s *Service) runStarted(id string) {
 func (s *Service) runEnded(id, status, reason string) {
 	s.k.Events().Publish("agent.run.ended", map[string]any{"run_id": id, "status": status, "reason": reason})
 	s.signal(context.Background(), "run_end", map[string]string{"run_id": id, "status": status})
-}
-
-// watchedStore is the host engine's store, announcing each run's start and end.
-type watchedStore struct {
-	host.Store
-	started func(id string)
-	ended   func(id, status, reason string)
-}
-
-func (w watchedStore) StartRun(ctx context.Context, id, thread, owner, model string) error {
-	err := w.Store.StartRun(ctx, id, thread, owner, model)
-	if err == nil {
-		w.started(id)
-	}
-	return err
-}
-
-func (w watchedStore) FinishRun(ctx context.Context, id string, end host.RunEnd) error {
-	err := w.Store.FinishRun(ctx, id, end)
-	status := RunFinished
-	switch end.Status {
-	case "cancelled": //nolint:misspell // the host library's own word for it
-		status = RunCanceled
-	case "error":
-		status = RunFailed
-	}
-	w.ended(id, status, end.Reason)
-	return err
 }
 
 // watchedRunner is the conversation wire's runner, announcing each run's start and its

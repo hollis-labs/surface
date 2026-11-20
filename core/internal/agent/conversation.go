@@ -19,7 +19,6 @@ import (
 
 	"github.com/hollis-labs/nanite/chatrunner"
 
-	"github.com/hollis-labs/surface/core/internal/agent/hostrunner"
 	"github.com/hollis-labs/surface/core/internal/reflex"
 	"github.com/hollis-labs/surface/core/internal/router"
 	"github.com/hollis-labs/surface/core/internal/slots"
@@ -33,10 +32,7 @@ import (
 // a turn before it runs (the router, the reflexes and the context block: Intercept), and
 // where a standing approval is kept (Grants).
 //
-// It is on when a runner for it is chosen (SURFACE_AGENT_RUNNER): "host", the app's agent on
-// libs agent/host with the app's tools (hostwire.go); "nanite", the app's agent as a Nanite
-// agent with the app's tools (nanite.go); or "scripted", the library's test runner, which
-// plays fixed scripts and runs no tools. With no runner chosen, Nanite is the default.
+// Nanite is the default; scripted plays fixed scripts without a model for tests.
 
 // RunnerScripted names the library's scripted test runner.
 const RunnerScripted = "scripted"
@@ -48,7 +44,6 @@ type wire struct {
 	handler  http.Handler
 	scripted *chattest.Scripted
 	nanite   *chatrunner.Runner
-	host     *hostrunner.Runner
 	// asks is the tool a routing rule marked ask-first, for the turn in progress.
 	asks asks
 	// agent is the one agent name this app serves on the wire.
@@ -67,8 +62,8 @@ func runnerChoice() string {
 
 // openWire builds the conversation wire for a chosen runner.
 func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
-	if runner != RunnerScripted && runner != RunnerNanite && runner != RunnerHost {
-		return nil, fmt.Errorf("agent: no runner %q for the conversation wire (known: %s, %s, %s)", runner, RunnerHost, RunnerNanite, RunnerScripted)
+	if runner != RunnerScripted && runner != RunnerNanite {
+		return nil, fmt.Errorf("agent: no runner %q for the conversation wire (known: %s, %s)", runner, RunnerNanite, RunnerScripted)
 	}
 	st, err := sqlitestore.Open(ctx, filepath.Join(s.k.DataDir(), "chat.db"))
 	if err != nil {
@@ -86,13 +81,7 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 			_ = st.Close()
 			return nil, err
 		}
-		run = w.nanite
-	case RunnerHost:
-		if w.host, err = s.openHostRunner(ctx, w); err != nil {
-			_ = st.Close()
-			return nil, err
-		}
-		run = w.host
+		run = naniteWireRunner{Runner: w.nanite, wire: w}
 	default:
 		w.scripted = chattest.NewScripted(chattest.WithDelay(scriptDelay()))
 		run = w.scripted
@@ -157,9 +146,6 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 func closeRunnerNow(w *wire) {
 	if w.nanite != nil {
 		_ = w.nanite.Close()
-	}
-	if w.host != nil {
-		_ = w.host.Close()
 	}
 }
 
@@ -345,9 +331,6 @@ func (s *Service) priorMessages(ctx context.Context, conversation string) []libr
 		if s.wire.nanite != nil && conversation != "" {
 			return s.wire.naniteHistory(ctx, conversation)
 		}
-		if s.wire.host != nil && conversation != "" {
-			return s.wire.hostHistory(ctx, conversation)
-		}
 		return nil // the scripted runner keeps no history
 	}
 	var prior []libreflex.MessageSignal
@@ -463,8 +446,7 @@ const naniteContextBytes = naniteContextTokens*4 - 200
 // 0 when the runner has no fixed room for it. The config's extra standing instructions go
 // in front of the block, in the same slot, so they come out of the room.
 //
-// The host runner has none: the block goes in front of the owner's message, whole, and the
-// thread's size is kept in hand by compaction (compact_at), not by cutting the block.
+// Custom and scripted engines have no Nanite context-slot cap.
 func (s *Service) contextLimit() int {
 	if s.wire == nil || s.wire.nanite == nil {
 		return 0

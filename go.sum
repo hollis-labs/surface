@@ -55,8 +55,6 @@ github.com/hollis-labs/libs/agent/core v0.5.0 h1:bk2GAHef+lH5ihYKBnQpir5SZoeRNTp
 github.com/hollis-labs/libs/agent/core v0.5.0/go.mod h1:AHtYM1ZFiaAVnPQYaZjJrI8trpmwomFMPknACIUe+4Y=
 github.com/hollis-labs/libs/agent/desk v0.1.0 h1:FwwMKVy1yvgDwkeLoEsKWfqQRL5KJ2+1BnolFXwcQ1I=
 github.com/hollis-labs/libs/agent/desk v0.1.0/go.mod h1:qxS+mHoXWnjobirZGKqea8BroZs03RMImfU86SAMx0U=
-github.com/hollis-labs/libs/agent/host v0.1.1 h1:Km0qQ80OT4JwKQYvsuwAG0LZ+zyy/EHKR9Ry4/zmqq4=
-github.com/hollis-labs/libs/agent/host v0.1.1/go.mod h1:Z981TUICLLhbLZWheR3gLA4lVLfPbmQKCqyOGO6qbuU=
 github.com/hollis-labs/libs/agent/steer v0.1.0 h1:iMyWB2DKCMbCa7HDM1o0Pt8iQsVGxiQYvahT2wwRiGQ=
 github.com/hollis-labs/libs/agent/steer v0.1.0/go.mod h1:Eavm25W01c62JU6vUMqmrXecU/fd8phZwQeOVbebB6w=
 github.com/hollis-labs/libs/agent/trace v0.2.0 h1:02DO98Er1J5lKrvEP2Gt5BXpvcjgOAuzwFL8GevcVAg=

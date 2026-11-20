@@ -156,8 +156,7 @@ under the app's data directory (`agents/<app>.staged/`), and before each turn Su
 with the profile laid over it: the seat's `agent.md` with the profile's instructions after it under `## Profile: <title>`,
 the profile's context as `context/profile.<name>.md`, its skills, variants and tool packages beside (replacing) the
 seat's. The owner's seat directory is never changed. The run log records which profile each run acted as (`profile`:
-the module's id, or `default`). On the host runner profiles are off: every turn is the seat, and the app says so in
-its log.
+the module's id, or `default`). Profiles are off on the scripted test runner.
 
 **Checking it.** `core/internal/agent/profile` loads a profile as the app will (libs agentdir over the profile beside
 a stand-in `host.yaml`, then Nanite's `agent/authored` validators for variants and tool packages, and steer's for

@@ -8,7 +8,6 @@ require (
 	github.com/hollis-labs/libs/agent/agentdir v0.3.0
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
-	github.com/hollis-labs/libs/agent/host v0.1.1
 	github.com/hollis-labs/libs/agent/steer v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
 	github.com/hollis-labs/libs/llm/core v0.4.0

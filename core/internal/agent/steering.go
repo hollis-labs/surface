@@ -68,6 +68,10 @@ func (s *Service) steerHostEvent(ctx context.Context, topic, focus string) {
 	if err != nil {
 		return
 	}
+	if err := w.ensureNaniteConversation(ctx, id); err != nil {
+		s.log.Warn("event conversation initialization failed", "err", err)
+		return
+	}
 	if topic != TopicCompacted {
 		fired, err := w.nanite.SteerEvent(ctx, id, topic)
 		if err != nil {

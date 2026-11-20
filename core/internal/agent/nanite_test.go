@@ -136,13 +136,13 @@ func TestAskFirstCoversOneToolForTheTurnInProgress(t *testing.T) {
 
 func TestNaniteCompactionFallbackPreservesAuthoredValues(t *testing.T) {
 	for _, tt := range []struct {
-		name, settings string
-		compact, keep  int
+		name, settings                                 string
+		compact, keep, effectiveCompact, effectiveKeep int
 	}{
-		{"missing", "", 110000, 22000},
-		{"authored", "  compact_at: 18000\n  compact_keep_tokens: 6000\n", 0, 0},
-		{"threshold_only", "  compact_at: 90000\n", 0, 22000},
-		{"keep_only", "  compact_keep_tokens: 6000\n", 110000, 0},
+		{"missing", "", 110000, 22000, 110000, 22000},
+		{"authored", "  compact_at: 18000\n  compact_keep_tokens: 6000\n", 0, 0, 18000, 6000},
+		{"threshold_only", "  compact_at: 90000\n", 0, 22000, 90000, 22000},
+		{"keep_only", "  compact_keep_tokens: 6000\n", 110000, 0, 110000, 6000},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "seat")
@@ -153,9 +153,12 @@ func TestNaniteCompactionFallbackPreservesAuthoredValues(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "host.yaml"), []byte(host), 0600); err != nil {
 				t.Fatal(err)
 			}
-			compact, keep, err := naniteCompactionFallback(dir)
+			compact, keep, effectiveCompact, effectiveKeep, err := naniteCompactionFallback(dir)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if effectiveCompact != tt.effectiveCompact || effectiveKeep != tt.effectiveKeep {
+				t.Fatalf("effective settings = %d/%d, want %d/%d", effectiveCompact, effectiveKeep, tt.effectiveCompact, tt.effectiveKeep)
 			}
 			if compact != tt.compact || keep != tt.keep {
 				t.Fatalf("fallback options = %d/%d, want %d/%d", compact, keep, tt.compact, tt.keep)

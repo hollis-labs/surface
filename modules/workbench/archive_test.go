@@ -19,7 +19,7 @@ func TestExportImportRoundTripKeepsTheDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := m.lib.Tree("trip")
-	data, name, err := m.export("trip")
+	data, name, _, err := m.export("trip")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestExportImportRoundTripKeepsTheDigest(t *testing.T) {
 	agentDir, _ := m.lib.AgentDir("trip")
 	_ = os.MkdirAll(filepath.Join(agentDir, ".nanite"), 0o700)
 	_ = os.WriteFile(filepath.Join(agentDir, ".nanite", "nanite.db"), []byte("state"), 0o600)
-	data, _, _ = m.export("trip")
+	data, _, _, _ = m.export("trip")
 	if bytes.Contains(gunzip(t, data), []byte("nanite.db")) {
 		t.Fatal(".nanite exported")
 	}

@@ -175,8 +175,12 @@ type Runner struct {
 	gateway func(ctx context.Context) (module.Gateway, error)
 	now     func() time.Time
 
-	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	// childExe is the binary eval children are started from; empty: this process's own.
+	childExe string
+
+	mu       sync.Mutex
+	running  map[string]context.CancelFunc
+	children map[string]int // run id -> eval child's pid
 	// wg tracks runs in progress, so a test (or Stop) can wait for them.
 	wg sync.WaitGroup
 }
@@ -301,10 +305,13 @@ type Estimate struct {
 	// add one request each.
 	Tokens int `json:"tokens"`
 	// Caps are the bounds a run starts with (the settings, unless the request names lower).
-	Caps     Caps   `json:"caps"`
-	Gateway  string `json:"gateway"`
-	Ready    bool   `json:"ready"`
-	NotReady string `json:"not_ready,omitempty"`
+	Caps Caps `json:"caps"`
+	// WorstUSD is the estimate priced at nanite/evals' conservative price, and never more
+	// than the dollar cap: what the run is expected to cost at most.
+	WorstUSD float64 `json:"worst_usd"`
+	Gateway  string  `json:"gateway"`
+	Ready    bool    `json:"ready"`
+	NotReady string  `json:"not_ready,omitempty"`
 }
 
 func (x *Runner) caps(want Caps) Caps {
@@ -399,12 +406,15 @@ func (x *Runner) Estimate(ctx context.Context, id, suiteName string, want Caps) 
 			size += len(f) / 4
 		}
 		e.Tokens += requests*(prompt+size) + requests*outAllowance
+		e.WorstUSD += (float64(requests*(prompt+size))*15 + float64(requests*outAllowance)*75) / 1e6
 		for _, g := range c.Graders {
 			if g.Kind() == "rubric" {
 				e.Tokens += 800 + len(g.Rubric)/4
+				e.WorstUSD += (float64(600+len(g.Rubric)/4)*15 + 200*75) / 1e6
 			}
 		}
 	}
+	e.WorstUSD = min(e.WorstUSD, e.Caps.MaxUSD)
 	return e, nil
 }
 
@@ -586,7 +596,9 @@ func (x *Runner) Cancel(runID string) bool {
 // Wait waits for every run in progress.
 func (x *Runner) Wait() { x.wg.Wait() }
 
-func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw module.Gateway) Run {
+// executeSuite runs a suite and grades it. It runs in the eval child process only
+// (child.go): nanite/evals changes the working directory for each case.
+func executeSuite(ctx context.Context, rt Runtime, run Run, s Suite, t Tree, gw module.Gateway, progress func(caseID string)) Run {
 	meter := &usageMeter{budget: run.Caps.RunTokens}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -603,10 +615,10 @@ func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw modul
 		}
 		recorders[c.ID] = rec
 	}
-	out, err := x.rt.RunSuite(ctx, RunSpec{Tree: t, Suite: s, Model: run.Model, MaxUSD: run.Caps.MaxUSD, TurnTokens: run.Caps.TurnTokens,
-		Timeout:  10 * time.Minute,
+	out, err := rt.RunSuite(ctx, RunSpec{Tree: t, Suite: s, Model: run.Model, MaxUSD: run.Caps.MaxUSD, TurnTokens: run.Caps.TurnTokens,
+		Timeout: 10 * time.Minute, Progress: progress,
 		Provider: func(caseID string) llmcontracts.Provider { return recorders[caseID] }})
-	run.Finished = x.now().UTC().Format(time.RFC3339)
+	run.Finished = time.Now().UTC().Format(time.RFC3339)
 	if err != nil {
 		run.Status, run.Stopped = "failed", scrub(err.Error())
 		return run
@@ -654,7 +666,7 @@ func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw modul
 					continue
 				}
 				spent += worst
-				gr := x.rubric(ctx, judge, run.Model, c, g.Rubric, co.Answer)
+				gr := rubric(ctx, judge, run.Model, c, g.Rubric, co.Answer)
 				cr.Graders = append(cr.Graders, gr)
 				if !gr.Pass {
 					cr.Pass = false
@@ -701,7 +713,7 @@ func (x *Runner) execute(ctx context.Context, run Run, s Suite, t Tree, gw modul
 const rubricPrompt = `You grade one answer of an AI agent against a rubric. Read the task, the answer and the rubric. Reply with one line: PASS or FAIL, a colon, and one sentence saying why.`
 
 // rubric asks the model whether an answer meets a rubric.
-func (x *Runner) rubric(ctx context.Context, p llmcontracts.Provider, model string, c Case, rubric, answer string) GraderResult {
+func rubric(ctx context.Context, p llmcontracts.Provider, model string, c Case, rubric, answer string) GraderResult {
 	r := GraderResult{Kind: "rubric"}
 	req := llmtypes.ChatRequest{Model: model, MaxTokens: 200, SystemPrompt: rubricPrompt, Messages: []llmtypes.ChatMessage{{Role: "user",
 		Content: fmt.Sprintf("Task:\n%s\n\nAnswer:\n%s\n\nRubric:\n%s", c.Turns[len(c.Turns)-1], answer, rubric)}}}
@@ -781,4 +793,28 @@ func (x *Runner) Compare(agent, a, b string) (Comparison, error) {
 		}
 	}
 	return cmp, nil
+}
+
+// recoverRuns marks runs left "running" by an app that stopped as interrupted.
+func (x *Runner) recoverRuns() {
+	agents, err := x.lib.List()
+	if err != nil {
+		return
+	}
+	for _, a := range agents {
+		runs, _ := x.Runs(a.ID)
+		for _, ri := range runs {
+			if ri.Status != "running" {
+				continue
+			}
+			r, err := x.GetRun(a.ID, ri.ID)
+			if err != nil {
+				continue
+			}
+			r.Status, r.Stopped = "interrupted", "the app stopped while the run was going"
+			if err := x.saveRun(r); err != nil {
+				x.h.Log().Warn("workbench: run not marked interrupted", "run", r.ID, "err", err)
+			}
+		}
+	}
 }

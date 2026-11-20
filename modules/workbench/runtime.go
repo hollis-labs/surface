@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"testing/fstest"
 	"time"
 
 	"github.com/hollis-labs/libs/agent/agentdir"
@@ -52,6 +51,8 @@ type RunSpec struct {
 	TurnTokens int
 	// Timeout bounds one case.
 	Timeout time.Duration
+	// Progress, when set, is told each case's id once it is graded.
+	Progress func(caseID string)
 }
 
 // RunOutput is what a suite run produced.
@@ -129,30 +130,52 @@ func canonicalHost(raw []byte) ([]byte, error) {
 	return out, nil
 }
 
-// scenarioFiles is one case as nanite/evals takes it: the agent's files (without .mcp.json:
-// no MCP server is started in an eval), the case's fixtures, task.md and prelude.txt.
-func scenarioFiles(t Tree, c Case) (fs.FS, error) {
-	m := fstest.MapFS{}
+// scenarioFiles writes one case as nanite/evals takes it into dir and returns it as an
+// fs.FS: the agent's files (without .mcp.json: no MCP server is started in an eval), the
+// case's fixtures, task.md and prelude.txt.
+//
+//nolint:gosec // dir is the run's own temporary directory; paths are authored or checked fixture paths
+func scenarioFiles(dir string, t Tree, c Case) (fs.FS, error) {
+	write := func(rel string, data []byte) error {
+		target := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o600)
+	}
 	for _, p := range t.Paths() {
-		if !agentPath(p) || p == ".mcp.json" {
+		if !agentPath(p) || p == ".mcp.json" || p == "host.yaml" {
 			continue
 		}
-		m[p] = &fstest.MapFile{Data: t[p], Mode: 0o600}
+		if err := write(p, t[p]); err != nil {
+			return nil, err
+		}
 	}
 	host, err := canonicalHost(t["host.yaml"])
 	if err != nil {
 		return nil, fmt.Errorf("host.yaml: %w", err)
 	}
-	m["host.yaml"] = &fstest.MapFile{Data: host, Mode: 0o600}
+	if err := write("host.yaml", host); err != nil {
+		return nil, err
+	}
 	for p, body := range c.Fixtures {
-		m[p] = &fstest.MapFile{Data: []byte(body), Mode: 0o600}
+		if !safeRel(p) {
+			return nil, fmt.Errorf("fixture %q is not a workspace path", p)
+		}
+		if err := write(p, []byte(body)); err != nil {
+			return nil, err
+		}
 	}
 	turns := c.Turns
-	m["task.md"] = &fstest.MapFile{Data: []byte(turns[len(turns)-1] + "\n"), Mode: 0o600}
-	if len(turns) > 1 {
-		m["prelude.txt"] = &fstest.MapFile{Data: []byte(strings.Join(turns[:len(turns)-1], "\n") + "\n"), Mode: 0o600}
+	if err := write("task.md", []byte(turns[len(turns)-1]+"\n")); err != nil {
+		return nil, err
 	}
-	return m, nil
+	if len(turns) > 1 {
+		if err := write("prelude.txt", []byte(strings.Join(turns[:len(turns)-1], "\n")+"\n")); err != nil {
+			return nil, err
+		}
+	}
+	return os.DirFS(dir), nil
 }
 
 type caseState struct {
@@ -178,8 +201,13 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 	}
 	states := map[string]*caseState{}
 	var scenarios []evals.Scenario
+	staging, err := os.MkdirTemp("", "workbench-scenarios-")
+	if err != nil {
+		return RunOutput{}, err
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
 	for _, c := range spec.Suite.Cases {
-		files, err := scenarioFiles(spec.Tree, c)
+		files, err := scenarioFiles(filepath.Join(staging, c.ID), spec.Tree, c)
 		if err != nil {
 			return RunOutput{}, err
 		}
@@ -236,6 +264,9 @@ func (r *naniteRuntime) RunSuite(ctx context.Context, spec RunSpec) (RunOutput, 
 						pass = false
 						why = append(why, gr.Detail)
 					}
+				}
+				if spec.Progress != nil {
+					spec.Progress(c.ID)
 				}
 				return pass, strings.Join(why, "; ")
 			},

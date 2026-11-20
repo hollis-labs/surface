@@ -42,6 +42,19 @@ func fail(w http.ResponseWriter, err error) {
 	}
 }
 
+// ownerOnly refuses a request from anyone but the owner at the page: the routes that spend
+// money (a live run, a proposal), change the agent without its validation-plus-review path
+// (accept, rollback), delete, or read from disk (import-dir). A request with no Origin (MCP,
+// the HTTP tools, the CLI) is an outside client, a delegate; such a client uses the agent
+// tools, where the owner is asked.
+func ownerOnly(w http.ResponseWriter, r *http.Request, what string) bool {
+	if module.ActorOf(r.Context()).Delegate() {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": what + " is the owner's, from the Workbench page; an outside client uses the workbench_* tools, which ask the owner"})
+		return false
+	}
+	return true
+}
+
 func decode(r *http.Request, v any) error {
 	dec := json.NewDecoder(io.LimitReader(r.Body, 8<<20))
 	return dec.Decode(v)
@@ -167,34 +180,45 @@ func treeDiff(a, b Tree) []FileDiff {
 	return out
 }
 
-func (m *mod) export(id string) ([]byte, string, error) {
+func (m *mod) export(id string) ([]byte, string, []string, error) {
 	t, err := m.lib.Tree(id)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	a, err := m.lib.Get(id)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	rep := Validate(t)
 	if !rep.OK {
-		return nil, "", &ErrInvalid{rep}
+		return nil, "", nil, &ErrInvalid{rep}
 	}
 	suites := map[string][]byte{}
 	infos, _ := m.run.Suites(id)
 	var names []string
+	all := t.Clone()
 	for _, s := range infos {
 		suites[s.Name+".yaml"] = []byte(s.Source)
 		names = append(names, s.Name)
+		all["workbench/evals/"+s.Name+".yaml"] = []byte(s.Source)
+	}
+	// Every file is scanned, the suites too: a well-known credential shape anywhere refuses
+	// the export; a credential-like assignment is reported with it.
+	var warnings []string
+	for _, f := range scanTree(all) {
+		if f.Refuse {
+			return nil, "", nil, fmt.Errorf("workbench: not exported: %s line %d holds %s; remove it and pass it by reference", f.File, f.Line, f.What)
+		}
+		warnings = append(warnings, fmt.Sprintf("%s:%d: %s", f.File, f.Line, f.What))
 	}
 	man := &Manifest{Format: 1, Name: a.Name, ID: id, Digest: rep.Digest, AgentdirDigest: rep.AgentdirDigest, Created: time.Now().UTC().Format(time.RFC3339),
 		WorkbenchVersion: WorkbenchVersion, Source: a.Source, Version: a.Version, Files: t.Paths(), Suites: names}
 	var buf bytes.Buffer
 	if err := writeTarGz(&buf, Bundle{Tree: t, Suites: suites, Manifest: man}); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	name := fmt.Sprintf("%s-v%d.tar.gz", id, a.Version)
-	return buf.Bytes(), name, nil
+	return buf.Bytes(), name, warnings, nil
 }
 
 func (m *mod) routes(h module.Host) {
@@ -232,6 +256,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, v)
 	}))
 	h.Handle("DELETE /agents/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "deleting an agent") {
+			return
+		}
 		id := r.PathValue("id")
 		dest, err := m.lib.Delete(id)
 		if err != nil {
@@ -342,6 +369,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, treeDiff(a, b))
 	}))
 	h.Handle("POST /agents/{id}/versions/{n}/rollback", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "a rollback") {
+			return
+		}
 		id := r.PathValue("id")
 		n, err := strconv.Atoi(r.PathValue("n"))
 		if err != nil {
@@ -370,10 +400,13 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, p)
 	}))
 	h.Handle("GET /agents/{id}/export", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data, name, err := m.export(r.PathValue("id"))
+		data, name, warnings, err := m.export(r.PathValue("id"))
 		if err != nil {
 			fail(w, err)
 			return
+		}
+		if len(warnings) > 0 {
+			w.Header().Set("X-Workbench-Warnings", strings.Join(warnings, "; "))
 		}
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
@@ -418,6 +451,9 @@ func (m *mod) routes(h module.Host) {
 	}))
 	// Import a directory by copying it, read-only. Body: {"path": "/abs/dir", "id": "..."}
 	h.Handle("POST /import-dir", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "importing a directory from disk") {
+			return
+		}
 		var in struct{ Path, ID string }
 		if err := decode(r, &in); err != nil {
 			fail(w, err)
@@ -487,8 +523,7 @@ func (m *mod) routes(h module.Host) {
 			fail(w, err)
 			return
 		}
-		if in.Mode == "live" && !in.Confirm {
-			fail(w, errors.New("a live eval run calls a model and costs money: send confirm: true once the owner has agreed"))
+		if in.Mode == "live" && (!ownerOnly(w, r, "a live eval run") || !confirmed(w, in.Confirm)) {
 			return
 		}
 		run, err := m.run.Start(r.Context(), r.PathValue("id"), r.PathValue("name"), in.Mode, in.Caps, "")
@@ -527,6 +562,9 @@ func (m *mod) routes(h module.Host) {
 			fail(w, err)
 			return
 		}
+		if in.Mode == "live" && !ownerOnly(w, r, "a live eval run") {
+			return
+		}
 		prev, err := m.run.GetRun(r.PathValue("id"), r.PathValue("run"))
 		if err != nil {
 			fail(w, err)
@@ -535,8 +573,7 @@ func (m *mod) routes(h module.Host) {
 		if in.Mode == "" {
 			in.Mode = prev.Mode
 		}
-		if in.Mode == "live" && !in.Confirm {
-			fail(w, errors.New("a live eval run calls a model and costs money: send confirm: true once the owner has agreed"))
+		if in.Mode == "live" && (!ownerOnly(w, r, "a live eval run") || !confirmed(w, in.Confirm)) {
 			return
 		}
 		run, err := m.run.Start(r.Context(), prev.Agent, prev.Suite, in.Mode, in.Caps, prev.ID)
@@ -558,6 +595,9 @@ func (m *mod) routes(h module.Host) {
 		var in struct {
 			Confirm bool `json:"confirm"`
 		}
+		if !ownerOnly(w, r, "a proposal") {
+			return
+		}
 		if err := decode(r, &in); err != nil || !in.Confirm {
 			fail(w, errors.New("a proposal calls a model and costs money: send confirm: true once the owner has agreed"))
 			return
@@ -569,6 +609,14 @@ func (m *mod) routes(h module.Host) {
 		}
 		writeJSON(w, http.StatusOK, p)
 	}))
+	h.Handle("GET /agents/{id}/runs/{run}/propose-estimate", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		e, err := m.run.EstimatePropose(r.Context(), r.PathValue("id"), r.PathValue("run"))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, e)
+	}))
 	h.Handle("GET /agents/{id}/proposals", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ps, err := m.run.Proposals(r.PathValue("id"))
 		if err != nil {
@@ -578,6 +626,9 @@ func (m *mod) routes(h module.Host) {
 		writeJSON(w, http.StatusOK, ps)
 	}))
 	h.Handle("POST /agents/{id}/proposals/{p}/{n}/{decision}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownerOnly(w, r, "accepting or rejecting a proposal") {
+			return
+		}
 		n, err := strconv.Atoi(r.PathValue("n"))
 		if err != nil {
 			fail(w, err)
@@ -603,4 +654,11 @@ func stringsOf(t Tree) map[string]string {
 		out[p] = string(b)
 	}
 	return out
+}
+
+func confirmed(w http.ResponseWriter, ok bool) bool {
+	if !ok {
+		fail(w, errors.New("a live eval run calls a model and costs money: send confirm: true once the owner has agreed"))
+	}
+	return ok
 }

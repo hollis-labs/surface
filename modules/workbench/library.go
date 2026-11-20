@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -263,8 +264,8 @@ func (l *Library) Create(id string, t Tree, meta Meta, note, author string) (Age
 	return a, rep, err
 }
 
-// Save replaces an agent's files with t when t validates, keeping the old state in its
-// versions: nothing is overwritten without a copy. base, when not empty, is the digest the
+// Save replaces an agent's authored files with t when t validates, keeping every saved
+// state in its versions. Only authored files are written or removed. base, when not empty, is the digest the
 // caller edited from; a save over a newer state is refused.
 func (l *Library) Save(id string, t Tree, base, note, author string) (Version, Report, error) {
 	agentDir, side, err := l.dirs(id)
@@ -290,24 +291,13 @@ func (l *Library) Save(id string, t Tree, base, note, author string) (Version, R
 			return vs[len(vs)-1], rep, nil
 		}
 	}
-	// The new directory is written beside the old, then swapped in.
-	next := agentDir + ".next"
-	_ = os.RemoveAll(next)
-	if err = writeAgentDir(next, t); err != nil {
-		_ = os.RemoveAll(next)
+	// In place, file by file: changed authored files are replaced atomically, removed ones
+	// deleted, and nothing else in the directory is touched (Nanite's .nanite/ state, notes,
+	// anything that is not an authored file). The directory itself is never moved, so a host
+	// running the agent from it keeps running, and there is no moment without it.
+	if err = applyTree(agentDir, cur, t); err != nil {
 		return Version{}, rep, err
 	}
-	old := agentDir + ".old"
-	_ = os.RemoveAll(old)
-	if err = os.Rename(agentDir, old); err != nil {
-		_ = os.RemoveAll(next)
-		return Version{}, rep, err
-	}
-	if err = os.Rename(next, agentDir); err != nil {
-		_ = os.Rename(old, agentDir)
-		return Version{}, rep, err
-	}
-	_ = os.RemoveAll(old)
 	if err = writeSidecar(side, t); err != nil {
 		return Version{}, rep, err
 	}
@@ -472,4 +462,90 @@ func slug(s string) string {
 		s = "agent"
 	}
 	return s
+}
+
+// applyTree changes dir's authored files from cur to next: writes what is new or changed
+// (each through a temporary file and a rename), removes the authored files next lacks, and
+// leaves everything else alone.
+//
+//nolint:gosec // every path is an authored path (agentPath): relative, clean, inside dir
+func applyTree(dir string, cur, next Tree) error {
+	for _, p := range next.Paths() {
+		if !agentPath(p) {
+			continue
+		}
+		if old, ok := cur[p]; ok && bytes.Equal(old, next[p]) {
+			continue
+		}
+		target := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(target, next[p]); err != nil {
+			return err
+		}
+	}
+	for _, p := range cur.Paths() {
+		if _, keep := next[p]; keep || !agentPath(p) {
+			continue
+		}
+		target := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		// An emptied skill, context or variants directory goes too; one that still holds
+		// anything (a file that is not authored) stays.
+		for d := filepath.Dir(target); d != dir && strings.HasPrefix(d, dir+string(filepath.Separator)); d = filepath.Dir(d) {
+			if os.Remove(d) != nil {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// Recover puts the library right after a crash: an agent directory left aside by an older
+// Workbench's directory swap is put back, and temporary files of an interrupted write are
+// removed. Only the library's own leftovers are touched.
+//
+//nolint:gosec // paths under the library root
+func (l *Library) Recover() error {
+	root, err := l.Root()
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !idRe.MatchString(e.Name()) {
+			continue
+		}
+		base := filepath.Join(root, e.Name())
+		agentDir := filepath.Join(base, "agent")
+		if _, err := os.Stat(agentDir); errors.Is(err, fs.ErrNotExist) {
+			if _, err := os.Stat(agentDir + ".old"); err == nil {
+				if err := os.Rename(agentDir+".old", agentDir); err != nil {
+					return err
+				}
+			}
+		}
+		_ = os.RemoveAll(agentDir + ".next")
+		for _, d := range []string{agentDir, filepath.Join(base, "workbench")} {
+			_ = filepath.WalkDir(d, func(p string, de fs.DirEntry, err error) error {
+				if err != nil {
+					return nil //nolint:nilerr // best effort: a part that cannot be read is left as it is
+				}
+				if de.IsDir() && de.Name() == ".nanite" {
+					return filepath.SkipDir // Nanite's own state is never touched
+				}
+				if de.Type().IsRegular() && strings.HasPrefix(de.Name(), ".tmp-") {
+					_ = os.Remove(p)
+				}
+				return nil
+			})
+		}
+	}
+	return nil
 }

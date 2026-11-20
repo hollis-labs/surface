@@ -177,63 +177,45 @@ func unifiedDiff(file, a, b string) string {
 var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 type hunk struct {
-	oldStart int
-	lines    []DiffLine
+	oldStart, oldCount, newCount int
+	lines                        []DiffLine
 }
 
-// applyUnified applies a unified diff to text. Each hunk must match the text (its kept and
-// removed lines, exactly) at its stated line or near it; otherwise the diff does not apply.
+// maxDrift is how far from its stated line a hunk may be found.
+const maxDrift = 50
+
+// applyUnified applies a unified diff to text, strictly: each hunk's body must have exactly
+// the lines its header counts (a cut-off hunk is refused, not read as a delete), must carry
+// at least one kept line unless the file is new, and must match the file exactly at its
+// stated line or, failing that, at exactly one place within maxDrift lines. Any failure
+// refuses the whole diff; nothing is applied in part.
 func applyUnified(text, diff string) (string, error) {
-	var hunks []hunk
-	var cur *hunk
-	for _, raw := range strings.Split(strings.ReplaceAll(diff, "\r\n", "\n"), "\n") {
-		switch {
-		case strings.HasPrefix(raw, "--- "), strings.HasPrefix(raw, "+++ "), strings.HasPrefix(raw, "diff "), strings.HasPrefix(raw, "index "):
-			continue
-		case strings.HasPrefix(raw, "@@"):
-			m := hunkRe.FindStringSubmatch(raw)
-			if m == nil {
-				return "", fmt.Errorf("bad hunk header %q", raw)
-			}
-			n, _ := strconv.Atoi(m[1])
-			hunks = append(hunks, hunk{oldStart: n})
-			cur = &hunks[len(hunks)-1]
-		case cur == nil:
-			continue
-		case raw == `\ No newline at end of file`:
-			continue
-		case raw == "":
-			// A blank context line whose leading space was lost.
-			cur.lines = append(cur.lines, DiffLine{" ", ""})
-		default:
-			op := raw[:1]
-			if op != " " && op != "+" && op != "-" {
-				return "", fmt.Errorf("bad diff line %q", raw)
-			}
-			cur.lines = append(cur.lines, DiffLine{op, raw[1:]})
-		}
-	}
-	if len(hunks) == 0 {
-		return "", errors.New("the diff has no hunks")
+	hunks, err := parseHunks(diff)
+	if err != nil {
+		return "", err
 	}
 	src := splitLines(text)
+	newFile := len(src) == 0
 	trailingNL := text == "" || strings.HasSuffix(text, "\n")
 	var out []string
 	pos := 0 // next line of src not yet copied
 	for hi, h := range hunks {
-		// Trailing blank context lines may be artifacts of the split; drop them.
-		for len(h.lines) > 0 && h.lines[len(h.lines)-1].Op == " " && h.lines[len(h.lines)-1].Text == "" {
-			h.lines = h.lines[:len(h.lines)-1]
-		}
 		var want []string
+		kept := 0
 		for _, l := range h.lines {
 			if l.Op != "+" {
 				want = append(want, l.Text)
 			}
+			if l.Op == " " {
+				kept++
+			}
 		}
-		at := findBlock(src, want, max(h.oldStart-1, 0), pos)
-		if at < 0 {
-			return "", fmt.Errorf("hunk %d does not match the file as it is now", hi+1)
+		if kept == 0 && !newFile {
+			return "", fmt.Errorf("hunk %d has no context line to place it by", hi+1)
+		}
+		at, err := placeHunk(src, want, max(h.oldStart-1, 0), pos)
+		if err != nil {
+			return "", fmt.Errorf("hunk %d: %w", hi+1, err)
 		}
 		out = append(out, src[pos:at]...)
 		for _, l := range h.lines {
@@ -251,8 +233,80 @@ func applyUnified(text, diff string) (string, error) {
 	return res, nil
 }
 
-// findBlock finds want in src at or after from, nearest to hint.
-func findBlock(src, want []string, hint, from int) int {
+// parseHunks reads the hunks of a unified diff and checks each body against its header.
+func parseHunks(diff string) ([]hunk, error) {
+	var hunks []hunk
+	var cur *hunk
+	var olds, news int
+	done := func() error {
+		if cur == nil {
+			return nil
+		}
+		if olds != cur.oldCount || news != cur.newCount {
+			return fmt.Errorf("hunk %d is cut short or too long: its header counts %d old and %d new lines, its body has %d and %d", len(hunks), cur.oldCount, cur.newCount, olds, news)
+		}
+		return nil
+	}
+	count := func(m string) int {
+		if m == "" {
+			return 1
+		}
+		n, _ := strconv.Atoi(m)
+		return n
+	}
+	for _, raw := range strings.Split(strings.ReplaceAll(diff, "\r\n", "\n"), "\n") {
+		full := cur != nil && olds == cur.oldCount && news == cur.newCount
+		switch {
+		case strings.HasPrefix(raw, "@@"):
+			if err := done(); err != nil {
+				return nil, err
+			}
+			m := hunkRe.FindStringSubmatch(raw)
+			if m == nil {
+				return nil, fmt.Errorf("bad hunk header %q", raw)
+			}
+			start, _ := strconv.Atoi(m[1])
+			hunks = append(hunks, hunk{oldStart: start, oldCount: count(m[2]), newCount: count(m[4])})
+			cur = &hunks[len(hunks)-1]
+			olds, news = 0, 0
+		case cur == nil || (full && (raw == "" || strings.HasPrefix(raw, "--- ") || strings.HasPrefix(raw, "+++ ") || strings.HasPrefix(raw, "diff ") || strings.HasPrefix(raw, "index "))):
+			continue // headers before the first hunk, and the blank tail
+		case raw == `\ No newline at end of file`:
+			continue
+		case full:
+			return nil, fmt.Errorf("hunk %d has more lines than its header counts", len(hunks))
+		default:
+			op, text := " ", ""
+			if raw != "" { // a blank kept line whose leading space was lost
+				op, text = raw[:1], raw[1:]
+			}
+			switch op {
+			case " ":
+				olds++
+				news++
+			case "-":
+				olds++
+			case "+":
+				news++
+			default:
+				return nil, fmt.Errorf("bad diff line %q", raw)
+			}
+			cur.lines = append(cur.lines, DiffLine{op, text})
+		}
+	}
+	if err := done(); err != nil {
+		return nil, err
+	}
+	if len(hunks) == 0 {
+		return nil, errors.New("the diff has no hunks")
+	}
+	return hunks, nil
+}
+
+// placeHunk finds where want sits in src, at or after from: at hint when it matches there,
+// else at the one place within maxDrift lines where it does. None, or more than one, is an
+// error.
+func placeHunk(src, want []string, hint, from int) (int, error) {
 	match := func(at int) bool {
 		if at < from || at+len(want) > len(src) {
 			return false
@@ -264,13 +318,27 @@ func findBlock(src, want []string, hint, from int) int {
 		}
 		return true
 	}
-	for d := 0; d <= len(src); d++ {
-		if match(hint + d) {
-			return hint + d
+	if len(want) == 0 {
+		if hint < from || hint > len(src) {
+			return 0, errors.New("it is out of order")
 		}
-		if d > 0 && match(hint-d) {
-			return hint - d
-		}
+		return min(hint, len(src)), nil
 	}
-	return -1
+	if match(hint) {
+		return hint, nil
+	}
+	found := -1
+	for at := max(from, hint-maxDrift); at <= hint+maxDrift; at++ {
+		if !match(at) {
+			continue
+		}
+		if found >= 0 {
+			return 0, errors.New("its context matches more than one place near its stated line")
+		}
+		found = at
+	}
+	if found < 0 {
+		return 0, fmt.Errorf("it does not match the file within %d lines of line %d", maxDrift, hint+1)
+	}
+	return found, nil
 }

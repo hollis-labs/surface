@@ -140,14 +140,42 @@ type entry struct {
 	open    func() (io.Reader, error)
 }
 
+// maxStreamBytes caps everything decompressed from a .tar.gz, headers and skipped entries
+// included: a small archive cannot make the reader inflate more than this.
+const maxStreamBytes = maxUnpackedBytes + 4<<20
+
+var errTooBig = fmt.Errorf("the archive unpacks to more than %d MiB", maxUnpackedBytes>>20)
+
+// capped is a reader that fails once more than n bytes have been read from it.
+type capped struct {
+	r io.Reader
+	n int64
+}
+
+func (c *capped) Read(p []byte) (int, error) {
+	if c.n <= 0 {
+		return 0, errTooBig
+	}
+	if int64(len(p)) > c.n {
+		p = p[:c.n+1]
+	}
+	k, err := c.r.Read(p)
+	c.n -= int64(k)
+	if c.n < 0 {
+		return k, errTooBig
+	}
+	return k, err
+}
+
 func readTarGz(data []byte) (Bundle, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return Bundle{}, err
 	}
 	defer func() { _ = gz.Close() }()
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(&capped{r: gz, n: maxStreamBytes})
 	var entries []entry
+	var total int64
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -163,9 +191,19 @@ func readTarGz(data []byte) (Bundle, error) {
 		switch h.Typeflag {
 		case tar.TypeReg:
 			e.regular = true
+			if h.Size > maxFileBytes {
+				return Bundle{}, fmt.Errorf("%s is larger than 1 MiB", h.Name)
+			}
+			if total+h.Size > maxUnpackedBytes {
+				return Bundle{}, errTooBig
+			}
 			limited, err := io.ReadAll(io.LimitReader(tr, maxFileBytes+1))
 			if err != nil {
 				return Bundle{}, err
+			}
+			total += int64(len(limited))
+			if total > maxUnpackedBytes {
+				return Bundle{}, errTooBig
 			}
 			e.open = func() (io.Reader, error) { return bytes.NewReader(limited), nil }
 			e.size = int64(len(limited))
@@ -190,6 +228,7 @@ func readZip(data []byte) (Bundle, error) {
 		return Bundle{}, fmt.Errorf("the archive has more than %d entries", maxArchiveFiles)
 	}
 	var entries []entry
+	var total int64
 	for _, f := range zr.File {
 		mode := f.Mode()
 		e := entry{name: f.Name, size: int64(f.UncompressedSize64)} //nolint:gosec // checked against the limits below
@@ -198,13 +237,21 @@ func readZip(data []byte) (Bundle, error) {
 			e.dir = true
 		case mode.IsRegular():
 			e.regular = true
+			if f.UncompressedSize64 > maxFileBytes {
+				return Bundle{}, fmt.Errorf("%s is larger than 1 MiB", f.Name)
+			}
 			e.open = func() (io.Reader, error) {
 				rc, err := f.Open()
 				if err != nil {
 					return nil, err
 				}
 				defer func() { _ = rc.Close() }()
+				// The header's size is the archive's claim; what is read is counted.
 				b, err := io.ReadAll(io.LimitReader(rc, maxFileBytes+1))
+				total += int64(len(b))
+				if total > maxUnpackedBytes {
+					return nil, errTooBig
+				}
 				return bytes.NewReader(b), err
 			}
 		default:
@@ -219,6 +266,7 @@ func readZip(data []byte) (Bundle, error) {
 func collect(entries []entry) (Bundle, error) {
 	b := Bundle{Tree: Tree{}, Suites: map[string][]byte{}}
 	var total int64
+	seen := map[string]string{}
 	for _, e := range entries {
 		name := strings.TrimPrefix(e.name, "./")
 		if e.dir {
@@ -233,6 +281,11 @@ func collect(entries []entry) (Bundle, error) {
 		if e.dir {
 			continue
 		}
+		// Two names one case-insensitive file system (macOS) would write to the same file.
+		if prev, dup := seen[strings.ToLower(name)]; dup {
+			return Bundle{}, fmt.Errorf("%q and %q name the same file on a case-insensitive disk", prev, name)
+		}
+		seen[strings.ToLower(name)] = name
 		if e.size > maxFileBytes {
 			return Bundle{}, fmt.Errorf("%s is larger than 1 MiB", name)
 		}

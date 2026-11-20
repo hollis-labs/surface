@@ -92,38 +92,24 @@ func (m *mod) tools() []module.Tool {
 				return ag, err
 			}},
 		{Name: "workbench_write_file", Level: module.LevelWrite,
-			Description: "Write one file of a Workbench agent (the whole file) and save a new version. The agent must still validate; if not, nothing is saved and the problems are returned. Say in note what the change is for.",
+			Description: "Write one file of a Workbench agent (the whole file) and save a new version: agent.md, skills/<n>/..., variants/<n>.md, context/<n>.md, workbench/steering.json or workbench/options.json. The agent must still validate; if not, nothing is saved and the problems are returned. Say in note what the change is for. host.yaml, .mcp.json, permissions.yaml and providers.yaml go through workbench_write_config.",
 			Input:       schema(`{"type":"object","required":["agent","file","content","note"],"properties":{"agent":{"type":"string"},"file":{"type":"string"},"content":{"type":"string"},"note":{"type":"string"}}}`),
 			Describe: func(in json.RawMessage) string {
 				a, _ := args[struct{ Agent, File string }](in)
 				return fmt.Sprintf("Write %s of agent %s", a.File, a.Agent)
 			},
 			Run: func(ctx context.Context, h module.Host, in json.RawMessage) (any, error) {
-				a, err := args[struct{ Agent, File, Content, Note string }](in)
-				if err != nil {
-					return nil, err
-				}
-				if module.ActorOf(ctx).Delegate() && ownerEditing(ctx, h, a.Agent) {
-					return nil, errors.New("the owner has unsaved changes to this agent in the Workbench; wait, or ask them to save first")
-				}
-				t, err := m.lib.Tree(a.Agent)
-				if err != nil {
-					return nil, err
-				}
-				c := a.Content
-				if err = applyChanges(t, map[string]*string{a.File: &c}); err != nil {
-					return nil, err
-				}
-				v, rep, err := m.lib.Save(a.Agent, t, "", a.Note, "agent")
-				if err != nil {
-					var inv *ErrInvalid
-					if errors.As(err, &inv) {
-						return map[string]any{"saved": false, "report": inv.Report}, nil
-					}
-					return nil, err
-				}
-				m.changed(a.Agent, map[string]any{"version": v.N})
-				return map[string]any{"saved": true, "version": v, "report": rep}, nil
+				return m.writeTool(ctx, h, in, false)
+			}},
+		{Name: "workbench_write_config", Level: module.LevelConfirm,
+			Description: "Write one of a Workbench agent's configuration files (the whole file) and save a new version: host.yaml, .mcp.json (the commands and servers it starts), permissions.yaml or providers.yaml. These change what the agent may run and reach, so the owner is asked every time. Say in note what the change is for.",
+			Input:       schema(`{"type":"object","required":["agent","file","content","note"],"properties":{"agent":{"type":"string"},"file":{"type":"string","enum":["host.yaml",".mcp.json","permissions.yaml","providers.yaml"]},"content":{"type":"string"},"note":{"type":"string"}}}`),
+			Describe: func(in json.RawMessage) string {
+				a, _ := args[struct{ Agent, File, Note string }](in)
+				return fmt.Sprintf("Change %s of agent %s (what it may run and reach): %s", a.File, a.Agent, a.Note)
+			},
+			Run: func(ctx context.Context, h module.Host, in json.RawMessage) (any, error) {
+				return m.writeTool(ctx, h, in, true)
 			}},
 		{Name: "workbench_import_dir", Level: module.LevelWrite,
 			Description: "Copy an agent directory from disk into the Workbench library. The source is only read, never changed; only its authored files are copied.",
@@ -284,4 +270,48 @@ func (m *mod) tools() []module.Tool {
 				return m.run.Proposals(a.Agent)
 			}},
 	}
+}
+
+// configFile: a file that decides what the agent may run and reach.
+func configFile(p string) bool {
+	return p == "host.yaml" || p == ".mcp.json" || p == "permissions.yaml" || p == "providers.yaml"
+}
+
+// writeTool writes one file for workbench_write_file (config false: the prompt, skills,
+// variants, context, steering, options) or workbench_write_config (config true).
+func (m *mod) writeTool(ctx context.Context, h module.Host, in json.RawMessage, config bool) (any, error) {
+	a, err := args[struct{ Agent, File, Content, Note string }](in)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case config && !configFile(a.File):
+		return nil, fmt.Errorf("workbench_write_config writes host.yaml, .mcp.json, permissions.yaml or providers.yaml, not %s", a.File)
+	case !config && configFile(a.File):
+		return nil, fmt.Errorf("%s decides what the agent may run and reach: use workbench_write_config, which asks the owner", a.File)
+	case !config && !editable(a.File) && a.File != optionsFile:
+		return nil, fmt.Errorf("%s is not a file this tool writes", a.File)
+	}
+	if module.ActorOf(ctx).Delegate() && ownerEditing(ctx, h, a.Agent) {
+		return nil, errors.New("the owner has unsaved changes to this agent in the Workbench; wait, or ask them to save first")
+	}
+	t, err := m.lib.Tree(a.Agent)
+	if err != nil {
+		return nil, err
+	}
+	base := t.Digest()
+	c := a.Content
+	if err = applyChanges(t, map[string]*string{a.File: &c}); err != nil {
+		return nil, err
+	}
+	v, rep, err := m.lib.Save(a.Agent, t, base, a.Note, "agent")
+	if err != nil {
+		var inv *ErrInvalid
+		if errors.As(err, &inv) {
+			return map[string]any{"saved": false, "report": inv.Report}, nil
+		}
+		return nil, err
+	}
+	m.changed(a.Agent, map[string]any{"version": v.N})
+	return map[string]any{"saved": true, "version": v, "report": rep}, nil
 }

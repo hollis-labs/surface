@@ -14,7 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hollis-labs/libs/agent/agentdir"
+	"github.com/hollis-labs/libs/agent/chat"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
+	"github.com/hollis-labs/libs/agent/steer"
 	nanite "github.com/hollis-labs/nanite/agent"
 	"github.com/hollis-labs/nanite/chatrunner"
 )
@@ -181,6 +184,17 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
 		_ = os.Setenv("NANITE_DEFAULT_MODEL", c.Model)
 	}
+	snapshot, err := agentdir.Load(open)
+	if err != nil {
+		return nil, fmt.Errorf("agent: host config: %w", err)
+	}
+	compact, keep := snapshot.Profile.Runtime.CompactAt, snapshot.Profile.Runtime.CompactKeepTokens
+	if compact == 0 {
+		compact = 110000
+	}
+	if keep == 0 {
+		keep = 22000
+	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
 		Agent: nanite.Options{
@@ -188,11 +202,26 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			DataDir:         filepath.Join(s.k.DataDir(), "agents", w.agent),
 			GlobalSkillsDir: "-",
 			// The key is a reference to the file; Nanite reads it when it calls the gateway.
-			Gateway:  nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
-			Logger:   s.log.With("part", "nanite"),
-			Builtins: groups,
+			Gateway:           nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
+			Logger:            s.log.With("part", "nanite"),
+			Builtins:          groups,
+			CompactAt:         compact,
+			CompactKeepTokens: keep,
+			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: naniteContextTokens},
+			Steering:          s.naniteSteering(),
 		},
-		Tools: s.runnerTools(),
+		ContextSlot: nanite.SlotContext,
+		Tools:       s.runnerTools(),
+		Observe: func(ctx context.Context, id string, turn chat.Turn, run chat.Run) error {
+			if w.svc == nil {
+				return errors.New("agent: chat service is not ready")
+			}
+			return w.svc.Observe(ctx, id, turn, s.watchWireRun(turn, run))
+		},
+		Situation: func(turn chat.Turn) steer.Situation { return s.steerSituation(context.Background(), turn.Text) },
+		OnSteered: func(_ string, event nanite.Steered) {
+			s.launchEvent(func() { s.applySteered(event.Fired, event.Actions) })
+		},
 		Ask: func(_ context.Context, call chatrunner.Call) bool {
 			return w.asks.has(call.ConversationID, call.Tool)
 		},
@@ -210,7 +239,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
-	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.engineTools()), "builtins", len(groups))
+	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.engineTools()), "builtins", len(groups), "compact_at", compact, "compact_keep_tokens", keep)
 	return r, nil
 }
 
@@ -229,9 +258,15 @@ func (s *Service) runnerTools() []chatrunner.Tool {
 			schema = json.RawMessage(`{"type":"object"}`)
 		}
 		run := t.Run
+		timeout := 5 * time.Minute
+		if waitsForOwner(t) {
+			timeout = 70 * time.Minute
+		}
 		out = append(out, chatrunner.Tool{Name: t.Name, Description: t.Description, InputSchema: schema,
 			Level: chatrunner.Level(t.Level),
 			Run: func(ctx context.Context, call nanite.ToolCall) (nanite.ToolResult, error) {
+				ctx, cancel := context.WithTimeout(ctx, timeout)
+				defer cancel()
 				input := call.Input
 				if len(input) == 0 {
 					input = json.RawMessage(`{}`)

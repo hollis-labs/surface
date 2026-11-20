@@ -536,8 +536,8 @@ library's handler under `/api/agent` and supplies what varies:
 | The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
 | Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
 
-It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`: `host`, `nanite` or `scripted`. With no runner
-chosen, nothing changes: the engine and the run-at-a-time wire serve the panel as before.
+It defaults to Nanite when `SURFACE_AGENT_RUNNER` is unset. Explicit choices are `host`, `nanite` or `scripted`.
+An unconfigured app remains usable without opening a model.
 
 ### `host`: the app's agent on libs agent/host (Basalisk's runtime)
 
@@ -618,7 +618,15 @@ on, and binds `@hollis-labs/surface-chat`'s conversation store instead of the ru
 (`web/src/agent/session.ts`). `?chat=viewer` attaches a page as a viewer and `?chat=committed` takes each part
 whole instead of as it is written.
 
-Not there yet: the conversation wire is not the default (the engine still is, and still serves
-`/api/agent/thread` and the run-at-a-time routes), the agent config's `max_tokens`, `max_steps` and
-`compact_at` are not carried to Nanite (its `host.yaml` has its own), and a lease left by a page that was
-killed rather than closed is held until it lapses, a restart included.
+Nanite is the default for a configured embedded agent. Its authored `host.yaml` owns runtime settings:
+`runtime.max_output_tokens` (starter: 32000), `compact_at` (110000), and `compact_keep_tokens` (22000).
+Surface supplies the compaction defaults for existing agent directories too; explicit host settings win.
+The default compaction prompt and stream idle timeout come from Nanite. Context retains its 2000-token
+budget and is not compactable. Ordinary tools have five-minute deadlines; tools accepting
+`timeout_seconds` may wait for the owner for up to 70 minutes.
+
+Surface connects runner notices and recovered turns to the chat service. Startup calls `RecoverTurns`
+after the service is ready, exposing interrupted turns for owner action. Successful `nanite.compact`
+activities publish `agent.compacted` on the app bus. Nanite steering matches live Surface reflexes;
+Surface performs their command/tool actions and records firing counts. Event and focus reflexes use
+Nanite's conversation steering, and compaction reflexes run once from Nanite's own event.

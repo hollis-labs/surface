@@ -54,6 +54,15 @@ func newFakeModel(t *testing.T) *fakeModel {
 			in = v
 		}
 		m.mu.Unlock()
+		var request struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.Unmarshal(body, &request)
+		if !request.Stream {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"id":"summary","type":"message","role":"assistant","content":[{"type":"text","text":"Earlier turns discussed folders."}],"stop_reason":"end_turn","usage":{"input_tokens":100,"output_tokens":10}}`)
+			return
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		frame := func(typ, data string) {
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, data)

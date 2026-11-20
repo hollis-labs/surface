@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hollis-labs/surface/module"
@@ -29,6 +31,9 @@ type tether struct {
 	events   []map[string]any
 	other    []string
 	counts   map[string]int // non-Caster tool calls
+	// beforeLatest, when set, runs before a read of a document's latest revision (a
+	// caster_get with no @rev), with its key: a test writes there as someone else would.
+	beforeLatest func(key string)
 }
 
 func newTether() *tether {
@@ -42,6 +47,9 @@ func (f *tether) Call(ctx context.Context, tool string, args map[string]any) (st
 	defer f.mu.Unlock()
 	if !strings.HasPrefix(tool, "caster_") {
 		f.counts[tool]++
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 	}
 	switch tool {
 	case "torque_task_get":
@@ -67,8 +75,12 @@ func (f *tether) Call(ctx context.Context, tool string, args map[string]any) (st
 		return js(map[string]any{"entries": f.events}), nil
 	}
 	if strings.HasPrefix(tool, "caster_") {
+		hook := f.beforeLatest
 		f.mu.Unlock()
 		defer f.mu.Lock()
+		if ref, _ := args["ref"].(string); tool == "caster_get" && hook != nil && !strings.Contains(ref, "@") {
+			hook(strings.TrimPrefix(ref, "caster://"))
+		}
 		return f.Fake.Call(ctx, tool, args)
 	}
 	f.other = append(f.other, tool)
@@ -782,17 +794,24 @@ func TestOrphansLoopsAndDepthStayOnTheBoard(t *testing.T) {
 	put("loop-b", "loop-a")
 	_, _ = m.st.Refresh(ctx, true)
 	b, _ := m.st.All(ctx)
-	for _, id := range []string{"orphan", "loop-a", "loop-b"} {
+	for _, id := range []string{"orphan", "loop-a"} {
 		w, ok := b.Find(id)
 		if !ok || w.Parent != "" || w.Problem == "" {
 			t.Errorf("%s: %+v", id, w)
 		}
 	}
+	// Lifting one of a loop breaks it: the other stays under it.
+	if w, _ := b.Find("loop-b"); w.Parent != "loop-a" {
+		t.Errorf("loop-b: %+v", w)
+	}
 	top := js(call(t, h, "ops_list", `{}`)["lanes"])
-	for _, id := range []string{"orphan", "loop-a", "loop-b"} {
+	for _, id := range []string{"orphan", "loop-a"} {
 		if !strings.Contains(top, `"id":"`+id+`"`) {
 			t.Errorf("%s is not listed at the top", id)
 		}
+	}
+	if inside := js(call(t, h, "ops_list", `{"parent":"loop-a"}`)["lanes"]); !strings.Contains(inside, `"id":"loop-b"`) {
+		t.Errorf("loop-b is not listed under loop-a: %s", inside)
 	}
 	// Depth counts the moved subtree: a chain of 4 under the end of a chain of 4 would sit 7
 	// below the top.
@@ -862,5 +881,178 @@ func TestTaskReadsAreShared(t *testing.T) {
 	since := call(t, h, "ops_activity", `{"id":"parent-ws","since":"2099-01-01T10:30:00Z","source":"torque"}`)
 	if n := len(since["entries"].([]any)); n != 0 {
 		t.Fatalf("since: %d torque entries after 10:30", n)
+	}
+}
+
+// foreignSeq numbers the foreign writes, so no two write the same text (Caster keeps no new
+// revision for a put of the text it has).
+var foreignSeq atomic.Int64
+
+// foreign makes the next n puts of key each land after someone else's write, built on the
+// latest revision there, setting owner to f<seq>. It returns the texts they wrote.
+func foreign(f *tether, key string, n int) *[]string {
+	wrote := &[]string{}
+	f.BeforePut = func(k string) {
+		if k != key || len(*wrote) >= n {
+			return
+		}
+		cur, _ := f.Content(key)
+		d, err := ParseDoc(cur)
+		if err != nil {
+			return
+		}
+		_ = d.Set("owner", fmt.Sprintf("f%d", foreignSeq.Add(1)))
+		*wrote = append(*wrote, d.String())
+		f.Put(key, d.String(), "theirs", "")
+	}
+	return wrote
+}
+
+func TestRacingWritesReportWhatStands(t *testing.T) {
+	f := newTether()
+	h, m := start(t, f)
+	ctx := context.Background()
+	key := "ops/ws.multi"
+	call(t, h, "ops_create", `{"id":"multi","title":"Multi","active_when":[{"text":"one"}]}`)
+	held := func(r string) error {
+		_, err := m.st.Update(ctx, "multi", 0, Patch{Held: &r})
+		return err
+	}
+
+	// Two foreign writes before two of my puts: re-applied, mine stands on the last of theirs.
+	wrote := foreign(f, key, 2)
+	if err := held("first"); err != nil || len(*wrote) != 2 {
+		t.Fatalf("re-applied twice: %v (%d foreign)", err, len(*wrote))
+	}
+	doc, _ := f.Content(key)
+	lastOwner := regexp.MustCompile(`owner: f\d+`).FindString((*wrote)[1])
+	if !strings.Contains(doc, "reason: first") || !strings.Contains(doc, lastOwner) {
+		t.Fatalf("not both:\n%s", doc)
+	}
+
+	// Foreign writes before every one of my puts: I give up, the latest foreign revision is put
+	// back, and the answer is a conflict naming it. (Those writers built on my earlier
+	// revisions, as a real one would, so what they wrote may carry my change: that is the race
+	// Caster's put cannot close, and Caster's history keeps every revision.)
+	wrote = foreign(f, key, maxRetries+1)
+	err := held("second")
+	var c *Conflict
+	if !errors.As(err, &c) {
+		t.Fatalf("exhausted: %v", err)
+	}
+	doc, rev := f.Content(key)
+	if doc != (*wrote)[len(*wrote)-1] || c.Rev != rev {
+		t.Fatalf("after giving up, Caster holds (rev %d, reported %d):\n%s", rev, c.Rev, doc)
+	}
+
+	// A write that lands on the restore itself: theirs is put back on top.
+	wrote = foreign(f, key, maxRetries+2)
+	if err = held("third"); !errors.As(err, &c) {
+		t.Fatalf("restore raced: %v", err)
+	}
+	doc, rev = f.Content(key)
+	if doc != (*wrote)[len(*wrote)-1] || c.Rev != rev {
+		t.Fatalf("after the raced restore (rev %d, reported %d):\n%s", rev, c.Rev, doc)
+	}
+
+	// Someone writes after my last put and before the restore: theirs is left alone.
+	foreign(f, key, maxRetries+1)
+	late := ""
+	f.beforeLatest = func(k string) {
+		if k == key && late == "" && f.Revs(key) > 0 {
+			cur, _ := f.Content(key)
+			if strings.Contains(cur, "reason: fourth") {
+				late = strings.Replace(cur, "title: Multi", "title: Late writer", 1)
+				f.Put(key, late, "late", "")
+			}
+		}
+	}
+	if err = held("fourth"); !errors.As(err, &c) || !strings.Contains(err.Error(), "someone else wrote after") {
+		t.Fatalf("late writer: %v", err)
+	}
+	f.beforeLatest = nil
+	if doc, _ = f.Content(key); doc != late {
+		t.Fatalf("the late writer's revision was overwritten:\n%s", doc)
+	}
+
+	// A replace refused on re-apply, with a write landing on the restore: theirs on top.
+	f.BeforePut = nil
+	w, _, _ := m.st.Get(ctx, "multi")
+	wrote = foreign(f, key, 2)
+	notes := "mine"
+	_, err = m.st.Update(ctx, "multi", w.Rev, Patch{Notes: &notes})
+	if !errors.As(err, &c) {
+		t.Fatalf("refused replace: %v", err)
+	}
+	doc, rev = f.Content(key)
+	if doc != (*wrote)[1] || c.Rev != rev {
+		t.Fatalf("after the refused replace (rev %d, reported %d):\n%s", rev, c.Rev, doc)
+	}
+	f.BeforePut = nil
+}
+
+func TestApplyThatWroteNothingCanRunAgain(t *testing.T) {
+	f := newTether()
+	h, m := start(t, f)
+	p := seedPlan(t, h, m)
+	f.Fail = func(tool string, _ map[string]any) bool { return tool == "caster_put" }
+	if code, _ := h.Do("POST", "/seed/"+p.ID+"/apply", ""); code == 200 {
+		t.Fatal("an apply whose every put failed answered 200")
+	}
+	f.Fail = nil
+	code, body := h.Do("POST", "/seed/"+p.ID+"/apply", "")
+	if code != 200 || !strings.Contains(body, `"created":["`) {
+		t.Fatalf("second apply: %d %s", code, body)
+	}
+}
+
+func TestCanceledReadsAreNotCached(t *testing.T) {
+	f := newTether()
+	f.tasks["CW-20990101-0001"] = [3]string{"Open", "doing", "2099-01-01T10:00:00Z"}
+	r := reader{link: func() (tetherlink.Caller, error) { return f, nil }, cache: newTaskCache()}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := r.read(ctx, "CW-20990101-0001"); got.err == nil {
+		t.Fatal("a canceled read succeeded")
+	}
+	if _, ok := r.cache.get("CW-20990101-0001"); ok {
+		t.Fatal("a canceled read was cached")
+	}
+	if got := r.read(context.Background(), "CW-20990101-0001"); got.err != nil || got.task.Status != "doing" {
+		t.Fatalf("read after: %+v", got)
+	}
+}
+
+func TestOnlyTheTopmostOrphanIsLifted(t *testing.T) {
+	f := newTether()
+	_, m := start(t, f)
+	ctx := context.Background()
+	put := func(id, parent string) {
+		f.Put("ops/ws."+id, fmt.Sprintf("---\nops: v1\nid: %s\ntitle: %s\nparent: %s\nstage: planning\n---\n", id, id, parent), id, "")
+	}
+	put("mid", "gone-away")
+	put("leaf", "mid")
+	for i := 0; i <= maxDepth+2; i++ { // lvl-0 … lvl-8: lvl-7 sits 7 deep
+		p := ""
+		if i > 0 {
+			p = fmt.Sprintf("lvl-%d", i-1)
+		}
+		put(fmt.Sprintf("lvl-%d", i), p)
+	}
+	_, _ = m.st.Refresh(ctx, true)
+	b, _ := m.st.All(ctx)
+	mid, _ := b.Find("mid")
+	leaf, _ := b.Find("leaf")
+	if mid.Parent != "" || !strings.Contains(mid.Problem, "ops:gone-away is not in Ops") {
+		t.Fatalf("mid: %+v", mid)
+	}
+	if leaf.Parent != "mid" || leaf.Problem != "" {
+		t.Fatalf("leaf left its parent: %+v", leaf)
+	}
+	d7, _ := b.Find("lvl-7")
+	d8, _ := b.Find("lvl-8")
+	d6, _ := b.Find("lvl-6")
+	if d7.Parent != "" || !strings.Contains(d7.Problem, "7 deep") || d8.Parent != "lvl-7" || d6.Parent != "lvl-5" {
+		t.Fatalf("depth: d6 %q d7 %q (%s) d8 %q", d6.Parent, d7.Parent, d7.Problem, d8.Parent)
 	}
 }

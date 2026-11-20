@@ -50,13 +50,25 @@ transitions:                   # the last 50 moves; Caster's log is the whole re
 
 Keys and headings Ops does not know are kept as they are when it writes.
 
-**Writes.** Every write reads the document again and applies the change to it. Caster's put takes no
-expected revision, so the revision it answers is checked: one further on than expected means someone wrote
-in between. Their revision is then read, the change applied to it again and written once more (up to twice),
-so neither write is lost. A change that cannot apply to theirs (a create whose id they took, an update that
-replaces what its caller read) puts theirs back as the latest and is refused: "id taken" or 409. A reorder is
-worked out on the queue as it is at the write. `ops_update` needs `base_rev` for what replaces something read
-(notes, purpose, active_means, active_when, labels, tick). Link kinds kept: `ops.workstream`,
+**Writes.** Every write reads the document again and applies the change to it. Caster has no
+expected-revision put ("write only if still at revision N"), so a write is checked by the revision it answers:
+one further on than expected means someone wrote in between and this write now sits over theirs. Their
+revision is read at once, the change applied to it again and written once more (up to twice), so the window in
+which the latest revision lacks their change is one read and one put long. What a write reports always matches
+what Caster holds:
+
+- success: the change is the latest revision, built on everyone else's;
+- refused ("id taken", or 409 for an update that replaces what its caller read, or when others kept writing
+  through every retry): the change does not stand. The latest foreign revision seen is put back as the latest,
+  and that restore is checked the same way: when someone wrote after this change it is left as they wrote it,
+  and when a write lands on the restore itself, theirs is put back on top. The 409 names the revision now
+  latest.
+
+A race can still lose a write: a writer who builds on this write's revision before it is re-applied builds
+without the change it overwrote. Caster's history keeps every revision, so nothing is gone from it, and a
+conditional put in Caster would close the window (a follow-up below). A reorder is worked out on the queue as it
+is at the write. `ops_update` needs `base_rev` for what replaces something read (notes, purpose, active_means,
+active_when, labels, tick). Link kinds kept: `ops.workstream`,
 `work.item`, `torque.task|epic|plan|project|sprint`, `registry.record` (`<kind>:<id>`, the chip
 `registry:<kind>:<id>`), `caster.doc`, `tesseract.item|key`, `tether.agent|message`, `url`, and
 `tether.team|session`, which show as text until they have a resolver.
@@ -78,9 +90,10 @@ stage with a button. It never moves anything by itself.
 
 ## Nesting
 
-A workstream has an optional `parent`; its children are worked out from the copy. One whose parent is
-missing, loops or sits too deep (written by hand, say) is shown at the top level with a problem saying why, so
-nothing drops off the board. This mirrors Tether's
+A workstream has an optional `parent`; its children are worked out from the copy. Only a workstream that
+cannot sit where its document says goes to the top level, with a problem saying why: one whose own parent is not
+in Ops, one on a loop of parents (lifting one breaks the loop), and the topmost of a chain deeper than allowed.
+Everything under it stays under it, so nothing drops off the board. This mirrors Tether's
 workstreams, which carry a parent as `;parent=ws:<id>` inside `workflow_id` rather than as a field. Rules: the
 parent exists, no loops, and nothing deeper than 6 below the top, counting what is inside the workstream
 being moved. `parent: ""` makes one top level.
@@ -186,3 +199,6 @@ Settings: `ops.tether_command`, or `ops.tether_url` with `ops.tether_token_file`
 - **Teams**: no `tether.team` Cite kind; team links show as text. No grouping of activity by team, no
   StateTimeline.
 - `ops_request_agent`, `ops_launch_request`, `ops_drop` (phase 1.5), and the Planner → Task Ops hook.
+- **A conditional put in Caster** (`caster_put` with an expected revision, refused when the item moved on).
+  Until Caster has one, a race between writers can still lose a write (see Writes); with it, `putOver` becomes
+  a plain compare-and-swap loop.

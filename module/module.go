@@ -73,6 +73,9 @@ type Manifest struct {
 	// named in any text (a task id, a path) and shown there as a chip with a preview. Each
 	// kind is declared by one module. Optional.
 	Refs []RefKind `json:"refs,omitempty"`
+	// Gateway declares that the module calls a model itself, on the owner's action, and so
+	// needs Host.Agent().Gateway. A module that does not declare it gets ErrNoAgent there.
+	Gateway bool `json:"gateway,omitempty"`
 }
 
 // Base gives a module no-op Start and Stop, for one that needs neither.

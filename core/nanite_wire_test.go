@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -295,6 +296,80 @@ func countWith(lines []string, s string) int {
 	return n
 }
 
+func TestNaniteAutoApproveOptIn(t *testing.T) {
+	model := newFakeModel(t)
+	naniteConfig(t, model.srv.URL)
+	path := os.Getenv("SURFACE_AGENT_CONFIG")
+	raw, err := os.ReadFile(path) //nolint:gosec // test-owned config path
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err = json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg["auto_approve"] = true
+	raw, _ = json.Marshal(cfg)
+	if err = os.WriteFile(path, raw, 0600); err != nil { //nolint:gosec // test-owned config path
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	app, err := New(ctx, Options{Name: "hostappr", Title: "Host approvals", DataDir: t.TempDir(), Modules: []string{"scratch"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = app.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(app.Handler())
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+		_ = app.Stop(context.Background())
+	})
+	a := &lateApp{t: t, srv: srv}
+	var conv struct {
+		ID string `json:"conversation_id"`
+	}
+	do(t, srv, "POST", "/api/agent/agents/hostappr/conversation", "{}", &conv)
+	var att struct {
+		ID string `json:"attachment_id"`
+	}
+	do(t, srv, "POST", "/api/agent/conversations/"+conv.ID+"/attachments", `{"role":"controller","stream":"committed"}`, &att)
+	a.conv, a.att = conv.ID, att.ID
+	turn := func(text string) string {
+		var r struct {
+			RunID string `json:"run_id"`
+		}
+		if code := do(t, srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, &r); code != 202 {
+			t.Fatalf("turn %q: %d", text, code)
+		}
+		return r.RunID
+	}
+	var setup struct {
+		AutoApprove bool `json:"auto_approve"`
+	}
+	do(t, srv, "GET", "/api/agent/setup", "", &setup)
+	if !setup.AutoApprove {
+		t.Fatal("setup did not expose auto mode")
+	}
+	model.script("agent_reflex_put")
+	run := turn("add a reflex")
+	lines := a.streamUntil(run, `"verb":"run.finish"`)
+	a.waitIdle()
+	if countWith(lines, `"approval.request"`) != 0 {
+		t.Fatal("auto mode asked for approval")
+	}
+	if countWith(lines, `"auto-approved"`) == 0 {
+		t.Fatal("missing auto-approved activity")
+	}
+	var grants []json.RawMessage
+	do(t, srv, "GET", "/api/agent/grants", "", &grants)
+	if len(grants) != 0 {
+		t.Fatalf("auto mode persisted grants: %s", grants)
+	}
+}
+
 // Through the Service: an approval answered "always" is kept and covers the next call; a
 // cancel stops a run whose model has not answered, and the conversation goes on.
 func TestNaniteApprovalsAndCancelThroughTheService(t *testing.T) {
@@ -342,6 +417,12 @@ func TestNaniteApprovalsAndCancelThroughTheService(t *testing.T) {
 			}
 			return false
 		})
+	}
+
+	var setup map[string]any
+	do(t, srv, "GET", "/api/agent/setup", "", &setup)
+	if setup["auto_approve"] != false {
+		t.Fatalf("auto mode must default false: %v", setup["auto_approve"])
 	}
 
 	// agent_reflex_put is a write tool: it asks.

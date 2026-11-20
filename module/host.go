@@ -48,6 +48,21 @@ type Agent interface {
 	// module's, and returns its run id without waiting for it. ErrAgentBusy while a run is
 	// active (try again later); ErrNoAgent when the app's agent cannot take one.
 	Ask(ctx context.Context, a Ask) (string, error)
+	// Gateway is the model gateway the app's agent config names, read at the moment of the
+	// call: for a module that calls a model itself, and only on the owner's action (the
+	// Workbench's eval runs). It carries the key file's path, never the key. ErrNoAgent when
+	// the config names no model, gateway or key file.
+	Gateway(ctx context.Context) (Gateway, error)
+}
+
+// Gateway is a model gateway as the app's agent config names it: an Anthropic-compatible
+// endpoint (requests go to <URL>/v1/messages with the key as a bearer token).
+type Gateway struct {
+	Model string `json:"model"`
+	URL   string `json:"url"`
+	// KeyFile is the path of the file that holds the key. Read it when a request is made;
+	// never log it or show the key.
+	KeyFile string `json:"key_file"`
 }
 
 // Ask is an errand for the agent.

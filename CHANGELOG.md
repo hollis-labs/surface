@@ -20,6 +20,29 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   applied yet. The Workbench names its profile (the Agent Architect, `modules/workbench/profile/`), so Studio works as the Architect while the Workbench is in front.
 - **Nanite main (v0.6.1-0.20261120160952-50b6e5fc121c)** until v0.7.0 is tagged: authored validators, tool
   packages, steering and resume.
+- **Operations (`modules/ops`, in Desk): the owner's workstream board.** A workstream is a concept of any size,
+  from one task to a mesh-wide change, and nests: an optional parent, children worked out from the copy (Tether's
+  `;parent=ws:` idea as a field). Each is one revisioned Caster document under a new `ops/v1` contract
+  (`caster://ops/ws.<id>`; its id is a slug, 1:1 with the Registry workstream key), and the Queued band's launch
+  order is one document (`caster://ops/queue`); the module's database is a working copy read again every 15 s, and
+  every write publishes `ops.changed`. The board: Planning, Planned, a separate numbered **Queued** band (reordered
+  by drag or up/down, among siblings only; advisory, it does not drive dispatch) and In Flight, with Review,
+  Adoption and Active behind Later; Kanban and Cards; one level at a time, top concepts first, "N inside" steps in.
+  Cards show the owner, held flag, age in stage, the Torque roll-up and the last activity, and a suggested stage
+  when the tasks point elsewhere (moves stay explicit). The drill-in: Overview (children, links by role as Cite
+  chips, `registry:` chips for Registry ids, the active-when checklist, purpose and notes), Tasks (the Torque
+  roll-up, children's included), Activity (Torque task state, `STATUS` comments, status-stream rows where a
+  `status_ns` is set, and Ops moves, in one timeline) and History (moves, and Caster revisions with a line diff).
+  The agent's `ops_list`, `ops_get`, `ops_activity` (read) and `ops_create`, `ops_update`, `ops_move`,
+  `ops_queue_reorder`, `ops_link`, `ops_unlink` (write), the `ops` slot, and the `ops.workstream` Cite kind
+  (`ops:<id>`). Its own allowlisted Tether link (`ops.tether_command` or `ops.tether_url`) has no launch,
+  dispatch, claim or team tool. A seed maps the owner's tracker (threads and follow-ups) into workstreams as a
+  preview the owner edits and applies in the page (`ops_seed` opens one and writes nothing): stages map flight,
+  queued, review and landed to In Flight, Queued, In Review and Adoption; tasks become `torque.task` links;
+  follow-ups go onto the workstream they name or to the owner's list; proposed concept groupings stay off until
+  ticked. A path to the tracker is read only from the owner's page, and a preview applies once. The routes that
+  change something are the owner's (an outside client or the agent gets 403 and uses the tools), and a write
+  that lands over someone else's is applied again to theirs rather than lost.
 
 - **Registry (`modules/registry`, in Desk): a read-only browser for the Registry.** Kinds with record counts, the
   review queue and the diagnostics; the records of a kind, filtered by lifecycle and owner or searched

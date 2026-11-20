@@ -160,6 +160,13 @@ describe("surface kinds", () => {
     eq(refs("(registry:document:guide/operations)"), [["registry.record", "document:guide/operations"]])
     eq(refs("project:surface registry:project: registry:Project:x xregistry:project:surface"), [])
   })
+  it("ops workstreams", () => {
+    eq(refs("see ops:auth-identity-secrets, and (ops:warden)."), [
+      ["ops.workstream", "auth-identity-secrets"],
+      ["ops.workstream", "warden"],
+    ])
+    eq(refs("devops:thing ops:ab ops:Warden a/ops:warden"), [])
+  })
   it("tach links name every service", () => {
     eq(parseTachHref("tach:torque/cw-20261019-0028"), { kind: "torque.task", canonical: "CW-20261019-0028" })
     eq(parseTachHref("tach:tesseract/01M4SCJHDM8FV6MDPSDTMZ0X44"), {

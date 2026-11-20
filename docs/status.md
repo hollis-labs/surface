@@ -48,6 +48,21 @@ agent/steer v0.1.0 config in the sidecar, applied once Nanite 0.7.0 is tagged), 
 key, stub tools in evals (nanite/evals has no hook), a live provider from Nanite itself. Checked by
 `modules/workbench` tests against a fake gateway. See [modules/workbench/README.md](../modules/workbench/README.md).
 
+## Operations (MVP)
+
+`modules/ops`, in Desk: the owner's workstream board (Torque CW-20261120-0117). Real today: workstreams as
+`ops/v1` documents in Caster (`caster://ops/ws.<id>`, the launch order in `caster://ops/queue`), a working copy
+read again every 15 s, nesting (a workstream is a concept of any size, with a parent and children), the board
+(Planning, Planned, the numbered Queued band ordered by drag or arrows among siblings, In Flight; Review, Adoption
+and Active behind Later; Kanban and Cards), the drill-in (Overview, Tasks, Activity, History), the agent's
+`ops_*` tools and slot, `ops:<id>` in Cite, and a seed from the owner's tracker that is always a preview the owner
+edits and applies. Activity is Torque (task state and `STATUS` comments), the status stream per `status_ns`, and
+Ops' own moves, rolled up from children. Stubbed until they land: Registry identity by key and correlation
+records (`workstream_ensure` not deployed; the identity link is by hand), trusted status writers (every status row
+is "claimed"), a cross-project status read, plan expansion, and a `tether.team` Cite kind. Its Tether link has no
+launch, dispatch, claim or team tool. Checked by `modules/ops` tests against collabtest's fake Caster and a fake
+Torque. See [modules/ops/README.md](../modules/ops/README.md).
+
 ## Not there yet
 
 - **Nanite's embeddable package.** It does not exist yet; the agent runs on `libs/agent/host` behind the

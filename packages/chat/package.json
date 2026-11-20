@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-chat",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A conversation with an agent host, without any styling: the durable conversation wire, the chatstream/v1 event reducer, a store whose messages update one at a time, and scroll-follow. Visuals are the Surface registry's chat components.",
   "license": "MIT",
   "repository": {

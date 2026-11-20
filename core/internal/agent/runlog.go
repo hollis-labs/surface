@@ -39,13 +39,13 @@ CREATE INDEX IF NOT EXISTS agent_runs_started ON agent_runs(started_at);`
 
 // RunRecord is one run as the log keeps it.
 type RunRecord struct {
-	RunID     string   `json:"run_id"`
-	StartedAt string   `json:"started_at"`
-	EndedAt   string   `json:"ended_at,omitempty"`
-	Status    string   `json:"status,omitempty"`
-	Reason    string   `json:"reason,omitempty"`
-	Origin    string   `json:"origin,omitempty"`
-	Slot      string   `json:"slot,omitempty"`
+	RunID     string `json:"run_id"`
+	StartedAt string `json:"started_at"`
+	EndedAt   string `json:"ended_at,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Origin    string `json:"origin,omitempty"`
+	Slot      string `json:"slot,omitempty"`
 	// Profile is the agent profile the run acted as: a module's id, or "default" (the seat).
 	Profile   string   `json:"profile,omitempty"`
 	Provider  string   `json:"provider,omitempty"`

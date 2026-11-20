@@ -100,7 +100,7 @@ func TestStageLaysTheProfileOverTheSeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage := filepath.Join(t.TempDir(), "staged")
-	if err := Stage(stage, seat, p); err != nil {
+	if err = Stage(stage, seat, p); err != nil {
 		t.Fatal(err)
 	}
 	// One definition: the seat's front matter, the profile's instructions under it.

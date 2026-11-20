@@ -200,7 +200,7 @@ func (p *Profile) check() error {
 	for name, raw := range p.files {
 		want[name] = staged{data: raw, exec: p.exec[name]}
 	}
-	if err := sync(dir, want); err != nil {
+	if err = sync(dir, want); err != nil {
 		return err
 	}
 	snap, err := agentdir.Load(dir)

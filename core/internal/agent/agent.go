@@ -5,10 +5,9 @@
 // the reflexes (reflex: reminders, a halt, actions), chooses the active context slots
 // (slots.Selector: today the window in front), assembles the <context> block from them
 // (slots.Assemble: top-of-mind tools, instructions, the module's knowledge, the agent's
-// note, where things are kept), and hands the message to the Engine.
+// note, where things are kept), and submits the message on the conversation wire.
 //
-// Nanite serves embedded agents on the conversation wire. Engine remains an optional
-// injection seam for custom integrations and tests.
+// Nanite serves embedded agents on the durable conversation wire.
 package agent
 
 import (
@@ -35,17 +34,11 @@ import (
 )
 
 // Owner is the one person a Surface app serves. Surface apps are single-user and
-// loopback-only; the engine still wants a name to keep threads by.
+// loopback-only; conversations belong to this owner.
 const Owner = "owner"
 
 // Prefix is where the agent's routes are served.
 const Prefix = "/api/agent"
-
-// The engine's refusals, whatever engine is in use.
-var (
-	ErrNotReady = errors.New("no model is configured for the agent")
-	ErrBusy     = errors.New("the agent is still working on the last message")
-)
 
 // Request is one call put to an Approver.
 type Request struct {
@@ -57,7 +50,7 @@ type Request struct {
 
 // Approver decides whether the agent may make a call that changes something (levels write
 // and confirm). It is the hook for an outside approval service (Gatecrasher). With none, the
-// engine asks the owner in the panel, which is the default.
+// runner asks the owner in the panel, which is the default.
 type Approver interface {
 	Approve(ctx context.Context, r Request) (bool, error)
 }
@@ -66,8 +59,6 @@ type Approver interface {
 type Options struct {
 	// Approver, when set, replaces the in-panel question for write and confirm calls.
 	Approver Approver
-	// Engine, when set, is used instead of libs agent/host (tests, and Nanite later).
-	Engine Engine
 	// Selector, when set, replaces the default: the focus selector, overruled by the
 	// classifier when the setting surface.agent_selector is "classifier".
 	Selector slots.Selector
@@ -81,14 +72,11 @@ type Options struct {
 // Service is the embedded agent.
 type Service struct {
 	// runs is the run log (the conversation wire only).
-	runs   *runLog
-	k      kernel.Kernel
-	log    *slog.Logger
-	cfg    FileConfig
-	cfgErr error
-	// custom is set when the engine was handed in (Options.Engine): the config file is not its.
-	custom   bool
-	engine   Engine
+	runs     *runLog
+	k        kernel.Kernel
+	log      *slog.Logger
+	cfg      FileConfig
+	cfgErr   error
 	approver Approver
 	selector slots.Selector
 	pin      *slots.FocusSelector // the selector, when it is the focus one
@@ -121,11 +109,6 @@ type Service struct {
 	lastAt    time.Time
 	turnSlot  string // the primary slot of the owner's last turn, for the note-on-leave ask
 
-	// standingMu guards what the runner's system prompt was built with: the standing text
-	// (nil: no runner reads the agent directory into a fixed prompt) and its directory.
-	standingMu     sync.Mutex
-	standingLoaded *string
-	standingDir    string
 	// standingWrite serializes standing_update.
 	standingWrite sync.Mutex
 
@@ -183,24 +166,13 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		// The focus selector, which the classifier overrules when surface.agent_selector says so.
 		s.selector = &classifiedSelector{focus: s.pin, cls: s.cls, mode: s.selectorMode}
 	}
-	s.engine = o.Engine
-	s.custom = o.Engine != nil
-	if s.engine == nil {
-		s.engine = unavailableEngine{}
-	}
 	for _, t := range k.Tools() {
 		s.tools[t.Name] = t
 	}
-	if err = s.engine.AddTools(s.engineTools()...); err != nil {
-		s.engine.Close()
-		return nil, fmt.Errorf("agent: tools: %w", err)
-	}
-
-	// An injected engine and an unconfigured app remain usable without opening a model.
+	// An unconfigured app remains usable without opening a model.
 	explicitRunner := strings.TrimSpace(os.Getenv("SURFACE_AGENT_RUNNER")) != ""
-	if runner := runnerChoice(); cfg.Tether.URL == "" && (explicitRunner || (!s.custom && cfg.Model != "" && cfg.GatewayURL != "" && cfg.KeyFile != "")) {
+	if runner := runnerChoice(); cfg.Tether.URL == "" && (explicitRunner || (cfg.Model != "" && cfg.GatewayURL != "" && cfg.KeyFile != "")) {
 		if s.wire, err = s.openWire(ctx, runner); err != nil {
-			s.engine.Close()
 			return nil, err
 		}
 		log.Info("the agent is on the conversation wire", "runner", runner)
@@ -231,13 +203,13 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	s.stop = func() { unsub(); cancel() }
 	go s.worker(wctx)
 	s.startLate()
-	if s.wire == nil && !s.engine.Ready() {
+	if s.wire == nil {
 		log.Info("the agent has no model configured", "config", ConfigPath(k.AppName()))
 	}
 	return s, nil
 }
 
-// Close stops the engine and the worker.
+// Close stops the runner and the worker.
 func (s *Service) Close(context.Context) error {
 	s.closeMu.Do(func() {
 		s.eventMu.Lock()
@@ -254,13 +226,9 @@ func (s *Service) Close(context.Context) error {
 		if s.wire != nil {
 			s.wire.close(context.Background())
 		}
-		s.engine.Close()
 	})
 	return nil
 }
-
-// Engine is the engine in use.
-func (s *Service) Engine() Engine { return s.engine }
 
 // worker republishes the context when the desk changes, at most every 150ms.
 func (s *Service) worker(ctx context.Context) {
@@ -367,80 +335,6 @@ func (s *Service) layoutInstructions(ctx context.Context, sit module.Situation) 
 	return strings.TrimSpace(v)
 }
 
-// TurnResult is what Send did with a message.
-type TurnResult struct {
-	RunID    string         `json:"run_id,omitempty"`
-	Halted   string         `json:"halted,omitempty"`
-	Routed   *router.Route  `json:"routed,omitempty"`
-	Fired    []string       `json:"fired,omitempty"`
-	Assembly slots.Assembly `json:"assembly"`
-}
-
-// Send takes a message from the owner and starts the agent on it.
-func (s *Service) Send(ctx context.Context, text, clientID, auto string) (TurnResult, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return TurnResult{}, errors.New("the message is empty")
-	}
-	if s.wire != nil {
-		return s.sendOnWire(ctx, text, auto)
-	}
-	sit := s.k.Situation(ctx)
-	sit.Input = text
-	sel := s.selector.Select(ctx, sit, s.k.Slots())
-	var res TurnResult
-	extra := s.extra(ctx, sit)
-
-	// The router: a rule may run a call before the agent is asked.
-	f := router.Fields{Text: text, Mode: sit.Mode, Layout: sit.Layout, Slot: sel.Primary().Name}
-	if sit.Focused != nil {
-		f.View, f.Module = sit.Focused.View, sit.Focused.Module
-	}
-	if auto == "" {
-		route, err := s.router.Route(ctx, f)
-		if err != nil {
-			s.log.Warn("message not routed", "err", err)
-		}
-		if route != nil {
-			res.Routed = route
-			extra.Routed = s.runRoute(ctx, route)
-			// A routed call may have changed what is in front.
-			sit = s.k.Situation(ctx)
-			sit.Input = text
-			sel = s.selector.Select(ctx, sit, s.k.Slots())
-		}
-	}
-
-	// The reflexes.
-	prior := s.priorMessages(ctx, "")
-	out := s.reflexes.OnMessage(ctx, reflex.Message{Text: text, Prior: prior, Sit: sit}, s.layoutReflexes(ctx, sit))
-	res.Fired = out.Fired
-	if out.Halt != "" {
-		res.Halted = out.Halt
-		res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
-		s.record(ctx, sit, res.Assembly, res.Routed, out.Fired, true)
-		s.k.Events().Publish("agent.halted", map[string]any{"text": text, "message": out.Halt, "fired": out.Fired})
-		return res, nil
-	}
-	extra.Reminders = out.Reminders
-	extra.Asks = s.keepingAsks(ctx, sel.Primary().Name, auto == "")
-
-	res.Assembly = slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
-	traced := s.record(ctx, sit, res.Assembly, res.Routed, out.Fired, false)
-	raw, _ := json.Marshal(map[string]any{"block": res.Assembly.Block, "assembly": res.Assembly})
-	id, err := s.engine.Start(ctx, Turn{Owner: Owner, Text: text, ClientID: clientID, Context: raw, Auto: auto})
-	if err != nil {
-		return res, err
-	}
-	res.RunID = id
-	if traced != 0 {
-		s.trace.SetRun(ctx, traced, id)
-	}
-	s.k.Events().Publish("agent.turn", map[string]any{"run_id": id, "slot": res.Assembly.Slot, "slots": sel.Names(),
-		"top_of_mind": res.Assembly.TopOfMind, "fired": res.Fired, "routed": res.Routed})
-	return res, nil
-}
-
 // runRoute carries out a routed call and says what the agent should be told.
 func (s *Service) runRoute(ctx context.Context, r *router.Route) string {
 	input, _ := json.Marshal(r.Input)
@@ -469,9 +363,9 @@ func (s *Service) runRoute(ctx context.Context, r *router.Route) string {
 	return ""
 }
 
-// engineTools is every tool the agent gets: the app's, then the agent's own.
-func (s *Service) engineTools() []EngineTool {
-	var out []EngineTool
+// toolBindings is every tool the agent gets: the app's, then the agent's own.
+func (s *Service) toolBindings() []ToolBinding {
+	var out []ToolBinding
 	for _, t := range s.k.Tools() {
 		out = append(out, s.bind(t))
 	}
@@ -481,8 +375,8 @@ func (s *Service) engineTools() []EngineTool {
 	return out
 }
 
-// bind turns a BoundTool into an EngineTool, with the approver in front when there is one.
-func (s *Service) bind(t kernel.BoundTool) EngineTool {
+// bind turns a BoundTool into a ToolBinding, with the approver in front when there is one.
+func (s *Service) bind(t kernel.BoundTool) ToolBinding {
 	schema := map[string]any{"type": "object"}
 	if len(t.Input) > 0 {
 		_ = json.Unmarshal(t.Input, &schema)
@@ -490,7 +384,7 @@ func (s *Service) bind(t kernel.BoundTool) EngineTool {
 	lvl := level(t.Level)
 	call := t.Call
 	if s.approver != nil && (lvl == string(module.LevelWrite) || lvl == string(module.LevelConfirm)) {
-		// The approver decides; the engine must not ask again.
+		// The approver decides; the runner must not ask again.
 		mod, tl := t.Module, t.Level
 		name := t.Name
 		inner := call
@@ -506,9 +400,9 @@ func (s *Service) bind(t kernel.BoundTool) EngineTool {
 		}
 		lvl = string(module.LevelAct)
 	}
-	return EngineTool{Name: t.Name, Description: t.Description, InputSchema: schema, Level: lvl,
+	return ToolBinding{Name: t.Name, Description: t.Description, InputSchema: schema, Level: lvl,
 		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
-			// Whatever the engine runs, the agent does: the desk holds it to the agent's etiquette.
+			// Whatever the runner runs, the agent does: the desk holds it to the agent's etiquette.
 			v, err := call(module.WithActor(ctx, module.ActorAgent), input)
 			if err != nil {
 				return "", err
@@ -517,7 +411,7 @@ func (s *Service) bind(t kernel.BoundTool) EngineTool {
 		}}
 }
 
-// level is a tool's level as the engine takes it; unknown is write.
+// level is a tool's level as the runner takes it; unknown is write.
 func level(l module.Level) string {
 	switch l {
 	case module.LevelRead, module.LevelAct, module.LevelWrite, module.LevelConfirm:

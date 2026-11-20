@@ -26,7 +26,7 @@ func TestEveryTracedTurnIsClassifiedInShadow(t *testing.T) {
 	ctx := context.Background()
 	before := s.cls.SlotDocs()
 
-	if _, err := s.Send(ctx, "what is in the scratch pad?", "", ""); err != nil {
+	if _, err := sendTest(ctx, t, s, "what is in the scratch pad?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	turns, err := s.trace.Recent(ctx, 1)
@@ -111,7 +111,7 @@ func TestAsyncTierKeepsTheDecidersAnswerBesideTheTurn(t *testing.T) {
 	}}
 	s, _, _, _ := setup(t, Options{Decider: d})
 	ctx := context.Background()
-	if _, err := s.Send(ctx, "ugh, put this in scratch again", "", ""); err != nil {
+	if _, err := sendTest(ctx, t, s, "ugh, put this in scratch again", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	req := <-asked
@@ -142,7 +142,7 @@ func TestAsyncTierKeepsTheDecidersAnswerBesideTheTurn(t *testing.T) {
 
 func TestNoAsyncTierWithoutADecider(t *testing.T) {
 	s, _, _, _ := setup(t, Options{})
-	if _, err := s.Send(context.Background(), "hello", "", ""); err != nil {
+	if _, err := sendTest(context.Background(), t, s, "hello", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()
@@ -238,7 +238,7 @@ func TestCentroidsVoteAtAsyncOnceFitted(t *testing.T) {
 		t.Fatal("the centroids were not fitted")
 	}
 	ctx := context.Background()
-	if _, err := s.Send(ctx, "how do I pin a slot?", "", ""); err != nil {
+	if _, err := sendTest(ctx, t, s, "how do I pin a slot?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()
@@ -276,7 +276,7 @@ func TestTheSlotCentroidLearnsWhereTheOwnerPutsThings(t *testing.T) {
 		s.cls.Correct("tighten the wording of this paragraph", "notes")
 	}
 	before := emb.calls.Load()
-	if _, err := s.Send(ctx, "hello", "", ""); err != nil { // a learned turn makes the refit due
+	if _, err := sendTest(ctx, t, s, "hello", "", ""); err != nil { // a learned turn makes the refit due
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()
@@ -318,7 +318,7 @@ func TestEmergingClustersWhatTheClassifierCouldNotLabel(t *testing.T) {
 		"book the standup for tomorrow morning please", // a copy: counted once
 		"the build log says nothing useful today",
 	} {
-		if _, err := s.Send(ctx, text, "", ""); err != nil {
+		if _, err := sendTest(ctx, t, s, text, "", ""); err != nil {
 			t.Fatal(err)
 		}
 		turns, _ := s.trace.Recent(ctx, 1)
@@ -426,7 +426,7 @@ func TestTheConfigFileTurnsOnTheLLMGatewayTier(t *testing.T) {
 	if embeds.Load() == 0 {
 		t.Fatal("the examples were not embedded")
 	}
-	if _, err := s.Send(context.Background(), "what changed today?", "", ""); err != nil {
+	if _, err := sendTest(context.Background(), t, s, "what changed today?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()
@@ -477,7 +477,7 @@ func TestTheClassifierMintsGatewayTokensFromWarden(t *testing.T) {
 	t.Setenv("SURFACE_AGENT_CONFIG", path)
 	s, _, _, _ := setup(t, Options{})
 	s.asyncWG.Wait()
-	if _, err := s.Send(context.Background(), "what changed today?", "", ""); err != nil {
+	if _, err := sendTest(context.Background(), t, s, "what changed today?", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()
@@ -506,7 +506,7 @@ func TestKeyFileAndWardenTogetherTurnOffTheAsyncTier(t *testing.T) {
 	t.Setenv("SURFACE_AGENT_CONFIG", path)
 	s, _, _, _ := setup(t, Options{})
 	s.asyncWG.Wait()
-	if _, err := s.Send(context.Background(), "hello", "", ""); err != nil {
+	if _, err := sendTest(context.Background(), t, s, "hello", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.asyncWG.Wait()

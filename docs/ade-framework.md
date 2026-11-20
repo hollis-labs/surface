@@ -17,14 +17,14 @@ A Surface app is **one binary**: the Surface core, plus the modules its `surface
 main ─▶ app.Main ─▶ Substrate boot (config, logging, health, database, cli)
                  └▶ core.New ─▶ kernel: desk · commands · settings · marks · events
                                ├▶ each module: Manifest, store, Host, Start
-                               └▶ agent service: Engine seam · slots · router · reflexes
+                               └▶ agent service: conversation runner · slots · router · reflexes
 ```
 
 Load-bearing decisions:
 - **The module seam.** A module imports only `surface/module` (plus `moduletest` and `tetherlink`). Two things enforce this: the Go `internal` rule and `module/seam_test.go`. A manifest is plain data plus handlers, so run-time loaded and agent-generated modules can come later without changing the core.
 - **The desk belongs to the server.** Window state lives in `core/internal/desk`. The page draws it and posts actions. So the embedded agent, the palette, the CLI and outside agents over MCP or HTTP all drive the same desk the same way. This is the deliberate break from Basalisk.
 - **Every tool is a server tool.** The same tools are served at `/api/tools` and `/mcp` and through the CLI.
-- **Runtime.** Nanite is the default embedded agent on the durable conversation wire. The optional Engine seam supports injected integrations and tests.
+- **Runtime.** Nanite is the default embedded agent on the durable conversation wire. Tests use the scripted conversation runner.
 - **Module profiles.** One agent, many profiles: a module's profile changes what the agent is told and which helpers it has, never its tools, approvals or identity.
 - **Two kinds of config.** App settings live in the DB and change live. The agent and harness config lives in a file (`~/.config/<app>/agent.json`).
 - **Data.** One core SQLite DB, plus a store and a data dir per module.
@@ -66,7 +66,7 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 
 ### Embedded agent
 - [x] Agent panel: one agent beside the windows, asks before a write
-- [x] Nanite embedded runtime and optional injected Engine seam
+- [x] Nanite embedded runtime and scripted test runner
 - [x] Context slots: chosen by the window in front and the mode, with a pin through `context_switch`, per-slot notes, live Knowledge and budgets
 - [x] Router: rules answered without the model (`/open`, `/layout`, `/run`, plus the owner's rules)
 - [x] Reflexes: text, predicate, event and focus triggers; remind, halt, run_command and call_tool actions; switched on per layout

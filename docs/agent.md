@@ -8,36 +8,22 @@ layout can switch a set of these on for one way of working, and the Interaction 
 owner.
 
 ```
-owner's message ─▶ POST /api/agent/turns
+owner's message ─▶ POST /api/agent/conversations/{id}/turns
                      ├▶ router      a rule may run a look-only call first, or tell the agent what was asked
                      ├▶ reflexes    reminders · a halt · run a command · call a look-only tool
                      ├▶ selector    the active slots, from the Situation (window in front, mode, a pin)
                      ├▶ assembler   the <context> block: in front · slots · instructions · knowledge · note · top of mind
-                     └▶ Engine      the model, the tools, approvals, the thread  ─▶ chatstream events ─▶ panel
+                     └▶ Nanite      the model, the tools, approvals, the thread  ─▶ chatstream events ─▶ panel
 ```
 
 Code: `core/internal/agent` (the service, the seam, HTTP), `core/internal/slots`, `core/internal/router`,
 `core/internal/reflex`. Panel: `web/src/agent`.
 
-## The seam: `Engine`
-
-The agent underneath is behind one interface, so it can change without the rest:
-
-```go
-type Engine interface {
-    Ready() bool
-    Model() string
-    AddTools(tools ...EngineTool) error            // every tool, before serving
-    Start(ctx context.Context, t Turn) (runID string, err error)
-    History(ctx context.Context, owner string) ([]Said, error)
-    Handler(prefix string, owner func(*http.Request) (string, error)) http.Handler
-    Close()
-}
-```
+## The conversation runner
 
 Embedded agents use `nanite/chatrunner` on the durable conversation wire. Nanite owns the model loop,
 approvals, compaction, and model history; Surface owns `chat.db`, context assembly, routing, and app tools.
-`Engine` remains an optional injection seam for custom integrations and tests. No legacy runtime is constructed.
+Tests use the scripted conversation runner. There is no legacy Engine or run-at-a-time HTTP transport.
 
 Every tool is a server tool. The page declares none and runs none: the desk is the server's, so a tool that arranges
 windows changes server state that the page draws. The same tools are offered to outside agents at `/mcp` and
@@ -70,7 +56,7 @@ Then restart the app. `system` adds standing instructions. Nanite runtime settin
 `host.yaml`, including `runtime.max_output_tokens`, `max_steps`, and `compact_at` (tokens before older turns are
 summarised).
 
-- `gateway_url` is an Anthropic-compatible endpoint. The engine posts to `<gateway_url>/v1/messages`.
+- `gateway_url` is an Anthropic-compatible endpoint. Nanite posts to `<gateway_url>/v1/messages`.
 - `key_file` holds the bearer key. It is read on every request, so it can be rotated without a restart. The key
   never reaches the page.
 - Configure outside MCP servers in the Nanite agent directory's `.mcp.json`; the old agent.json `mcp` field is reserved.
@@ -428,7 +414,7 @@ A tool's level decides whether the owner is asked:
 | `write` | Yes. The answer can stand for the session or for good. |
 | `confirm` | Every time. |
 
-By default the engine asks in the panel.
+By default Nanite asks in the panel.
 
 Human-in-the-loop approval belongs to Gatecrasher, not Surface, so Surface leaves one hook:
 
@@ -466,11 +452,12 @@ All routes are under `/api/agent`. The app is single-user and loopback-only, so 
 
 | Route | |
 |---|---|
-| `GET /api/agent` | `{available, ready, model}` (engine) |
-| `GET /api/agent/thread`, `DELETE /api/agent/thread` | the conversation; start a new one (engine) |
-| `POST /api/agent/turns` | `{text, client_id, auto?}` → `{run_id, assembly, routed?, fired?}`. A page's own `context` and `tools` are ignored. |
-| `GET /api/agent/runs/{id}/events` | the run's chatstream/v1 events, resumable with `Last-Event-ID` (engine) |
-| `POST /api/agent/runs/{id}/approvals`, `…/cancel` | answer a question; stop a run (engine) |
+| `POST /api/agent/agents/{agent}/conversation` | open the agent's durable conversation |
+| `POST /api/agent/conversations/{id}/attachments` | attach as a controller or viewer |
+| `POST /api/agent/conversations/{id}/turns` | submit `{attachment, text, request_id?, meta?}`; returns `{run_id}` |
+| `GET /api/agent/conversations/{id}/events` | the resumable conversation stream, including history |
+| `POST /api/agent/conversations/{id}/approvals/{approval}` | answer an approval with the attachment and decision |
+| `POST /api/agent/conversations/{id}/cancel` | cancel the active run |
 | `GET /api/agent/context` | the assembly the next message would carry |
 | `GET /api/agent/setup` | `{ready, model, config_path}` |
 | `GET /api/agent/slots`, `POST /api/agent/slots/pin` | every slot with its note; pin a slot (`""` unpins) |
@@ -524,7 +511,7 @@ library's handler under `/api/agent` and supplies what varies:
 | Who may do what | The app is loopback-only and single-user: the owner, everything |
 | The agent | One, named after the app, kind `embedded` |
 | The log and the control records | `chat.db` in the app's data directory |
-| The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
+| The hook before a turn runs | Before the runner starts: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
 | Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
 
 It defaults to Nanite when `SURFACE_AGENT_RUNNER` is unset. Explicit choices are `nanite` or `scripted`; `host` is rejected.
@@ -537,7 +524,7 @@ An unconfigured app remains usable without opening a model.
 
 | What | Where it comes from |
 |---|---|
-| Model, gateway, key | The app's agent config, as for the engine: `model`, `gateway_url`, `key_file`. The key is passed as a reference to the file and read by Nanite when it calls the gateway. The key file must be under the home directory, owned by the user and mode 0600. |
+| Model, gateway, key | The app's agent config,  `model`, `gateway_url`, `key_file`. The key is passed as a reference to the file and read by Nanite when it calls the gateway. The key file must be under the home directory, owned by the user and mode 0600. |
 | The agent's standing instructions | Its **agent directory**: `<agents.dir>/<app>/` with `agent.md` and `host.yaml`. `agents.dir` is `"agents": {"dir": "..."}` in the agent config (or `SURFACE_AGENTS_DIR`); the default is `agents/` beside the agent config file. Surface writes a starter the first time and never touches it again: it is the owner's to edit, and Nanite reads it at each turn. |
 | Run-time state | `<data dir>/agents/<app>/` (Nanite's conversations and lock) |
 | Tools | The app's tools, run in the app, with their levels. `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time and offers no standing choice. A level that is empty or unknown is `write`. |

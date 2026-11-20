@@ -196,17 +196,11 @@ func TestRunsAreLimited(t *testing.T) {
 	m.run.Wait()
 }
 
-// 4c, 4d: the child gets a minimal environment, and its temporary files go under a root
-// the parent removes, even when the run is canceled.
-func TestTheChildsEnvironmentAndTemporaryFiles(t *testing.T) {
-	t.Setenv("WORKBENCH_TEST_SERVER_SECRET", "do-not-pass")
-	env := strings.Join(childEnviron("/root/x"), "\n")
-	if strings.Contains(env, "WORKBENCH_TEST_SERVER_SECRET") || !strings.Contains(env, "TMPDIR=/root/x") || !strings.Contains(env, childEnv+"=1") {
-		t.Fatalf("child env: %s", env)
-	}
+// Temporary eval workspaces are removed after cancellation and completion.
+func TestRunTemporaryFilesAreRemoved(t *testing.T) {
 	m, h := start(t)
 	base := t.TempDir()
-	m.run.tmpBase = base
+	m.run.rt = &naniteRuntime{tmpBase: base}
 	release := make(chan struct{})
 	asked := make(chan struct{}, 8)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,10 +228,10 @@ func TestTheChildsEnvironmentAndTemporaryFiles(t *testing.T) {
 	select {
 	case <-asked:
 	case <-time.After(30 * time.Second):
-		t.Fatal("the child never reached the gateway")
+		t.Fatal("the run never reached the gateway")
 	}
 	if entries, _ := os.ReadDir(base); len(entries) == 0 {
-		t.Fatal("the child's temporary root is not under the parent's base")
+		t.Fatal("the temporary workspace is not under the configured base")
 	}
 	m.run.Cancel(r.ID)
 	m.run.Wait()

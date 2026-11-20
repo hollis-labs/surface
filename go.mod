@@ -12,6 +12,7 @@ require (
 	github.com/hollis-labs/libs/agent/steer v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
 	github.com/hollis-labs/libs/llm/core v0.4.0
+	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/nanite v0.6.1-0.20261120174546-ee8562f0fea9
 	github.com/hollis-labs/substrate v0.1.1-0.20261120171505-0d8ca5dd433a
@@ -47,7 +48,6 @@ require (
 	github.com/hollis-labs/libs/mesh/core v0.11.0 // indirect
 	github.com/hollis-labs/libs/security/auth v0.3.1 // indirect
 	github.com/hollis-labs/libs/security/policy v0.1.0 // indirect
-	github.com/hollis-labs/libs/security/redact v0.2.0 // indirect
 	github.com/hollis-labs/libs/security/secrets v0.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -113,6 +114,9 @@ type Service struct {
 	stop    func()
 	done    chan struct{}
 	closeMu sync.Once
+	eventMu sync.Mutex
+	eventWG sync.WaitGroup
+	closing bool
 
 	lastMu    sync.Mutex
 	lastFocus string // the window last seen in front, for focus reflexes
@@ -197,7 +201,9 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 		return nil, fmt.Errorf("agent: tools: %w", err)
 	}
 
-	if runner := runnerChoice(); runner != "" && cfg.Tether.URL == "" {
+	// An injected engine and an unconfigured app remain usable without opening a model.
+	explicitRunner := strings.TrimSpace(os.Getenv("SURFACE_AGENT_RUNNER")) != ""
+	if runner := runnerChoice(); cfg.Tether.URL == "" && (explicitRunner || (!s.custom && cfg.Model != "" && cfg.GatewayURL != "" && cfg.KeyFile != "")) {
 		if s.wire, err = s.openWire(ctx, runner); err != nil {
 			s.engine.Close()
 			return nil, err
@@ -215,12 +221,12 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 			// The agent's own events stay out of the trace and the desk's refresh; a
 			// compaction still reaches the event reflexes (save-state).
 			if ev.Topic == TopicCompacted {
-				go s.onEvent(ev)
+				s.launchEvent(func() { s.onEvent(ev) })
 			}
 			return
 		}
 		go s.traceEvent(ev)
-		go s.onEvent(ev)
+		s.launchEvent(func() { s.onEvent(ev) })
 		select {
 		case s.wake <- struct{}{}:
 		default:
@@ -239,7 +245,11 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 // Close stops the engine and the worker.
 func (s *Service) Close(context.Context) error {
 	s.closeMu.Do(func() {
+		s.eventMu.Lock()
+		s.closing = true
+		s.eventMu.Unlock()
 		s.stop()
+		s.eventWG.Wait()
 		<-s.done
 		s.stopLate()
 		if s.asyncCancel != nil {
@@ -297,6 +307,10 @@ func (s *Service) onEvent(ev module.Event) {
 		s.lastMu.Unlock()
 	}
 	sit := s.k.Situation(ctx)
+	if s.wire != nil && s.wire.nanite != nil {
+		s.steerHostEvent(ctx, ev.Topic, focusView)
+		return
+	}
 	s.reflexes.OnEvent(ctx, ev, focusView, s.layoutReflexes(ctx, sit))
 }
 
@@ -584,4 +598,15 @@ The desk is yours to arrange when it helps (desk_open, desk_focus, desk_arrange,
 		p += "\n\n" + extra
 	}
 	return p
+}
+
+// launchEvent tracks host callbacks so shutdown drains them before closing the runner.
+func (s *Service) launchEvent(fn func()) {
+	s.eventMu.Lock()
+	defer s.eventMu.Unlock()
+	if s.closing {
+		return
+	}
+	s.eventWG.Add(1)
+	go func() { defer s.eventWG.Done(); fn() }()
 }

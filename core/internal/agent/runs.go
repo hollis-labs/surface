@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"iter"
 
 	"github.com/hollis-labs/libs/agent/chat"
 	"github.com/hollis-labs/libs/agent/host"
 	chatstream "github.com/hollis-labs/libs/ui/ui-go/chatstream"
+	"github.com/hollis-labs/nanite/chatrunner"
 )
 
 // The agent's runs announce themselves on the app's bus, the same way whichever engine runs
@@ -80,6 +82,7 @@ type watchedRunner struct {
 	// log keeps the run log (nil: none); model is the app's configured model, for the log.
 	log   *runLog
 	model string
+	event func(string, chatstream.Event)
 	// replaced is the runner's own Replaced signal merged with the app's: at start, the
 	// agent's side is new, so every attachment and lease from before is void (relaunched).
 	replaced chan string
@@ -124,14 +127,16 @@ func (w watchedRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run, err
 		log.end(c, status, reason)
 		w.ended(id, status, reason)
 	}
-	return watchedRun{Run: r, id: turn.RunID, ended: ended, seen: c}, nil
+	return watchedRun{Run: r, id: turn.RunID, ended: ended, seen: c, event: w.event, conversation: turn.ConversationID}, nil
 }
 
 type watchedRun struct {
 	chat.Run
-	id    string
-	ended func(id, status, reason string)
-	seen  *collector
+	id           string
+	ended        func(id, status, reason string)
+	seen         *collector
+	conversation string
+	event        func(string, chatstream.Event)
 }
 
 func (w watchedRun) Events() iter.Seq2[chatstream.Event, error] {
@@ -146,6 +151,9 @@ func (w watchedRun) Events() iter.Seq2[chatstream.Event, error] {
 		for ev, err := range w.Run.Events() {
 			if err == nil {
 				w.seen.see(ev)
+				if w.event != nil {
+					w.event(w.conversation, ev)
+				}
 			}
 			if err == nil && ev.IsTerminal() && !done {
 				done = true
@@ -175,4 +183,35 @@ func firstOf(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// watchWireRun gives runner-initiated recovery and notice runs the same bus and log hooks.
+func (s *Service) watchWireRun(turn chat.Turn, run chat.Run) chat.Run {
+	if turn.RunID == "" {
+		return watchedRun{Run: run, event: s.wireEvent, conversation: turn.ConversationID, ended: func(string, string, string) {}}
+	}
+	c := s.runs.begin(turn.RunID, s.cfg.Model)
+	if turn.RunID != "" {
+		s.runStarted(turn.RunID)
+	}
+	return watchedRun{Run: run, id: turn.RunID, seen: c, event: s.wireEvent, conversation: turn.ConversationID,
+		ended: func(id, status, reason string) {
+			s.runs.end(c, status, reason)
+			if id != "" {
+				s.runEnded(id, status, reason)
+			}
+		}}
+}
+
+func (s *Service) wireEvent(conversation string, ev chatstream.Event) {
+	if ev.Verb != chatstream.VerbActivity || ev.Kind != chatrunner.ActivityCompact {
+		return
+	}
+	var value map[string]any
+	if json.Unmarshal(ev.Value, &value) != nil || value["state"] != "done" {
+		return
+	}
+	value["run_id"] = ev.RunID
+	value["conversation_id"] = conversation
+	s.k.Events().Publish(TopicCompacted, value)
 }

@@ -496,8 +496,45 @@ library's handler under `/api/agent` and supplies what varies:
 | The hook before a turn runs | What `Send` does on the engine: a routing rule may run a call, a reflex may answer instead (a host-answered turn every attached page sees), and the context block is assembled and attached as the turn's context |
 | Standing approvals ("always") | The `agent_grants` table in the core database; listed at `GET /api/agent/grants` |
 
-It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`. With no runner chosen, nothing changes: the
-engine and the run-at-a-time wire serve the panel as before.
+It is on when a runner is chosen with `SURFACE_AGENT_RUNNER`: `host`, `nanite` or `scripted`. With no runner
+chosen, nothing changes: the engine and the run-at-a-time wire serve the panel as before.
+
+### `host`: the app's agent on libs agent/host (Basalisk's runtime)
+
+`SURFACE_AGENT_RUNNER=host` runs the app's agent on `github.com/hollis-labs/libs/agent/host`, the runtime
+Basalisk ran on, behind the conversation wire (`core/internal/agent/hostrunner`, wired in
+`core/internal/agent/hostwire.go`). Everything the wire does stays: late card answers, module errands
+(`Host.Agent().Ask`), the multi-window input lease, the run log, approvals in the chat.
+
+What it does with context, as Basalisk did:
+
+- **The system prompt is fixed**: Surface's own, then the config's `system`. Nothing per turn goes in it.
+- **The context block goes in front of the owner's message**, in the same stored message. The history the model
+  is sent is then the same, byte for byte, from one request to the next, and the provider's cache holds. The block
+  is not capped to a slot's size (`contextLimit` is 0): the thread's size is kept in hand by compaction.
+- **Compaction**: when the thread's last request passed `compact_at` tokens (default 110,000, Basalisk's; negative
+  turns it off), the older part is summarized once and the model is sent the summary, then the recent turns whole.
+  Nothing is deleted. The panel is told (`host.compact`, with `before` and `after` in tokens).
+
+| What | Where it comes from |
+|---|---|
+| Model, gateway, key | The app's agent config: `model`, `gateway_url`, `key_file` |
+| `max_tokens`, `max_steps`, `compact_at` | The app's agent config (defaults 8192, 24, 110,000) |
+| The thread | One host thread per conversation (host owner `chat:<conversation id>`), in the host's `agenthost_*` tables in the core database. Its id is the conversation's `runner_ref`. A restart resumes it, summary included |
+| Tools | The app's tools, run in the app, with their levels: `read` and `act` run; `write` asks, and "This conversation" or "Always" covers later calls; `confirm` asks every time. A call that waits for the owner (`card_ask`) runs as long as it needs, and stops with the run |
+| Ask first, standing approvals | As for `nanite`: a routing rule's ask-first, and `agent_grants` read before asking |
+| Usage | Uncached input, cache reads and cache writes, per model request (the summary's included), in the run log |
+| A turn the host answers (a halting reflex) | Recorded in the thread |
+
+Usage is read on its way from the gateway: the host's model client reaches the gateway through a loopback port in
+the app that passes every request through unchanged and notes the usage the gateway reports, which the host itself
+sums into one number. The host's run events are read from its own handler, in process.
+
+**Moving a conversation over from `nanite`.** The host thread starts fresh: Nanite's transcript is not imported.
+The first turn of a thread on a conversation that already had runs carries a short note ahead of the context
+block: the earlier messages are in the conversation's transcript (the owner can scroll back through it), and what
+carries over is in the context block (the slot notes and the slot's standing instructions). Nanite's store under
+`<data dir>/agents/<app>/` is left as it is, so switching back to `nanite` finds it again.
 
 ### `nanite`: the app's agent as a Nanite agent
 

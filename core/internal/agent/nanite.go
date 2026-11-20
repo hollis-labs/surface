@@ -216,6 +216,8 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			if w.svc == nil {
 				return errors.New("agent: chat service is not ready")
 			}
+			id = originalChatID(id)
+			turn.ConversationID = id
 			return w.svc.Observe(ctx, id, turn, s.watchWireRun(turn, run))
 		},
 		Situation: func(turn chat.Turn) steer.Situation { return s.steerSituation(context.Background(), turn.Text) },
@@ -223,7 +225,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			s.launchEvent(func() { s.applySteered(event.Fired, event.Actions) })
 		},
 		Ask: func(_ context.Context, call chatrunner.Call) bool {
-			return w.asks.has(call.ConversationID, call.Tool)
+			return w.asks.has(originalChatID(call.ConversationID), call.Tool)
 		},
 		Granted: func(ctx context.Context, call chatrunner.Call) bool {
 			ok, gerr := granted(ctx, db, w.agent, call.Tool)
@@ -295,7 +297,11 @@ func granted(ctx context.Context, db *sql.DB, agent, tool string) (bool, error) 
 // naniteHistory is the conversation so far as the reflexes see it, most recent first, read
 // from the agent's own history.
 func (w *wire) naniteHistory(ctx context.Context, conversation string) []libreflex.MessageSignal {
-	c, err := w.nanite.Agent().Conversation(ctx, chatrunner.ConversationID(conversation))
+	id, err := w.naniteChatID(ctx, conversation)
+	if err != nil {
+		return nil
+	}
+	c, err := w.nanite.Agent().Conversation(ctx, chatrunner.ConversationID(id))
 	if err != nil {
 		return nil // no turn yet
 	}
@@ -323,4 +329,14 @@ func (w *wire) naniteHistory(ctx context.Context, conversation string) []librefl
 			ToolCalls: len(tools), ToolNames: tools})
 	}
 	return prior
+}
+
+// TopicCompacted reports successful Nanite compaction on the app bus.
+const TopicCompacted = "agent.compacted"
+
+// Tools with an owner-facing timeout may wait longer than ordinary calls.
+func waitsForOwner(t EngineTool) bool {
+	props, _ := t.InputSchema["properties"].(map[string]any)
+	_, ok := props["timeout_seconds"]
+	return ok
 }

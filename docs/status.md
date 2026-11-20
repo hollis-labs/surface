@@ -65,8 +65,6 @@ Torque. See [modules/ops/README.md](../modules/ops/README.md).
 
 ## Not there yet
 
-- **Nanite's embeddable package.** It does not exist yet; the agent runs on `libs/agent/host` behind the
-  `Engine` seam ([substrate.md](substrate.md)).
 - **Automatic update pull requests** for apps on an older Surface tag. `surface-ui report` shows who is behind;
   nothing opens the pull request yet.
 - **Run-time loaded and generated modules.** The contract leaves room (`Render` kinds, a manifest that is plain

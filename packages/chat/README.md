@@ -9,7 +9,7 @@ has no dependency but React, and React only for `src/react.ts`.
 
 | File | What it is |
 |---|---|
-| `src/wire.ts` | The agent-host/1 routes (libs/agent/host `WIRE.md`) and a follower for a run's chatstream/v1 events that resumes a dropped stream from the last event seen |
+| `src/wire.ts` | The legacy agent-host/1 protocol routes and a follower for a run's chatstream/v1 events that resumes a dropped stream from the last event seen |
 | `src/reduce.ts` | The conversation as data, and what each event does to it. Pure functions |
 | `src/store.ts` | The store: start, send, stop, answer an approval, new thread, reload, follow a turn started elsewhere |
 | `src/react.ts` | `useChat(store, select)` and its shorthands; `useStickToBottom` |

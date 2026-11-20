@@ -64,8 +64,16 @@ func (s *Service) steerHostEvent(ctx context.Context, topic, focus string) {
 	if err != nil {
 		return
 	}
+	id, err := w.naniteChatID(ctx, view.ConversationID)
+	if err != nil {
+		return
+	}
+	if err := w.ensureNaniteConversation(ctx, id); err != nil {
+		s.log.Warn("event conversation initialization failed", "err", err)
+		return
+	}
 	if topic != TopicCompacted {
-		fired, err := w.nanite.SteerEvent(ctx, view.ConversationID, topic)
+		fired, err := w.nanite.SteerEvent(ctx, id, topic)
 		if err != nil {
 			s.log.Warn("event steering failed", "err", err)
 		} else {
@@ -73,7 +81,7 @@ func (s *Service) steerHostEvent(ctx context.Context, topic, focus string) {
 		}
 	}
 	if focus != "" {
-		fired, err := w.nanite.SteerFocus(ctx, view.ConversationID, focus)
+		fired, err := w.nanite.SteerFocus(ctx, id, focus)
 		if err != nil {
 			s.log.Warn("focus steering failed", "err", err)
 		} else {

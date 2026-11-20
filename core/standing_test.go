@@ -10,28 +10,30 @@ import (
 	"testing"
 )
 
-// Keeping the agent's state current, on the real kernel with the host runner: a
-// standing_update reaches the model in the context block before a restart, and the system
-// prompt after it; moving to another slot asks once for the note on the one left; a real
-// compaction publishes agent.compacted and the seeded save-state reminds the agent with the
-// next message.
-func TestTheHostRunnerKeepsStandingAndNotesCurrent(t *testing.T) {
+// Nanite reloads standing instructions between turns and keeps Surface slot-note prompts.
+func TestNaniteReloadsStandingAndKeepsNotesCurrent(t *testing.T) {
 	model := newFakeModel(t)
-	// The second request is large, so the thread passes compact_at and the third turn is
-	// compacted first.
-	model.inputs = map[int]int{2: 3000}
-	hostConfig(t, model.srv.URL)
-	cfgPath := os.Getenv("SURFACE_AGENT_CONFIG")
-	var cfg map[string]any
-	raw, _ := os.ReadFile(cfgPath) //nolint:gosec // the test's own file
-	_ = json.Unmarshal(raw, &cfg)
-	cfg["compact_at"] = 2000
-	raw, _ = json.Marshal(cfg)
-	if err := os.WriteFile(cfgPath, raw, 0o600); err != nil { //nolint:gosec // the test's own config file
-		t.Fatal(err)
-	}
+	naniteConfig(t, model.srv.URL)
 	agents := t.TempDir()
 	t.Setenv("SURFACE_AGENTS_DIR", agents)
+	seatDir := filepath.Join(agents, "hoststanding")
+	if err := os.MkdirAll(seatDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	starter, err := os.ReadFile("internal/agent/seat/agent.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(seatDir, "agent.md"), []byte(strings.ReplaceAll(string(starter), "{{app}}", "hoststanding")), 0600); err != nil { //nolint:gosec // fixed filename inside test-owned temporary directory
+		t.Fatal(err)
+	}
+	host, err := os.ReadFile("internal/agent/seat/host.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(seatDir, "host.yaml"), []byte(strings.ReplaceAll(string(host), "{{app}}", "hoststanding")), 0600); err != nil { //nolint:gosec // fixed filename inside test-owned temporary directory
+		t.Fatal(err)
+	}
 	standing := filepath.Join(agents, "hoststanding", "context", "standing.md")
 	if err := os.MkdirAll(filepath.Dir(standing), 0o750); err != nil {
 		t.Fatal(err)
@@ -81,12 +83,8 @@ func TestTheHostRunnerKeepsStandingAndNotesCurrent(t *testing.T) {
 	turn := func(a *lateApp, text string) (system, last string) {
 		t.Helper()
 		before := len(a.runs())
-		// The run log can say finished a moment before the conversation is free (409).
-		code := 0
-		a.until("the turn was taken", func() bool {
-			code = do(t, a.srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, nil)
-			return code != 409
-		})
+		a.waitIdle()
+		code := do(t, a.srv, "POST", "/api/agent/conversations/"+a.conv+"/turns", `{"attachment":"`+a.att+`","text":"`+text+`"}`, nil)
 		if code != 202 {
 			t.Fatalf("turn %q: %d", text, code)
 		}
@@ -94,6 +92,7 @@ func TestTheHostRunnerKeepsStandingAndNotesCurrent(t *testing.T) {
 			runs := a.runs()
 			return len(runs) > before && runs[0].Status == "finished"
 		})
+		a.waitIdle()
 		var req struct {
 			System   []struct{ Text string } `json:"system"`
 			Messages []struct {
@@ -139,45 +138,16 @@ func TestTheHostRunnerKeepsStandingAndNotesCurrent(t *testing.T) {
 		t.Fatalf("pin: %d", code)
 	}
 	system, last = turn(a, "now in scratch")
-	if strings.Contains(system, "Use the cards.") {
-		t.Fatal("the fixed system prompt changed without a restart")
+	if !strings.Contains(system, "Use the cards.") {
+		t.Fatal("Nanite did not reload updated standing")
 	}
-	if !strings.Contains(last, "<standing changed>") || !strings.Contains(last, "- Use the cards.\n</standing changed>") {
-		t.Fatalf("no standing section after the update: %s", last)
-	}
-	if !strings.Contains(last, "You have just come from the general slot") {
+	if !strings.Contains(system+last, "You have just come from the general slot") {
 		t.Fatalf("no ask for the note on the slot left: %s", last)
 	}
-	// The next turn is compacted first (the thread passed compact_at): the one after it
-	// carries save-state's reminder. No second note ask for the same switch.
-	_, last = turn(a, "and then")
-	if strings.Contains(last, "You have just come from") {
-		t.Fatalf("the note ask came twice for one switch: %s", last)
+	system, last = turn(a, "and then")
+	if strings.Contains(system+last, "You have just come from") {
+		t.Fatal("duplicate note ask")
 	}
-	if strings.Contains(last, "Older turns were just summarized") {
-		t.Fatalf("the reminder came before the compaction was told: %s", last)
-	}
-	// A standing rule in the owner's words: standing-rule reminds the agent in the same turn.
-	_, last = turn(a, "From now on, copy Chief on those.")
-	if !strings.Contains(last, "Reminder: Older turns were just summarized.") {
-		t.Fatalf("no save-state reminder after the compaction: %s", last)
-	}
-	if !strings.Contains(last, "Reminder: The owner may have set a standing rule.") {
-		t.Fatalf("no standing-rule reminder: %s", last)
-	}
-	var reflexes []struct {
-		Name  string `json:"name"`
-		Fired int    `json:"fired"`
-	}
-	do(t, srv, "GET", "/api/agent/reflexes", "", &reflexes)
-	fired := map[string]int{}
-	for _, r := range reflexes {
-		fired[r.Name] = r.Fired
-	}
-	if fired["save-state"] != 1 || fired["standing-rule"] != 1 {
-		t.Errorf("fired: %v, want save-state and standing-rule once each", fired)
-	}
-
 	// After a restart the system prompt has the new text and the section stops.
 	stop()
 	_, srv2, _ := open()

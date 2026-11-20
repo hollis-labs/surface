@@ -36,7 +36,7 @@ type FileConfig struct {
 	MaxSteps  int    `json:"max_steps,omitempty"`
 	CompactAt int    `json:"compact_at,omitempty"`
 	// MCP lists outside MCP servers whose tools the agent gets. Reserved: the engine does
-	// not speak MCP yet (libs agent/host has no MCP client).
+	// not use this field; configure MCP in the Nanite agent directory.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
 
 	// Agents says where the agent's authored directory is kept, for a runner that has one

@@ -24,7 +24,7 @@ Load-bearing decisions:
 - **The module seam.** A module imports only `surface/module` (plus `moduletest` and `tetherlink`). Two things enforce this: the Go `internal` rule and `module/seam_test.go`. A manifest is plain data plus handlers, so run-time loaded and agent-generated modules can come later without changing the core.
 - **The desk belongs to the server.** Window state lives in `core/internal/desk`. The page draws it and posts actions. So the embedded agent, the palette, the CLI and outside agents over MCP or HTTP all drive the same desk the same way. This is the deliberate break from Basalisk.
 - **Every tool is a server tool.** The same tools are served at `/api/tools` and `/mcp` and through the CLI.
-- **Engine seam.** The agent sits behind `Engine`. Today it is `libs/agent/host`. Nanite is coming in through the conversation wire (`SURFACE_AGENT_RUNNER=nanite`), on a pseudo-version of Nanite main until v0.7.0 is tagged.
+- **Runtime.** Nanite is the default embedded agent on the durable conversation wire. The optional Engine seam supports injected integrations and tests.
 - **Module profiles.** One agent, many profiles: a module's profile changes what the agent is told and which helpers it has, never its tools, approvals or identity.
 - **Two kinds of config.** App settings live in the DB and change live. The agent and harness config lives in a file (`~/.config/<app>/agent.json`).
 - **Data.** One core SQLite DB, plus a store and a data dir per module.
@@ -61,12 +61,12 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [ ] Reader's Fragments Engine half
 - [ ] Move Design onto `module/tetherlink`
 - [ ] Run-time loaded and generated modules (the contract leaves room for them)
-- [~] **Module agent profiles** (CW-20261120-0128, in review): the contract for module-declared skills and helpers. A module ships an optional profile, `modules/<id>/profile/` (a Nanite agent directory without host.yaml or .mcp.json: agent.md, context/, skills/, variants/, tools/, steering.json; evals/ is the Workbench's), embedded and named by `Manifest.Profile` (`module.ProfileFS`). On the Nanite runner each turn runs as the pinned profile (the panel's Profile picker, or the agent's `profile_switch`, act level; kept per conversation in `agent_profile_pins`), else the focused module's, else the app's seat. All profiles share the conversation, front desk, mailbox, tools, levels, grants, the Approver and the identity (one ADE, one Warden grant); internal helpers are Nanite variants inside a profile, not identities. The run log's `profile` column says which profile acted. Off on the host runner. Not yet: steering.json applied (Nanite takes steering once, at open), a per-request header naming the profile (Nanite's gateway headers are static), split grants per profile (Warden token exchange). Format: writing-a-module.md, "An agent profile"
+- [~] **Module agent profiles** (CW-20261120-0128, in review): the contract for module-declared skills and helpers. A module ships an optional profile, `modules/<id>/profile/` (a Nanite agent directory without host.yaml or .mcp.json: agent.md, context/, skills/, variants/, tools/, steering.json; evals/ is the Workbench's), embedded and named by `Manifest.Profile` (`module.ProfileFS`). On the Nanite runner each turn runs as the pinned profile (the panel's Profile picker, or the agent's `profile_switch`, act level; kept per conversation in `agent_profile_pins`), else the focused module's, else the app's seat. All profiles share the conversation, front desk, mailbox, tools, levels, grants, the Approver and the identity (one ADE, one Warden grant); internal helpers are Nanite variants inside a profile, not identities. The run log's `profile` column says which profile acted. Off on the scripted runner. Not yet: steering.json applied (Nanite takes steering once, at open), a per-request header naming the profile (Nanite's gateway headers are static), split grants per profile (Warden token exchange). Format: writing-a-module.md, "An agent profile"
 - [ ] The rest of the later contract: data and service dependencies, module-declared reflexes and triggers outside a profile, install-time permissions
 
 ### Embedded agent
 - [x] Agent panel: one agent beside the windows, asks before a write
-- [x] Engine seam (`libs/agent/host`, the `agent-host/1` wire)
+- [x] Nanite embedded runtime and optional injected Engine seam
 - [x] Context slots: chosen by the window in front and the mode, with a pin through `context_switch`, per-slot notes, live Knowledge and budgets
 - [x] Router: rules answered without the model (`/open`, `/layout`, `/run`, plus the owner's rules)
 - [x] Reflexes: text, predicate, event and focus triggers; remind, halt, run_command and call_tool actions; switched on per layout
@@ -74,12 +74,11 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [x] **Context trace** (#33, CW-20261119-0009): each turn's situation, slots, tools and cuts, plus 15-minute signals (pin, unpin, focus). This is the classifier's training data.
 - [x] **Context inspector** (#37): the `surface.context` window. Now shows `GET /api/agent/context`, History shows `/api/agent/trace`, and corrections are flagged.
 - [x] **Run end states** (#36, CW-20261119-0011): each run announces how it ended (working, unread, failed)
-- [~] **Conversation wire** (`libs/agent/chat`): durable conversations, viewer and controller attach, `agent_grants` for "Always". It is on when `SURFACE_AGENT_RUNNER` is set. Desk runs it with `nanite`. Not the default yet. (CW-20261118-0006, in review)
-- [~] **Host runner** (`core/internal/agent/hostrunner`, `SURFACE_AGENT_RUNNER=host`): the conversation wire on libs agent/host, Basalisk's runtime. Fixed system prompt, the context block in front of the owner's message, compaction at `compact_at` (default 110,000), `max_tokens` and `max_steps` from the config, usage with the cache apart in the run log. (CW-20261120-0011, in review)
-- [~] **Nanite runner** (`nanite/chatrunner`): the agent directory (`agent.md`, `host.yaml`), app tools with their levels, `card_ask` for questions. Not yet carried over: `max_tokens`, `max_steps`, `compact_at`. A lease from a killed page is held until it lapses. (CW-20261118-0005, in review)
+- [x] **Conversation wire** (`libs/agent/chat`): default for configured embedded agents; durable conversations, viewer/controller attach, and standing approvals.
+- [x] **Nanite runner**: default runtime, authored host.yaml settings, 110000/22000 compaction, protected Context, recovery, tool deadlines, and Surface reflex steering.
 - [ ] **Classifier-driven Selector**: the owner has an agent building it overnight, and its PR(s) are expected. Nothing in the 33 audited repos does this.
 - [ ] The engine as an MCP client (the `mcp` config field is reserved)
-- [ ] Conversation wire as the default; retire the run-at-a-time routes
+- [x] Conversation wire is the default; legacy runtime removed and old transcripts preserved
 
 ### Desk rules and attention (from the ADE audit)
 - [x] **Desk rules** (#32, CW-20261119-0008): every window records who opened it, focus goes back to the owner's window, and delegated windows follow etiquette. The owner's rulings (tess `desk_rules_owner_rulings`): when the owner moves a window, it becomes theirs; agent windows open beside the window that opened them; zoom is a camera zoom, not a loupe; the CLI counts as outside until sign-in.

@@ -1,5 +1,5 @@
 /**
- * The agent-host/1 wire, as a page sees it (libs/agent/host WIRE.md): the host's routes and a
+ * The legacy agent-host/1 wire, as a page sees it: the host's routes and a
  * follower for a run's chatstream/v1 events that resumes a dropped connection from the last
  * event seen, so nothing is shown twice or missed.
  */

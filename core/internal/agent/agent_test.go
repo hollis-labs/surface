@@ -401,16 +401,11 @@ func mustRule(js string) (r router.Rule) {
 	return r
 }
 
-// The real engine (libs agent/host) over the core database: with no config it is not ready,
+// With no runtime config the agent is not ready,
 // and a turn says where to write one.
-func TestHostEngineWithoutConfig(t *testing.T) {
+func TestAgentWithoutConfig(t *testing.T) {
 	s, _, _, _ := setup(t, Options{Engine: nil})
-	eng, err := newHostEngine(context.Background(), FileConfig{}, systemPrompt("t", ""), s.k.DB(), runWatch{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer eng.Close()
-	s.engine = eng
+	s.engine = unavailableEngine{}
 	mux := http.NewServeMux()
 	s.Mount(mux)
 	srv := httptest.NewServer(mux)
@@ -427,4 +422,12 @@ func TestHostEngineWithoutConfig(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("thread: %v %v", err, resp.Status)
 	}
+}
+
+func describe(raw json.RawMessage) string {
+	var c struct {
+		Block string `json:"block"`
+	}
+	_ = json.Unmarshal(raw, &c)
+	return c.Block
 }

@@ -5,6 +5,24 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Agent Workbench (`modules/workbench`, in Studio): make, edit, evaluate and improve Nanite agents.** An agent is
+  an agent directory (libs agent/agentdir) in the Workbench's library, created from a template, duplicated, deleted to
+  a trash, imported (a `.tar.gz` or `.zip` archive checked for unsafe paths, links and size, or a directory copied in
+  read-only) and exported (the directory, a `workbench.json` manifest and the Workbench's sidecar; never `.nanite/`).
+  Tabs for the prompt (agent.md, with Nanite's base prompt shown read-only), skills, tools (.mcp.json,
+  permissions.yaml), subtask variants, providers.yaml, reflexes and triggers (a steer-shaped draft in the sidecar, not
+  yet run by Nanite), context (host.yaml runtime knobs, `compact_at` as a runtime option, context files), history
+  (every save a version with a digest and a note; diff and rollback), evals and the assembled prompt. Every save is
+  validated as Nanite reads the files, literal credentials refused. Eval suites run through Nanite's eval harness:
+  offline by default (each case's script stands in for the model), live only on the owner's confirmation, through the
+  app's gateway within a dollar cap and token budgets; graders for text, regex, the ANSWER line, JSON paths, tool
+  calls with arguments, steps, tokens, workspace files and a model-graded rubric; runs kept by digest and compared.
+  From a run's failures a model proposes edits (file, diff, rationale) that the owner accepts or rejects one by one;
+  accepting saves a version. `workbench_*` agent tools; none accepts a proposal. See modules/workbench/README.md.
+- **`Host.Agent().Gateway`** gives a module the model gateway the app's agent config names (model, URL, the key
+  file's path; never the key), read at the moment of use, for a module that calls a model on the owner's action.
+- **Nanite v0.6.0.**
+
 - **The agent can run on libs agent/host on the conversation wire** (`SURFACE_AGENT_RUNNER=host`): Basalisk's
   runtime, with every feature of the wire (late answers, module errands, the input lease, the run log, approvals in
   the chat). The system prompt is fixed and the turn's context block goes in front of the owner's message in the

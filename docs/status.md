@@ -38,6 +38,15 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 | Live design review | slice 1 done: `make design-preview` serves the gallery on its own page with hot reload; the `design` module keeps design jobs, frames a job's branch preview beside its base, takes notes as marks, and hands rounds to the Design team (Tether message and manual Torque task behind one `Dispatcher` interface, or text to send by hand); progress is read from GitHub. The way back: while a job is open the module reads the Designer's replies on its thread (`design-<job id>`, only for jobs this instance holds, only from the configured Designer) and its Torque task on a timer and with `design_refresh`; labeled lines (`preview:`, `base:`, `pr:`, `head:`) set the job, the rest shows as text, and the first preview opens the review window with a notice. An approval names the commit it covers (`approved_head`, sent back as `approved-head:`); a head that changes while the card is open supersedes it; after approval the thread is read until `merged:` (of that commit) or `closed:`, for a week at most. Not yet: screenshot diffs, starting the preview from Surface |
 | A baseline palette | undecided; the theme holds shadcn's neutral defaults |
 
+## Agent Workbench (MVP)
+
+`modules/workbench`, in Studio. Real today: the library, templates, import and export, validation on every save,
+versions, the editors for every file Nanite reads, offline and live eval runs through nanite/evals with the cost
+guard, run comparison, and improvement proposals the owner accepts. Recorded for later: reflexes and triggers (a
+steer-shaped draft in the sidecar until Nanite runs them), `compact_at` as a runtime option until agentdir has the
+key, stub tools in evals (nanite/evals has no hook), a live provider from Nanite itself. Checked by
+`modules/workbench` tests against a fake gateway. See [modules/workbench/README.md](../modules/workbench/README.md).
+
 ## Not there yet
 
 - **Nanite's embeddable package.** It does not exist yet; the agent runs on `libs/agent/host` behind the

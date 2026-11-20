@@ -1,0 +1,4 @@
+{
+  "presets": [{"name": "careful", "about": "Slow down and check.", "reflexes": ["check-first"]}],
+  "reflexes": [{"name": "check-first", "trigger_kind": "text", "trigger": {"pattern": "(?i)ship it"}, "action_kind": "remind", "action": {"body": "Check before shipping."}}]
+}

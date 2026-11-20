@@ -28,6 +28,8 @@ import (
 //	GET    /api/agent/setup                {ready, model, config_path, reason?}
 //	GET    /api/agent/slots                every slot, with notes, the active one marked
 //	POST   /api/agent/slots/pin            {slot} ("" unpins)
+//	GET    /api/agent/profiles             the module agent profiles, the active one and the pin (ProfileState)
+//	POST   /api/agent/profiles/pin         {profile}: a module id, "default" (the app's own) or "auto"/"" (unpin)
 //	GET    /api/agent/reflexes             PUT/DELETE /api/agent/reflexes/{name}
 //	GET    /api/agent/rules                PUT/DELETE /api/agent/rules/{id}
 //	POST   /api/agent/classify             {text} → the classifier's result for a draft (classify.Result); records nothing
@@ -216,6 +218,23 @@ func (s *Service) Mount(mux *http.ServeMux) {
 			return
 		}
 		reply(w, 200, s.Preview(r.Context()))
+	})
+
+	mux.HandleFunc("GET "+Prefix+"/profiles", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.profileState(r.Context())) })
+	mux.HandleFunc("POST "+Prefix+"/profiles/pin", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Profile string `json:"profile"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		st, err := s.pinProfile(r.Context(), in.Profile, module.ActorOwner)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		s.k.Events().Publish("agent.context", s.Preview(r.Context()))
+		reply(w, 200, st)
 	})
 
 	mux.HandleFunc("GET "+Prefix+"/reflexes", func(w http.ResponseWriter, r *http.Request) {

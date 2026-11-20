@@ -21,6 +21,7 @@ package module
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"regexp"
 	"sort"
 	"sync"
@@ -39,10 +40,11 @@ type Module interface {
 
 // Manifest is what a module brings to the app.
 //
-// The MVP contract is Views, Commands and Tools. Store, Settings and Slots are optional.
+// The MVP contract is Views, Commands and Tools. Store, Settings, Slots and Profile are
+// optional. A module's skills and its agent's internal helpers come with its Profile.
 // Planned additions (not fields yet, so nothing depends on a guess at their shape): data and
-// service dependencies, skills, reflexes and triggers, and permissions (what the agent may
-// do in the module without asking, put to the user at install).
+// service dependencies, and permissions (what the agent may do in the module without asking,
+// put to the user at install).
 type Manifest struct {
 	// ID names the module: lower case letters, digits and dashes. It prefixes the module's
 	// routes (/api/m/<id>/), its settings and its events.
@@ -73,9 +75,35 @@ type Manifest struct {
 	// named in any text (a task id, a path) and shown there as a chip with a preview. Each
 	// kind is declared by one module. Optional.
 	Refs []RefKind `json:"refs,omitempty"`
+	// Profile is the module's agent profile: a Nanite agent directory without host.yaml or
+	// .mcp.json (agent.md, and optionally skills/, context/, variants/, tools/ and
+	// steering.json), kept in modules/<id>/profile/ and embedded:
+	//
+	//	//go:embed all:profile
+	//	var profileFiles embed.FS
+	//	... Profile: module.ProfileFS(profileFiles, "profile"),
+	//
+	// While the module's window is in front, or after an explicit switch, the app's agent
+	// works as this profile: same conversation, tools, approvals and identity, with the
+	// profile's instructions, context, skills and helper variants. The app owns the runtime,
+	// the model, MCP and permissions; a profile cannot change them. A profile with no agent.md
+	// is an empty slot (declared, not yet written) and is ignored. Optional; nil is none.
+	// The format is in docs/writing-a-module.md.
+	Profile fs.FS `json:"-"`
 	// Gateway declares that the module calls a model itself, on the owner's action, and so
 	// needs Host.Agent().Gateway. A module that does not declare it gets ErrNoAgent there.
 	Gateway bool `json:"gateway,omitempty"`
+}
+
+// ProfileFS is the profile directory dir inside fsys (an embed.FS of the module's package),
+// for Manifest.Profile. It panics when dir is not a valid path: a programming error that
+// must stop the first run, as Register does.
+func ProfileFS(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		panic(fmt.Sprintf("surface/module: profile %q: %v", dir, err))
+	}
+	return sub
 }
 
 // Base gives a module no-op Start and Stop, for one that needs neither.

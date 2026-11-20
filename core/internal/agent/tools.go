@@ -78,6 +78,22 @@ func (s *Service) ownTools() []kernel.BoundTool {
 				s.k.Events().Publish("agent.context", asm)
 				return asm.Block, nil
 			}),
+		// Act, like context_switch: a profile changes what the agent is told, never what it may
+		// do. Every profile has the same tools, levels, grants and Approver.
+		t("profile_switch", "Work as another agent profile: a module's (its instructions, context, skills and helper variants), \"default\" for the app's own, or \"auto\" to let the window in front choose again. Holds for this conversation until changed; applies from your next turn. Your tools and approvals stay the same. Lists the profiles when called with none.",
+			module.LevelAct, `{"type":"object","properties":{"profile":{"type":"string","description":"A module id from the list, \"default\" or \"auto\"."}}}`,
+			func(ctx context.Context, in json.RawMessage) (any, error) {
+				var a struct{ Profile string }
+				_ = json.Unmarshal(in, &a)
+				if a.Profile == "" {
+					return s.profileState(ctx), nil
+				}
+				st, err := s.pinProfile(ctx, a.Profile, module.ActorAgent)
+				if err != nil {
+					return nil, err
+				}
+				return fmt.Sprintf("From your next turn you work as the %s profile (%s). Finish this turn as you are.", profileName(st.Active.ID), st.Active.Why), nil
+			}),
 		t("agent_reflex_list", "List the reflexes: standing rules that fire on the owner's message (text or predicate trigger), on an app event, or when a view comes in front, and remind you, answer for you, run a command or call a look-only tool.",
 			module.LevelRead, `{"type":"object","properties":{}}`,
 			func(ctx context.Context, _ json.RawMessage) (any, error) { return s.reflexes.List(ctx) }),

@@ -72,15 +72,16 @@ func (d *fakeDesk) focusOn(id string) {
 
 // fakeKernel is the kernel with a notes and a scratch module.
 type fakeKernel struct {
-	db      *sql.DB
-	bus     *events.Bus
-	desk    *fakeDesk
-	tools   []kernel.BoundTool
-	slots   []kernel.BoundSlot
-	arounds []kernel.BoundAround
-	layout  string
-	ran     []string
-	cfg     mapConfig // nil: no settings store
+	db       *sql.DB
+	bus      *events.Bus
+	desk     *fakeDesk
+	tools    []kernel.BoundTool
+	slots    []kernel.BoundSlot
+	arounds  []kernel.BoundAround
+	profiles []kernel.BoundProfile
+	layout   string
+	ran      []string
+	cfg      mapConfig // nil: no settings store
 }
 
 func (k *fakeKernel) AppName() string       { return "surface-test" }
@@ -114,6 +115,7 @@ func (m mapConfig) Watch(string, func(any)) func()                 { return func
 func (k *fakeKernel) Tools() []kernel.BoundTool                    { return k.tools }
 func (k *fakeKernel) Slots() []kernel.BoundSlot                    { return k.slots }
 func (k *fakeKernel) Arounds() []kernel.BoundAround                { return k.arounds }
+func (k *fakeKernel) Profiles() []kernel.BoundProfile              { return k.profiles }
 func (k *fakeKernel) Commands() []module.Command                   { return nil }
 func (k *fakeKernel) RunCommand(_ context.Context, id string, _ map[string]any) (any, error) {
 	k.ran = append(k.ran, id)

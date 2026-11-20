@@ -598,6 +598,7 @@ carries over is in the context block (the slot notes and the slot's standing ins
 | What is in front of the owner | The context block, as text, in the turn's context: Nanite places it in one slot for that turn only. Slot and layout instructions travel in it, so `agent.md` stays about who the agent is. The config's `system`, when set, leads the block. |
 | A turn the host answers (a halting reflex) | Shown on the stream like any turn and recorded in the agent's history, so the agent knows it happened. |
 | The reflexes' view of the conversation | Read from the agent's history. |
+| Module profiles | When a module ships one (`Manifest.Profile`), Nanite opens on a staged directory, `<data dir>/agents/<app>.staged/`: the agent directory with the active profile laid over it, written again before each turn. The `subtasks` and `skills` groups are turned on when a profile has variants or skills. See writing-a-module.md, "An agent profile". |
 
 The model is named in the app's agent config, not in `host.yaml`: Surface sets `NANITE_DEFAULT_MODEL` in
 its own process from the config, which Nanite uses when `host.yaml` names no model. A `model` written into

@@ -33,7 +33,7 @@ import { PromptInput, PromptInputFooter, PromptInputSubmit, PromptInputTextarea 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CardDock } from "../cards/views"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
-import { type Assembly, agentApi, type Setup, type SlotInfo } from "./api"
+import { type Assembly, agentApi, type ProfileState, type Setup, type SlotInfo } from "./api"
 import { ItemView } from "./items"
 import { type AgentSession, createAgentSession } from "./session"
 
@@ -95,12 +95,14 @@ function ContextStrip({ store }: { store: ChatStore }) {
   const [asm, setAsm] = useState<Assembly | null>(null)
   const [setup, setSetup] = useState<Setup | null>(null)
   const [slots, setSlots] = useState<SlotInfo[]>([])
+  const [profiles, setProfiles] = useState<ProfileState | null>(null)
   const [open, setOpen] = useState(false)
   const [err, setErr] = useState("")
 
   const refresh = useCallback(() => {
     agentApi.context().then(setAsm, (e: Error) => setErr(e.message))
     agentApi.slots().then(setSlots, () => {})
+    agentApi.profiles().then(setProfiles, () => {})
   }, [])
   useEffect(() => {
     refresh()
@@ -109,10 +111,13 @@ function ContextStrip({ store }: { store: ChatStore }) {
   useEvent("agent.context", (ev: SurfaceEvent) => setAsm(ev.data as Assembly))
   useEvent("agent.note", refresh)
   useEvent("agent.turn", refresh)
+  useEvent("agent.profile", refresh)
   // A run's tools may have changed what is in front (a window opened, a note kept).
   useEffect(() => store.onRunEnd(() => refresh()), [store, refresh])
 
   const pin = (name: string) => agentApi.pin(name).then(setAsm, (e: Error) => setErr(e.message))
+  const pinProfile = (profile: string) =>
+    agentApi.pinProfile(profile).then(setProfiles, (e: Error) => setErr(e.message))
   const top = asm?.top_of_mind ?? []
   const why = asm?.why === "pinned" ? "pinned" : asm?.focused ? `from ${asm.focused.title}` : ""
   return (
@@ -138,6 +143,9 @@ function ContextStrip({ store }: { store: ChatStore }) {
             ))}
           </SelectContent>
         </Select>
+        {profiles?.on && profiles.profiles.length > 0 && (
+          <ProfilePicker state={profiles} onPick={(p) => void pinProfile(p)} />
+        )}
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{why}</span>
         {asm?.why === "pinned" && (
           <Button variant="link" size="xs" onClick={() => void pin("")}>
@@ -175,6 +183,42 @@ function ContextStrip({ store }: { store: ChatStore }) {
       {setup && !setup.ready && <SetupCard path={setup.config_path} reason={setup.reason} />}
       {err && <div className="text-destructive">{err}</div>}
     </section>
+  )
+}
+
+/** The agent profile in play, and the owner's pin: a module's, the app's own, or automatic. */
+function ProfilePicker({ state, onPick }: { state: ProfileState; onPick: (profile: string) => void }) {
+  const value = state.pinned ?? "auto"
+  const items = [
+    { value: "auto", label: `auto (${state.active.id || "default"})` },
+    { value: "default", label: "default" },
+    ...state.profiles.map((p) => ({ value: p.id, label: p.id })),
+  ]
+  const active = state.profiles.find((p) => p.id === state.active.id)
+  return (
+    <>
+      <Label htmlFor="agent-profile">Profile</Label>
+      <Select value={value} onValueChange={(v) => onPick(String(v ?? "auto"))} items={items}>
+        <SelectTrigger
+          id="agent-profile"
+          size="sm"
+          title={
+            active
+              ? `${active.title}: ${active.description ?? ""} (${state.active.why})`
+              : `the app's own (${state.active.why})`
+          }
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((i) => (
+            <SelectItem key={i.value} value={i.value}>
+              {i.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </>
   )
 }
 

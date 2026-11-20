@@ -1,7 +1,7 @@
 /** References: the chip in each state, its card, and the hover card that holds it. From fixtures. */
 import { Brain, Copy, FileText, Link2, ListChecks, Maximize2, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { CiteCard } from "@/components/ui/cite-card"
+import { CiteCard, CiteRecordHeader } from "@/components/ui/cite-card"
 import { CiteChip } from "@/components/ui/cite-chip"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Section, Specimen } from "./Specimen"
@@ -10,7 +10,6 @@ const TASK = {
   kindLabel: "Torque task",
   canonical: "CW-20261119-0064",
   title: "Port Cite to Surface",
-  subtitle: "Torque task · CW-20261119-0064",
   description:
     "References in any text become chips with a hover card and an open action, resolved by the module that owns them.",
   status: { label: "in_progress", tone: "info" as const },
@@ -19,14 +18,14 @@ const TASK = {
     { label: "Project", value: "PRJ-20260101-0001", mono: true },
     { label: "Tags", value: "surface, cite" },
   ],
-  updated: "12m ago",
+  updated: "updated 12m ago",
 }
 
 const actions = (
   <>
     <Button variant="ghost" size="xs">
       <Copy />
-      Copy
+      Copy id
     </Button>
     <Button variant="outline" size="xs">
       <Maximize2 />
@@ -52,12 +51,12 @@ export function Cite() {
       </Section>
       <Section title="Cite card" about="What a reference stands for; one card for every kind.">
         <Specimen label="ready">
-          <div className="w-80 rounded-lg p-2.5 ring-1 ring-foreground/10">
+          <div className="w-92 rounded-lg p-2.5 ring-1 ring-foreground/10">
             <CiteCard icon={<ListChecks />} {...TASK} actions={actions} />
           </div>
         </Specimen>
         <Specimen label="loading, not found, error">
-          <div className="flex w-80 flex-col gap-3">
+          <div className="flex w-92 flex-col gap-3">
             <div className="rounded-lg p-2.5 ring-1 ring-foreground/10">
               <CiteCard
                 phase="loading"
@@ -73,8 +72,8 @@ export function Cite() {
                 icon={<ListChecks />}
                 kindLabel="Torque task"
                 canonical="CW-20990101-0001"
-                title="CW-20990101-0001"
-                subtitle="Torque task not found"
+                title="Not found"
+                note="It may have been deleted, or it may not be readable."
               />
             </div>
             <div className="rounded-lg p-2.5 ring-1 ring-foreground/10">
@@ -83,11 +82,16 @@ export function Cite() {
                 icon={<Zap />}
                 kindLabel="Fragment"
                 canonical="abababab…"
-                title="fragment abababab"
-                error="Could not be looked up: the Fragments Engine could not be reached"
+                title="Could not be looked up"
+                error="the Fragments Engine could not be reached"
               />
             </div>
           </div>
+        </Specimen>
+      </Section>
+      <Section title="Cite record header" about="The head of a record read whole, in the record window.">
+        <Specimen label="a task" wide>
+          <CiteRecordHeader icon={<ListChecks />} {...TASK} actions={actions} />
         </Specimen>
       </Section>
       <Section title="Hover card" about="A card shown while the pointer rests on its trigger.">
@@ -98,7 +102,7 @@ export function Cite() {
               <HoverCardTrigger
                 render={<CiteChip state="found" icon={<ListChecks />} label="Task: Port Cite to Surface" />}
               />
-              <HoverCardContent className="w-80" align="start">
+              <HoverCardContent className="w-92" align="start">
                 <CiteCard icon={<ListChecks />} {...TASK} actions={actions} />
               </HoverCardContent>
             </HoverCard>{" "}

@@ -2,16 +2,64 @@
  * The record window (surface.cite): a cited record read whole, for a reference whose module has
  * no window of its own to show it in (a Torque task, a Tesseract item, a fragment). Args: {kind, id}.
  */
-import { ExternalLink, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Braces, ExternalLink, ListTree, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CiteCard, type CiteTone } from "@/components/ui/cite-card"
+import { CiteRecordHeader, type CiteTone } from "@/components/ui/cite-card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Markdown } from "@/components/ui/markdown"
 import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { ViewProps } from "../sdk/types"
 import { type CiteRecord, kindLabel, loadRecord, openURL } from "./store.ts"
-import { ago, iconFor } from "./ui.tsx"
+import { parseJSONDocument, splitFrontMatter, toDocNode } from "./structured.ts"
+import { DocFields, DocValue } from "./structured-view.tsx"
+import { CiteText, iconFor, subtitleFor, updatedAgo } from "./ui.tsx"
+
+/**
+ * A record's text: Markdown (its front matter, if any, as fields above it), or, when it is a
+ * JSON document, its fields laid out to be read, with the raw JSON a toggle away.
+ */
+export function RecordBody({ body }: { body: string }) {
+  const doc = useMemo(() => parseJSONDocument(body), [body])
+  const node = useMemo(() => (doc ? toDocNode(doc) : undefined), [doc])
+  const front = useMemo(() => (doc ? undefined : splitFrontMatter(body)), [doc, body])
+  const [mode, setMode] = useState<"fields" | "raw">("fields")
+  if (front)
+    return (
+      <div className="flex min-w-0 flex-col gap-4">
+        {front.fields.length ? <DocFields fields={front.fields} /> : null}
+        <Markdown>{front.rest}</Markdown>
+      </div>
+    )
+  if (!node) return <Markdown>{body}</Markdown>
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <ToggleGroup
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={[mode]}
+        onValueChange={(v: string[]) => v[0] && setMode(v[0] as "fields" | "raw")}
+        aria-label="How the document is shown"
+      >
+        <ToggleGroupItem value="fields" aria-label="As fields">
+          <ListTree />
+          Fields
+        </ToggleGroupItem>
+        <ToggleGroupItem value="raw" aria-label="As raw JSON">
+          <Braces />
+          JSON
+        </ToggleGroupItem>
+      </ToggleGroup>
+      {mode === "fields" ? (
+        <DocValue node={node} />
+      ) : (
+        <Markdown>{`\`\`\`json\n${JSON.stringify(doc, null, 2)}\n\`\`\``}</Markdown>
+      )}
+    </div>
+  )
+}
 
 export function CiteRecordView({ win, desk }: ViewProps) {
   const kind = String(win.args?.kind ?? "")
@@ -57,15 +105,16 @@ export function CiteRecordView({ win, desk }: ViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-border p-4">
-        <CiteCard
+        <CiteRecordHeader
           icon={<Icon />}
           kindLabel={kindLabel(kind)}
           canonical={id}
           title={rec.title}
-          subtitle={rec.subtitle}
+          subtitle={subtitleFor(kind, rec.subtitle)}
           status={rec.status ? { label: rec.status.label, tone: rec.status.tone as CiteTone } : undefined}
           fields={rec.fields}
-          updated={ago(rec.updatedAt)}
+          renderValue={(f) => (f.mono ? <CiteText text={f.value} /> : f.value)}
+          updated={updatedAgo(rec.updatedAt)}
           error={error || undefined}
           actions={
             <>
@@ -95,7 +144,7 @@ export function CiteRecordView({ win, desk }: ViewProps) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {rec.body ? (
-          <Markdown>{rec.body}</Markdown>
+          <RecordBody body={rec.body} />
         ) : (
           <p className="text-muted-foreground">{rec.description || "Nothing more to show."}</p>
         )}

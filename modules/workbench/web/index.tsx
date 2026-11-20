@@ -128,6 +128,7 @@ interface Exchange {
   tokens: number
 }
 interface CaseResult {
+  stub_calls?: Record<string, number>
   id: string
   pass: boolean
   why?: string
@@ -1398,11 +1399,9 @@ function SteeringTab({ files, setFile, report }: FileProps) {
   return (
     <>
       <div className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs">
-        <strong>steer v0.1.0 config; Nanite applies it via agent.Options.Steering from its next release.</strong>{" "}
-        Reflexes, triggers and presets are libs agent/steer v0.1.0 types, checked with steer's own validation and kept
-        in the Workbench's sidecar (workbench/steering.json): they are host configuration, not agent-directory files.
-        Surface pins Nanite v0.6.0, which has no steering yet, so eval runs do not apply them; that is wired in when
-        Nanite 0.7.0 is tagged. Exports carry the file under workbench/.
+        <strong>Steering is applied in eval runs.</strong> Reflexes and presets are saved in workbench/steering.json and
+        included in exports. Reminder and halt actions run during evals; Surface command and tool actions require a
+        connected host.
       </div>
       <Section title="Reflexes" aside={<Problems report={report} file={STEERING} />}>
         {parseError && <p className="text-xs text-destructive">steering.json is not JSON: {parseError}</p>}
@@ -1847,6 +1846,16 @@ cases:
       - "The owner's message."
     fixtures:
       notes/example.md: "A file the agent can read."
+    stubs:
+      - name: lookup_note
+        description: Read a note from the test library.
+        read_only: true
+        schema: {type: object, properties: {id: {type: string}}}
+        results:
+          - when: {id: example}
+            text: "something"
+          - text: "No matching note."
+            is_error: true
     graders:
       - contains: "something"
       - max_steps: 6
@@ -2098,7 +2107,9 @@ function EvalsTab({
           max_steps, max_tokens, file, rubric (model-graded; live only). Offline runs play each case's script (a harness
           check, no model, nothing spent); live runs call the app's gateway after you confirm. Cases run through
           Nanite's eval harness with the agent's saved files (digest {short(digest)}); fixtures are the workspace; no
-          MCP server is started.
+          MCP server is started. Edit a case’s stubs above to define tool names, descriptions, schemas and canned
+          results. Use when to match arguments; unmatched calls consume results in order, repeating the last. Names
+          beginning with mcp__ and built-in tool names are reserved.
         </p>
       </Section>
       <div className="flex min-h-0 flex-1">
@@ -2315,6 +2326,10 @@ function RunView({
           </ul>
           <p className={hint}>
             {c.steps} steps · {c.tokens.toLocaleString()} tokens · {c.wall_ms} ms
+            {c.stub_calls &&
+              ` · stub calls: ${Object.entries(c.stub_calls)
+                .map(([name, count]) => `${name} × ${count}`)
+                .join(", ")}`}
           </p>
           <Collapsible>
             <CollapsibleTrigger render={<Button size="xs" variant="ghost" className="self-start" />}>

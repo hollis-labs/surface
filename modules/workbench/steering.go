@@ -8,13 +8,11 @@ import (
 	"strings"
 
 	"github.com/hollis-labs/libs/agent/steer"
+	nanite "github.com/hollis-labs/nanite/agent"
 )
 
-// Steering is an agent's reflexes, triggers and presets: libs agent/steer v0.1.0
-// configuration, kept in the Workbench's sidecar (workbench/steering.json). Reflex instances
-// and presets are host configuration, not agent-directory files. Nanite applies them through
-// agent.Options.Steering from its next release (on Nanite main, not in v0.6.0, which Surface
-// pins), so eval runs do not apply them yet; they will once Nanite 0.7.0 is tagged.
+// Steering is Workbench's sidecar configuration, applied through Nanite's
+// agent.Options.Steering in eval runs.
 type Steering struct {
 	// Format is the sidecar format's version.
 	Format   int            `json:"workbench_format"`
@@ -118,4 +116,26 @@ func parseOptions(raw []byte) (Options, error) {
 		return o, errors.New("options.json: compact_at must not be negative")
 	}
 	return o, nil
+}
+
+// evalSteering installs the authored presets and reflexes. Eval runs have no
+// Surface command/tool executor, so only Nanite's remind/halt actions execute.
+func evalSteering(raw []byte) (*nanite.Steering, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	s, err := parseSteering(raw)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := steer.NewRegistry(steer.DefaultPresets()...)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range s.Presets {
+		if err := reg.Add(steer.LayerApp, "", p); err != nil {
+			return nil, err
+		}
+	}
+	return &nanite.Steering{Registry: reg, Vocabulary: vocabulary(), Reflexes: func() []steer.Reflex { return s.Reflexes }}, nil
 }

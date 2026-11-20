@@ -8,7 +8,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -169,8 +167,8 @@ func TestStartRecoversLeftoversAndInterruptedRuns(t *testing.T) {
 	}
 }
 
-// H2: the server process never changes directory during a run; the work happens in a child.
-func TestEvalRunsInAChildAndTheServerKeepsItsDirectory(t *testing.T) {
+// Eval workspaces do not change the server process directory.
+func TestEvalRunsInProcessAndTheServerKeepsItsDirectory(t *testing.T) {
 	m, h := start(t)
 	withGateway(t, h, &fakeGateway{usage: 500})
 	if _, err := m.create("cwd", "", "embedded", "owner"); err != nil {
@@ -202,22 +200,11 @@ func TestEvalRunsInAChildAndTheServerKeepsItsDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sawChild := false
-	for i := 0; i < 200; i++ {
-		if pid, ok := m.run.ChildPID(r.ID); ok && pid != os.Getpid() {
-			sawChild = true
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
 	m.run.Wait()
 	close(stop)
 	wg.Wait()
 	if moved != "" {
 		t.Fatalf("the server's directory moved to %s during a run", moved)
-	}
-	if !sawChild {
-		t.Fatal("no eval child process was seen")
 	}
 	got, _ := m.run.GetRun("cwd", r.ID)
 	if got.Status != "done" || got.Passed != 1 {
@@ -225,8 +212,8 @@ func TestEvalRunsInAChildAndTheServerKeepsItsDirectory(t *testing.T) {
 	}
 }
 
-// H2: canceling a run kills its child.
-func TestCancelKillsTheChild(t *testing.T) {
+// Canceling a run interrupts an in-flight provider request.
+func TestCancelInterruptsTheRun(t *testing.T) {
 	m, h := start(t)
 	release := make(chan struct{})
 	asked := make(chan struct{}, 8)
@@ -255,11 +242,7 @@ func TestCancelKillsTheChild(t *testing.T) {
 	select {
 	case <-asked:
 	case <-time.After(30 * time.Second):
-		t.Fatal("the child never reached the gateway")
-	}
-	pid, ok := m.run.ChildPID(r.ID)
-	if !ok {
-		t.Fatal("no child")
+		t.Fatal("the run never reached the gateway")
 	}
 	if !m.run.Cancel(r.ID) {
 		t.Fatal("not canceled")
@@ -270,9 +253,6 @@ func TestCancelKillsTheChild(t *testing.T) {
 	case <-done:
 	case <-time.After(15 * time.Second):
 		t.Fatal("the run did not end after cancel")
-	}
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("the child %d is still there: %v", pid, err)
 	}
 	got, _ := m.run.GetRun("cancel", r.ID)
 	if got.Status != "canceled" {

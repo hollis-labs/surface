@@ -241,8 +241,16 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		}
 		return nil, fmt.Errorf("agent: nanite: %w", err)
 	}
+	// Recheck after open: the authored files may have changed while the runner opened.
+	// Report a shortfall explicitly instead of leaving the first turn to reveal it.
+	if needed, checkErr := s.naniteContextBudget(open); checkErr != nil {
+		s.log.Warn("authored context budget could not be verified", "err", checkErr)
+	} else if available := r.Agent().SlotBudget(nanite.SlotContext); needed > available {
+		s.log.Warn("authored context exceeds the Nanite context budget; restart to resize",
+			"needed_tokens", needed, "budget_tokens", available, "turn_tokens", naniteContextTokens)
+	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
-		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep)
+		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget)
 	return r, nil
 }
 

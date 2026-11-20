@@ -1,0 +1,115 @@
+{
+  "updated": "2099-01-01 12:00 UTC",
+  "note": "A synthetic tracker for the Ops seed tests: invented threads, people and ids, in the shape of the owner's tracker.",
+  "threads": [
+    {
+      "name": "Approval flow for the demo garden",
+      "stage": "flight",
+      "phase": "building",
+      "phase_label": "building",
+      "owner": "Alice",
+      "summary": "Make approving a garden plan quick while it is being built.",
+      "phase_note": "Step A is running; step B waits for it.",
+      "tasks": [
+        ["CW-20990101-0001", "Persist garden plans", "flight"],
+        ["CW-20990101-0002", "Batch approve garden plans", "queued"]
+      ]
+    },
+    {
+      "name": "Gatepost auth proxy",
+      "stage": "queued",
+      "phase": "design",
+      "phase_label": "design",
+      "owner": "Bob",
+      "summary": "An auth proxy in front of the demo garden.",
+      "phase_note": "Design agreed; not started.",
+      "tasks": [["CW-20990101-0003", "Gatepost proxy design", "queued"]]
+    },
+    {
+      "name": "Identity badges for garden robots",
+      "stage": "review",
+      "phase": "merged",
+      "phase_label": "merged",
+      "summary": "Each garden robot carries a badge.",
+      "phase_note": "Merged; not rolled out.",
+      "tasks": [["CW-20990101-0004", "Robot badge issuance", "review"]]
+    },
+    {
+      "name": "Secret shed",
+      "stage": "flight",
+      "phase": "pilot",
+      "phase_label": "pilot",
+      "owner": "Alice",
+      "summary": "A shed for the garden's keys.",
+      "phase_note": "Pilot with one consumer.",
+      "tasks": []
+    },
+    {
+      "name": "Chat wire for the garden",
+      "stage": "flight",
+      "phase": "deployed",
+      "phase_label": "deployed",
+      "summary": "Robots talk to each other.",
+      "phase_note": "Deployed; little use yet.",
+      "tasks": [["CW-20990101-0010", "Chat wire backend", "review"], ["CW-20990101-0011", "Chat wire client", "flight"]]
+    },
+    {
+      "name": "Session continuity for garden robots",
+      "stage": "review",
+      "phase": "unverified",
+      "summary": "A robot picks up where it left off.",
+      "phase_note": "Reported done; not checked.",
+      "tasks": [["CW-20990101-0012", "Continuity checkpoint", "review"]]
+    },
+    {
+      "name": "Seed catalog as source of truth",
+      "stage": "flight",
+      "phase": "deployed",
+      "phase_label": "deployed",
+      "owner": "Carol",
+      "summary": "One catalog of every seed.",
+      "phase_note": "Population runs as drafts.",
+      "tasks": [
+        ["CW-20990101-0020", "Catalog phase 1", "landed"],
+        ["CW-20990101-0021..0025", "Populate the catalog x5", "queued"],
+        ["CW-20990101-0020", "Catalog phase 1 (again)", "landed"]
+      ]
+    },
+    {
+      "name": "OTel for the garden",
+      "stage": "queued",
+      "phase": "design",
+      "phase_label": "design",
+      "owner": "Dave (waiting for instructions)",
+      "summary": "Metrics and logs from every robot.",
+      "phase_note": "Held until the owner says go.",
+      "tasks": [["CW-20990101-0030", "OTel collector", "queued"]]
+    },
+    {
+      "name": "Status stream for the garden",
+      "stage": "flight",
+      "phase": "building",
+      "phase_label": "building",
+      "owner": "Carol",
+      "summary": "Any robot reads the last entries.",
+      "phase_note": "First writer switched.",
+      "tasks": [["CW-20990101-0031", "Status stream reader", "flight"]]
+    },
+    {
+      "name": "Old greenhouse tools",
+      "stage": "landed",
+      "phase": "unverified",
+      "summary": "Landed earlier.",
+      "phase_note": "Not re-verified.",
+      "tasks": []
+    }
+  ],
+  "followups": [
+    "Garden plan approvals need a second look at CW-20990101-0001 tomorrow.",
+    "Seed catalog population: the owner reviews the drafts first (CW-20990101-0023).",
+    "Water the tomatoes.",
+    "Chat wire client retries too often: see CW-20990101-0011.",
+    "Status stream reader: switch the second writer after the first is quiet.",
+    "Somebody should tidy the potting bench."
+  ]
+}

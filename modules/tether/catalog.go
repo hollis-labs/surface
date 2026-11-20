@@ -96,6 +96,15 @@ var catalog = map[string]entry{
 	"registry_review_decide":   {module.LevelWrite, "Decide a Registry review."},
 	"registry_tool_propose":    {module.LevelWrite, "Propose a tool to the Registry."},
 	"registry_record_delete":   {module.LevelConfirm, "Delete a Registry record. Asks every time."},
+	// Publishing and deciding: what turns drafts into the published Registry.
+	"registry_changes_list":                 {module.LevelRead, "List recent changes to the Registry."},
+	"registry_references_report":            {module.LevelRead, "Report what references a Registry record."},
+	"registry_publication_policy_get":       {module.LevelRead, "The Registry's publication policy."},
+	"registry_publication_approval_get":     {module.LevelRead, "One Registry publication approval."},
+	"registry_publication_approval_prepare": {module.LevelWrite, "Prepare a Registry publication for approval."},
+	"registry_relation_decide":              {module.LevelConfirm, "Accept or reject a proposed Registry relation. Asks every time."},
+	"registry_publication_approval_decide":  {module.LevelConfirm, "Approve or reject a Registry publication. Asks every time."},
+	"registry_publication_publish":          {module.LevelConfirm, "Publish approved Registry drafts. Asks every time."},
 }
 
 // mailCatalog is the gateway's mail, given to the agent only when it has an address of its own

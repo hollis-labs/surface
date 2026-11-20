@@ -15,6 +15,7 @@ import m11 from "../../../modules/assist/web/index"
 import m14 from "../../../modules/work/web/index"
 import m15 from "../../../modules/frag/web/index"
 import m16 from "../../../modules/approvals/web/index"
+import m17 from "../../../modules/registry/web/index"
 
 export const app = { name: "desk", title: "Surface Desk" }
 
@@ -34,4 +35,5 @@ export const modules: Record<string, ModuleWeb> = {
   "work": m14,
   "frag": m15,
   "approvals": m16,
+  "registry": m17,
 }

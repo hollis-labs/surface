@@ -64,6 +64,7 @@ type App struct {
 	refs     map[string]*boundRef
 	cite     citeCache
 	asker    atomic.Pointer[askerBox]
+	gateway  atomic.Pointer[func(context.Context) (module.Gateway, error)]
 	routes   *http.ServeMux
 	started  bool
 	mu       sync.RWMutex
@@ -427,6 +428,19 @@ type moduleAgent struct {
 	app *App
 	id  string
 }
+
+// Gateway is the model gateway the app's agent config names, from the source the agent
+// service set; module.ErrNoAgent until one is set.
+func (m moduleAgent) Gateway(ctx context.Context) (module.Gateway, error) {
+	f := m.app.gateway.Load()
+	if f == nil || *f == nil {
+		return module.Gateway{}, module.ErrNoAgent
+	}
+	return (*f)(ctx)
+}
+
+// SetGateway names where the modules' Host.Agent().Gateway reads the app's model gateway.
+func (a *App) SetGateway(f func(context.Context) (module.Gateway, error)) { a.gateway.Store(&f) }
 
 func (m moduleAgent) Ask(ctx context.Context, x module.Ask) (string, error) {
 	b := m.app.asker.Load()

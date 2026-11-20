@@ -3,5 +3,8 @@ lifetime: application
 application_id: {{app}}
 runtime:
   provider: anthropic
+  max_output_tokens: 32000
+  compact_at: 110000
+  compact_keep_tokens: 22000
 permissions:
   mode: default

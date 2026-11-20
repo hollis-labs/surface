@@ -356,6 +356,25 @@ func (s *Set) cooling(r Reflex) bool {
 }
 
 func (s *Set) fire(ctx context.Context, r Reflex, out *Outcome) {
+	s.applyAction(ctx, r, out)
+	out.Fired = append(out.Fired, r.Name)
+	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE reflexes SET last_fired = ?, fired = fired + 1 WHERE name = ?`,
+		time.Now().UTC().Format(time.RFC3339), r.Name)
+}
+
+// RecordFired updates the UI's firing record after the runtime matches reflexes.
+func (s *Set) RecordFired(ctx context.Context, names []string) {
+	for _, name := range names {
+		_, _ = s.db.ExecContext(ctx, `UPDATE reflexes SET last_fired = ?, fired = fired + 1 WHERE name = ?`, time.Now().UTC().Format(time.RFC3339), name)
+	}
+}
+
+// ApplyAction executes a runtime-selected host action with the same level checks as local reflexes.
+func (s *Set) ApplyAction(ctx context.Context, kind string, spec json.RawMessage) {
+	s.applyAction(ctx, Reflex{ActionKind: kind, Action: spec}, &Outcome{})
+}
+
+func (s *Set) applyAction(ctx context.Context, r Reflex, out *Outcome) {
 	var a struct {
 		Body    string          `json:"body"`
 		Message string          `json:"message"`
@@ -389,7 +408,4 @@ func (s *Set) fire(ctx context.Context, r Reflex, out *Outcome) {
 			}
 		}
 	}
-	out.Fired = append(out.Fired, r.Name)
-	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE reflexes SET last_fired = ?, fired = fired + 1 WHERE name = ?`,
-		time.Now().UTC().Format(time.RFC3339), r.Name)
 }

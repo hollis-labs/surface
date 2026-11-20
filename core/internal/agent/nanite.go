@@ -188,6 +188,10 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if err != nil {
 		return nil, fmt.Errorf("agent: host config: %w", err)
 	}
+	contextBudget, err := s.naniteContextBudget(open)
+	if err != nil {
+		return nil, fmt.Errorf("agent: context budget: %w", err)
+	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
 		Agent: nanite.Options{
@@ -199,9 +203,11 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			Gateway:           nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
 			Logger:            s.log.With("part", "nanite"),
 			Builtins:          groups,
+			MaxOutputTokens:   c.MaxTokens,
+			MaxSteps:          c.MaxSteps,
 			CompactAt:         compact,
 			CompactKeepTokens: keep,
-			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: naniteContextTokens},
+			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: contextBudget},
 			Steering:          s.naniteSteering(),
 		},
 		ContextSlot: nanite.SlotContext,
@@ -238,6 +244,33 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
 		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep)
 	return r, nil
+}
+
+// naniteContextBudget reserves the bounded turn block plus room for authored files.
+// Profiles switch on the same runner, so reserve the largest loaded profile rather
+// than only the initially staged seat. This does not enlarge Surface's turn block.
+func (s *Service) naniteContextBudget(dir string) (int, error) {
+	snapshot, err := agentdir.Load(dir)
+	if err != nil {
+		return 0, err
+	}
+	// Include entry headings and separators, with room for Nanite's rendering.
+	fileBytes := func(name, body string) int { return len(name) + len(body) + 100 }
+	seatBytes := 0
+	for _, f := range snapshot.Context {
+		seatBytes += fileBytes(f.Name, f.Body)
+	}
+	profileBytes := 0
+	if s.prof != nil {
+		for _, p := range s.prof.all {
+			n := 0
+			for _, f := range p.Context {
+				n += fileBytes("profile."+f.Name, f.Text)
+			}
+			profileBytes = max(profileBytes, n)
+		}
+	}
+	return naniteContextTokens + (seatBytes+profileBytes+3)/4, nil
 }
 
 // naniteCompactionFallback supplies Surface defaults only for missing settings.

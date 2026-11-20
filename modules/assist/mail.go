@@ -17,6 +17,7 @@ import (
 
 // allowed are the only Tether tools this module calls.
 var allowed = tetherlink.Allowed{
+	"tether_events_history": true, "tether_events_wait": true,
 	"tether_message_list": true, "tether_message_get": true, "tether_message_mark_read": true,
 	"tether_message_archive": true, "tether_message_notify": true, "tether_registry_lookup": true,
 }
@@ -71,6 +72,7 @@ func (it Item) who() string {
 type mailbox struct {
 	link      tetherlink.Caller
 	addresses []string
+	track     func(context.Context, string, string, string, string, string) (string, error)
 
 	mu    *sync.Mutex
 	names map[string]profile
@@ -264,7 +266,10 @@ func (b *mailbox) reply(ctx context.Context, orig Item, body, choice string, ext
 	if orig.Thread != "" {
 		args["thread_id"] = orig.Thread
 	}
-	_, err := b.link.Call(ctx, "tether_message_notify", args)
+	out, err := b.link.Call(ctx, "tether_message_notify", args)
+	if err == nil && b.track != nil {
+		_, err = b.track(ctx, out, orig.Account, "response", subject, orig.From)
+	}
 	return err
 }
 
@@ -294,20 +299,11 @@ func (b *mailbox) send(ctx context.Context, account string, m outgoing) (string,
 	if err != nil {
 		return "", err
 	}
-	var res struct {
-		ID      string `json:"id"`
-		Message struct {
-			ID string `json:"id"`
-		} `json:"message"`
-		MessageID string `json:"message_id"`
+	if b.track != nil {
+		return b.track(ctx, out, account, m.Kind, m.Subject, m.To)
 	}
-	_ = json.Unmarshal([]byte(out), &res)
-	for _, id := range []string{res.ID, res.Message.ID, res.MessageID} {
-		if id != "" {
-			return id, nil
-		}
-	}
-	return "", nil
+	receipt, err := parseReceipt(out)
+	return receipt.ID, err
 }
 
 // name fills in who sent each message, from Tether's registry, kept for half an hour.

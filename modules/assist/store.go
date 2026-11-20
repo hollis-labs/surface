@@ -224,14 +224,6 @@ func (s *store) unhanded(ctx context.Context, class string) ([]Mail, error) {
 	return scanMail(rows)
 }
 
-// sent remembers a message the assistant sent in the owner's name.
-func (s *store) sent(ctx context.Context, id, kind, about, to string) {
-	if id == "" {
-		return
-	}
-	_, _ = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO sent(id,kind,about,to_addr,at) VALUES(?,?,?,?,?)`, id, kind, about, to, stamp())
-}
-
 func (s *store) asked(ctx context.Context, id string) (string, bool) {
 	var about string
 	err := s.db.QueryRowContext(ctx, `SELECT about FROM sent WHERE id=?`, id).Scan(&about)

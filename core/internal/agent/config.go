@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hollis-labs/surface/module"
 )
 
 // FileConfig is the agent and harness configuration. It lives in a file, not the app's
@@ -196,4 +198,18 @@ func expandHome(p string) string {
 		}
 	}
 	return p
+}
+
+// ModuleGateway is the model gateway the app's agent config names, as a module is given it
+// (module.Agent.Gateway): the model, the gateway URL and the key file's path, never the key.
+// It reads the config file now, so an edit takes effect without a restart.
+func ModuleGateway(app string) (module.Gateway, error) {
+	c, err := LoadConfig(app)
+	if err != nil {
+		return module.Gateway{}, err
+	}
+	if c.Model == "" || c.GatewayURL == "" || c.KeyFile == "" {
+		return module.Gateway{}, fmt.Errorf("%w: the agent config names no model, gateway_url and key_file", module.ErrNoAgent)
+	}
+	return module.Gateway{Model: c.Model, URL: strings.TrimRight(c.GatewayURL, "/"), KeyFile: c.KeyFile}, nil
 }

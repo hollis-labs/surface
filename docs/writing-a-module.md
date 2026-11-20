@@ -149,6 +149,13 @@ Two ways for a module to reach the agent outside its own slot:
   run id without waiting; `module.ErrAgentBusy` while a run is active (ask again later); `module.ErrNoAgent` when
   the agent is not on the conversation wire. `moduletest.Host.AgentState` records the errands in tests.
 
+### The model gateway
+
+`Host.Agent().Gateway(ctx)` returns the model gateway the app's agent config names: the model, the gateway's URL
+and the key file's path (never the key). It is read at each call, so an edit to the config takes effect at once;
+`module.ErrNoAgent` when the config names none, and for a module whose manifest does not set `Gateway: true`. It is for a module that calls a model itself, and only on the
+owner's action (the Workbench's live eval runs): read the key from the file at each request, and never log it.
+
 ### References (Cite)
 
 A module that owns records people name in text (a task id, a path, an item) declares the kinds it

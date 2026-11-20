@@ -64,6 +64,7 @@ type App struct {
 	refs     map[string]*boundRef
 	cite     citeCache
 	asker    atomic.Pointer[askerBox]
+	gateway  atomic.Pointer[func(context.Context) (module.Gateway, error)]
 	routes   *http.ServeMux
 	started  bool
 	mu       sync.RWMutex
@@ -424,9 +425,26 @@ func (a *App) SetAsker(x Asker) { a.asker.Store(&askerBox{x}) }
 
 // moduleAgent is one module's way to the agent.
 type moduleAgent struct {
-	app *App
-	id  string
+	app      *App
+	id       string
+	declared bool // the module's manifest declares Gateway
 }
+
+// Gateway is the model gateway the app's agent config names, from the source the agent
+// service set; module.ErrNoAgent until one is set.
+func (m moduleAgent) Gateway(ctx context.Context) (module.Gateway, error) {
+	if !m.declared {
+		return module.Gateway{}, fmt.Errorf("%w: module %s does not declare Manifest.Gateway", module.ErrNoAgent, m.id)
+	}
+	f := m.app.gateway.Load()
+	if f == nil || *f == nil {
+		return module.Gateway{}, module.ErrNoAgent
+	}
+	return (*f)(ctx)
+}
+
+// SetGateway names where the modules' Host.Agent().Gateway reads the app's model gateway.
+func (a *App) SetGateway(f func(context.Context) (module.Gateway, error)) { a.gateway.Store(&f) }
 
 func (m moduleAgent) Ask(ctx context.Context, x module.Ask) (string, error) {
 	b := m.app.asker.Load()
@@ -514,7 +532,9 @@ func (h *host) Config() module.Config { return h.app.cfg.Scoped(h.id) }
 func (h *host) Events() module.Events { return h.app.bus }
 func (h *host) Marks() module.Marks   { return h.app.marks }
 func (h *host) Cards() module.Cards   { return h.app.cards }
-func (h *host) Agent() module.Agent   { return moduleAgent{app: h.app, id: h.id} }
+func (h *host) Agent() module.Agent {
+	return moduleAgent{app: h.app, id: h.id, declared: h.man.Gateway}
+}
 func (h *host) RunCommand(ctx context.Context, id string, args map[string]any) (any, error) {
 	return h.app.RunCommand(ctx, id, args)
 }

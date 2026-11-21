@@ -5,6 +5,10 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.16.0] - 2026-11-21
+
+- **Ops: "assigned, no live agent".** A workstream's tasks that are assigned or claimed by nobody live are flagged
+  on the board, in the drill-in and in Activity.
 - **Terminal: links open whole, however they wrap.** A URL a program hard-wraps at the edge (as `claude
   setup-token` prints its login URL) is linked across its lines, as a soft-wrapped one already was; clicking any
   part of it opens the whole URL. Only http and https open, in a new tab, with no opener and no referrer. The

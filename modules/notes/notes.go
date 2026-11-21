@@ -78,7 +78,8 @@ func (m *mod) Manifest() module.Manifest {
 					return m.open(ctx, p)
 				}},
 		},
-		Tools: m.tools(),
+		Palette: []module.PaletteProvider{{ID: "search", Title: "Notes", Mode: "commands", Search: m.palette}},
+		Tools:   m.tools(),
 		Settings: []module.Setting{
 			{Key: "folder", Title: "Notes folder", About: "Absolute path of the folder the notes live in. Empty keeps them in the app's own data.", Type: module.SettingString, Default: ""},
 			{Key: "daily_folder", Title: "Daily notes go in", About: "Folder, inside the notes folder, for the note of the day.", Type: module.SettingString, Default: "daily"},

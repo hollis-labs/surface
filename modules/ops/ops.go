@@ -243,9 +243,7 @@ func (m *mod) windowOpen(ctx context.Context) bool {
 
 // rollActivity advances the shared refresh cycle, starting with in-flight workstreams.
 func (m *mod) rollActivity(ctx context.Context) {
-	if feed, err := m.globalActivity(ctx, activityFilter{}, false); err == nil && feed.refreshed > 0 {
-		m.h.Events().Publish("ops.activity", map[string]any{})
-	}
+	_, _ = m.globalActivity(ctx, activityFilter{}, false)
 }
 
 // sync brings the copy up to date (at most every 15 s unless forced). The error is a

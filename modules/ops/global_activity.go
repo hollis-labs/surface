@@ -59,7 +59,6 @@ func (f activityFilter) validate() error {
 }
 
 type globalFeed struct {
-	refreshed int
 	Entries   []Entry  `json:"entries"`
 	Errors    []string `json:"errors,omitempty"`
 	Pending   int      `json:"pending"`
@@ -77,7 +76,14 @@ func (m *mod) globalActivity(ctx context.Context, f activityFilter, force bool) 
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	m.activityMu.Lock()
-	defer m.activityMu.Unlock()
+	refreshed := 0
+	defer func() {
+		m.activityMu.Unlock()
+		// Every entry point (page, tool and background) updates other open views once.
+		if refreshed > 0 && m.h != nil {
+			m.h.Events().Publish("ops.activity", map[string]any{})
+		}
+	}()
 	b, err := m.st.All(ctx)
 	if err != nil {
 		return globalFeed{}, err
@@ -119,7 +125,7 @@ func (m *mod) globalActivity(ctx context.Context, f activityFilter, force bool) 
 			m.activityPending = append(m.activityPending[1:], id)
 			break
 		}
-		out.refreshed++
+		refreshed++
 		m.st.keepRollup(ctx, r)
 		cached[id] = r
 		m.activityPending = m.activityPending[1:]

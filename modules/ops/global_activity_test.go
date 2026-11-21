@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -69,6 +70,9 @@ func TestGlobalActivityRoutesToolsFiltersAndSlot(t *testing.T) {
 		t.Fatalf("tool=%v", out)
 	}
 	call(t, h, "ops_activity", `{"id":"parent"}`)
+	if !slices.Contains(h.Bus.Topics(), "ops.activity") {
+		t.Fatal("route refresh did not notify other views")
+	}
 	if f.counts["torque_task_get"] != 2 || f.counts["torque_comment_list"] != 2 {
 		t.Fatalf("cache not shared: %v", f.counts)
 	}

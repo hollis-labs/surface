@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Choose a module’s agent.** Settings and the agent panel’s Profile picker can bind any module to a
+  validated Nanite agent folder. Bindings override built-in profiles and reset live. Turns use isolated
+  authored snapshots and record the selected source folder in the run log. Bound agents share the app’s
+  runtime and permissions; ignored `host.yaml` runtime keys are shown in the UI and logged.
+
 ## [0.9.1] - 2026-11-21
 
 - **Ops finds plans and epics through linked tasks.** When a linked task belongs to a Torque plan (or epic), the

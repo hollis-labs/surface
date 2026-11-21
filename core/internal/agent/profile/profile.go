@@ -65,6 +65,7 @@ type File struct {
 
 // Profile is a module's profile, read and checked.
 type Profile struct {
+	IgnoredRuntime []string `json:"ignored_runtime,omitempty"`
 	// ID is the module's id; it names the profile.
 	ID string `json:"id"`
 	// Title is the module's title.
@@ -87,7 +88,8 @@ type Profile struct {
 	files map[string][]byte
 	// exec are the tool packages' entries, which are staged executable (an embedded file
 	// has no mode of its own).
-	exec map[string]bool
+	exec        map[string]bool
+	steeringRaw []byte
 }
 
 // Load reads and checks a module's profile. It returns nil, nil for an empty slot.
@@ -169,6 +171,7 @@ func Load(id, title string, fsys fs.FS) (*Profile, error) {
 			errs = append(errs, fmt.Errorf("steering.json: %w", err))
 		}
 		p.Steering = true
+		p.steeringRaw = steering
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, fmt.Errorf("profile %s: %w", id, err)

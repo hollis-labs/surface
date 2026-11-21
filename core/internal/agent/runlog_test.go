@@ -24,7 +24,7 @@ func TestTheRunLogFollowsARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.turn("r1", "errand:assist", "messaging", "default")
+	l.turn("r1", "errand:assist", "messaging", "default", "/agents/example")
 	c := l.begin("r1", "anthropic-opus")
 	name, _ := json.Marshal("project_list")
 	c.see(chatstream.Event{Verb: chatstream.VerbRunStart, Provider: "anthropic"})
@@ -38,7 +38,7 @@ func TestTheRunLogFollowsARun(t *testing.T) {
 		t.Fatalf("%v %v", got, err)
 	}
 	r := got[0]
-	if r.Origin != "errand:assist" || r.Slot != "messaging" || r.Model != "anthropic-opus" || r.Provider != "anthropic" ||
+	if r.AgentDir != "/agents/example" || r.Origin != "errand:assist" || r.Slot != "messaging" || r.Model != "anthropic-opus" || r.Provider != "anthropic" ||
 		r.Status != RunFinished || r.Output != 52 || r.CacheRead != 40 || len(r.Tools) != 2 || r.Tools[0] != "project_list" {
 		t.Fatalf("%+v", r)
 	}

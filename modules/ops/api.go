@@ -91,8 +91,32 @@ func (m *mod) routes(h module.Host) {
 		}
 		reply(w, http.StatusOK, result)
 	})
+	handle("GET /usage", func(w http.ResponseWriter, r *http.Request) {
+		result, err := m.usage(r.Context(), r.URL.Query().Get("source"))
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		reply(w, http.StatusOK, result)
+	})
+	handle("GET /brief", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		n, _ := strconv.Atoi(q.Get("max_items"))
+		result, err := m.brief(r.Context(), briefOptions{Since: q.Get("since"), Scope: q.Get("scope"), MaxItems: n})
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		if q.Get("format") == "markdown" {
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			_, _ = w.Write([]byte(result.Markdown))
+			return
+		}
+		reply(w, http.StatusOK, result)
+	})
 	handle("GET /board", m.apiBoard)
 	handle("GET /activity", m.apiGlobalActivity)
+	handle("GET /agents", m.apiAgents)
 	handle("POST /workstreams", gated("making a workstream", m.apiCreate))
 	handle("GET /workstreams/{id}", m.apiGet)
 	handle("PUT /workstreams/{id}", gated("changing a workstream", m.apiUpdate))
@@ -122,6 +146,8 @@ type Card struct {
 	Last       *Entry         `json:"last,omitempty"`
 	Suggest    string         `json:"suggest,omitempty"`
 	SuggestWhy string         `json:"suggest_why,omitempty"`
+	// NoLiveAgent is the open tasks assigned or claimed that no live agent holds.
+	NoLiveAgent []string `json:"no_live_agent,omitempty"`
 }
 
 func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) (map[string]any, error) {
@@ -139,6 +165,7 @@ func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) 
 		c := Card{Workstream: w}
 		if r, ok := cached[w.ID]; ok {
 			c.Tasks, c.TaskCounts, c.TaskList, c.Last, c.Suggest, c.SuggestWhy = CountsText(r.Counts), r.Counts, r.Tasks, r.Last, r.Suggest, r.SuggestWhy
+			c.NoLiveAgent = r.NoLiveAgent
 		}
 		cards = append(cards, c)
 	}

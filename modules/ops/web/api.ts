@@ -3,6 +3,7 @@
  * (model.go, activity.go, seed.go).
  */
 import type { ModuleAPI } from "@hollis-labs/surface-page/sdk"
+import type { SessionsResult } from "./sessions"
 
 export type Stage = "planned" | "parked" | "queued" | "in_flight" | "landing" | "complete" | "dropped"
 
@@ -82,7 +83,7 @@ export interface Workstream {
 
 export interface Entry {
   at: string
-  source: "torque" | "comment" | "status" | "ops"
+  source: "torque" | "comment" | "status" | "ops" | "liveness"
   state?: string
   summary: string
   subject_urn?: string
@@ -98,6 +99,8 @@ export interface Card extends Workstream {
   last?: Entry
   suggest?: string
   suggest_why?: string
+  /** Open tasks assigned or claimed that no live agent holds. */
+  no_live_agent?: string[]
 }
 
 export interface BoardData {
@@ -117,6 +120,22 @@ export interface Task {
   plan_id?: string
   phase_id?: string
   discovered_via?: string
+  /** Who the task is assigned to or claimed by, and whether they are live. */
+  holder?: Holder
+}
+
+/** A task's assignee or claimant (modules/ops/liveness.go). */
+export interface Holder {
+  agent?: string
+  session?: string
+  run?: string
+  /** How it was assigned (Torque): owner, doing, claim or dispatch. */
+  source: string
+  /** live, none (nobody live holds it) or unknown (could not tell). */
+  live: "live" | "none" | "unknown"
+  why?: string
+  /** Found by the fallback source, which cannot see kit-booted agents. */
+  unconfirmed?: boolean
 }
 
 export interface Plan {
@@ -139,6 +158,8 @@ export interface Rollup {
   suggest?: string
   suggest_why?: string
   errors?: string[]
+  /** Open tasks assigned or claimed that no live agent holds. */
+  no_live_agent?: string[]
   fetched_at: string
   unavailable?: boolean
 }
@@ -230,6 +251,7 @@ const q = encodeURIComponent
 
 export function opsClient(api: ModuleAPI) {
   return {
+    agents: () => api.get<SessionsResult>("agents"),
     board: (force = false, showSettled = false) =>
       api.get<BoardData>(`board?force=${force ? 1 : 0}&show_settled=${showSettled ? 1 : 0}`),
     settle: (id: string, base_rev: number) => api.post<Workstream>(`workstreams/${q(id)}/settle`, { base_rev }),

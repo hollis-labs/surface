@@ -5,6 +5,58 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.16.0] - 2026-11-21
+
+- **Ops: "assigned, no live agent".** A workstream's tasks that are assigned or claimed by nobody live are flagged
+  on the board, in the drill-in and in Activity.
+- **Terminal: links open whole, however they wrap.** A URL a program hard-wraps at the edge (as `claude
+  setup-token` prints its login URL) is linked across its lines, as a soft-wrapped one already was; clicking any
+  part of it opens the whole URL. Only http and https open, in a new tab, with no opener and no referrer. The
+  web-links addon is replaced by the terminal's own provider (`registry/ui/terminal.links.ts`).
+
+## [0.15.0] - 2026-11-21
+
+- **Ops: `ops_brief`**, the Lead Orchestrator's running brief built from Ops data: what needs the owner or the
+  orchestrator (holds, unsequenced orchestration requests, blocked tasks), stalled workstreams, what changed, in
+  flight, live agents, fleet and budgets, each source with its freshness and the known gaps listed. An MCP read tool
+  and `GET /api/m/ops/brief` (JSON or `?format=markdown`).
+- **Ops Usage:** cards for the paid media suites (design, audio, video) and Tripo, through per-source adapters.
+- **Fixed:** the Agents tab showed no rows after Tether's live-agents feed changed shape.
+
+## [0.14.0] - 2026-11-21
+
+- **The agent's own Tether mailbox.** With `identity.tether` in the agent directory's `host.yaml` and a `mailbox`
+  section (`url`, `credential_file`, `poll_seconds`) in the agent config, Nanite reads the agent's own mail: each
+  unread message becomes a notice turn, shown in the conversation as *Tether mail* and marked read once handled.
+  Mail keeps its own Nanite history. No Surface module polls the agent's address alongside it (docs/agent.md).
+- **Nanite v0.16.0** (Substrate BOM unchanged, b123217). Conversation integrity: an interrupted-turn offer
+  with `integrity: blocked` shows only the offered discard and reset actions, with the reason. **Reset
+  conversation** (owner only, refused while a run is active) moves the chat to a new Nanite conversation
+  through `Runner.ResetChat` and keeps the old one on disk. The agent panel now draws every interrupted-turn
+  offer (resume, discard, reset), and turns after a reset follow the chat's current Nanite conversation.
+- **Ops Usage:** the Tether AI router has its own card with a labelled window (since 00:00 UTC, plus 30 days); the
+  LLM gateway card says it is not collected yet; a budget that cannot be evaluated says why.
+
+## [0.13.1] - 2026-11-21
+
+- **Ops: Usage tab, first source.** Cards per paid or rate-limited source with usage against limit, reset time and
+  a status colour; details show history and the biggest consumers. The llm-gateway card reads Tether's AI usage,
+  budgets and budget alerts. Subscription sources (Claude, Codex, agy, opencode) follow.
+
+## [0.13.0] - 2026-11-21
+
+- **Ops: Agents view.** The live agents, awake or sleeping, with host, state and last activity. It reads Tether's
+  unified live-agents feed when deployed; until then it falls back to Tether-launched sessions with a banner
+  (kit-booted agents appear once the feed is live).
+- **Ops: Fleet view.** The fleet's machines from Cerberus; a machine shows its agents and the last hour of CPU,
+  memory, disk and load (5-minute samples). Uses Cerberus's fleet snapshot when it exists, else bounded host reads.
+- **Nanite v0.15.0**, Substrate BOM b123217 (libs agentdir v0.6.0). Nanite's per-agent Tether identity and mailbox
+  are not wired.
+
+- **Ops: Agents view.** The board shows live Tether sessions and kit seats with agent identity, host,
+  awake/sleeping state, last activity and workstream links. A shared bounded refresh also serves the
+  read-only `ops_agents` tool; unavailable observations remain explicit.
+
 ## [0.12.1] - 2026-11-21
 
 - **Ops: Settle.** A complete workstream can be settled: `settled_at`, `settled_by` and a final summary are recorded,

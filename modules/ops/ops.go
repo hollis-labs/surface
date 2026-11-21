@@ -43,13 +43,15 @@ const (
 // launches, dispatches, claims or forms a team (forbidden, checked by a test).
 var allowed = tetherlink.Allowed{
 	"cerberus_fleet_snapshot": true, "cerberus_host_list": true, "cerberus_host_samples": true,
+	"tether_ai_usage": true, "tether_ai_budgets": true, "tether_ai_budget_alerts": true,
+	"design_budget": true, "audio_budget": true, "video_budget": true, "tripo_balance": true, "tripo_usage": true,
 	"caster_get": true, "caster_ls": true, "caster_put": true, "caster_log": true,
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
 	"tether_workstream_get": true, "tether_workstream_digest": true,
 	"tether_message_send":  true,
 	"registry_record_list": true, "registry_record_get": true,
-	"tether_session_list": true, "tether_session_health": true,
+	"tether_agents_live": true, "tether_session_list": true, "tether_session_health": true,
 }
 
 // forbidden are tools Ops must never reach, whatever is asked.
@@ -76,6 +78,8 @@ type mod struct {
 	// tasks is the Torque reads shared by every roll-up.
 	liveSessions    sessionCache
 	liveFleet       fleetCache
+	liveUsage       usageCache
+	briefReads      briefReads
 	tasks           *taskCache
 	activityMu      sync.Mutex
 	activityPending []string
@@ -127,7 +131,7 @@ func (m *mod) Manifest() module.Manifest {
 			Name:  "ops",
 			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
-			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
+			Tools: []string{"ops_list", "ops_get", "ops_brief", "ops_fleet", "ops_usage", "ops_activity", "ops_agents", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",
 			Instructions: "The board is the owner's. Read before you write (ops_get gives rev, the base_rev for ops_update). Propose moves; make them on the owner's word, with why. " +
 				"Moves are explicit: a suggested stage is a hint to put to the owner, never a move you make on your own. " +
@@ -224,6 +228,10 @@ func (m *mod) watch(ctx context.Context) {
 		if !m.windowOpen(ctx) {
 			continue
 		}
+		if m.sessionViewOpen(ctx) {
+			_, _ = m.sessions(ctx)
+			m.h.Events().Publish("ops.agents", nil)
+		}
 		c, cancel := context.WithTimeout(ctx, readBack*2)
 		if n, err := m.st.Refresh(c, false); err == nil && n > 0 {
 			m.changed("", "read-back")
@@ -275,9 +283,16 @@ func (m *mod) rollup(ctx context.Context, id string, force bool) (Rollup, error)
 	if !ok {
 		return Rollup{}, ErrNotFound
 	}
-	r := reader{link: m.tether, cache: m.tasks}.Roll(ctx, w, b.Descendants(id))
+	r := m.roll(ctx, w, b.Descendants(id))
 	m.st.keepRollup(ctx, r)
 	return r, nil
+}
+
+// roll reads a roll-up and checks who holds its tasks against the live agents.
+func (m *mod) roll(ctx context.Context, w Workstream, descendants []Workstream) Rollup {
+	r := reader{link: m.tether, cache: m.tasks}.Roll(ctx, w, descendants)
+	checkHolders(ctx, &r, m.sessions)
+	return r
 }
 
 // ---- What the agent is told ----
@@ -286,6 +301,13 @@ func (m *mod) describeBoard(_ context.Context, _ module.Host, w module.Window) (
 	wc := module.WindowContext{Kind: "data", Ref: "ops", Extra: map[string]any{"layout": w.Args["layout"]}}
 	if w.Args["layout"] == "fleet" {
 		wc.Extra["host"] = w.Args["host"]
+		return wc, nil
+	}
+	if w.Args["layout"] == "agents" {
+		return wc, nil
+	}
+	if w.Args["layout"] == "usage" {
+		wc.Extra["source"] = w.Args["source"]
 		return wc, nil
 	}
 	if w.Args["layout"] == "activity" {
@@ -352,6 +374,9 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 			}
 			if c.Suggest != "" {
 				r["suggested_stage"] = c.Suggest
+			}
+			if len(c.NoLiveAgent) > 0 {
+				r["no_live_agent"] = c.NoLiveAgent
 			}
 		}
 		flying = append(flying, r)

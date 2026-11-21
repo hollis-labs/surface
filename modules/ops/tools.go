@@ -61,6 +61,10 @@ const (
 
 func (m *mod) tools() []module.Tool {
 	return []module.Tool{
+		{Name: "ops_agents", Level: module.LevelRead,
+			Description: "Live agents from Tether: awake, sleeping or unknown, host, raw state, observed last activity and workstream. Read-only; shares the Agents/Fleet refresh cache. Unknown or stale observations do not imply sleeping.",
+			Input:       schema(""),
+			Run:         func(ctx context.Context, _ module.Host, _ json.RawMessage) (any, error) { return m.sessions(ctx) }},
 		{Name: "ops_settle", Level: module.LevelWrite,
 			Description: "Settle a complete workstream: preserve its final tracking snapshot and hide it from the board by default. History and Cite references remain. The owner approves this action.",
 			Input:       schema(idProp+`,"base_rev":{"type":"integer","minimum":1}`, "id", "base_rev"),
@@ -84,6 +88,33 @@ func (m *mod) tools() []module.Tool {
 					return nil, err
 				}
 				return m.fleet(ctx, a.Host)
+			}},
+		{Name: "ops_brief", Level: module.LevelRead,
+			Description: "The Lead Orchestrator's running brief, built only from Ops data: needs_me (held items, blocked tasks, orchestration requests not yet sequenced), stalled (in flight with no activity for 45 minutes), changed_since (stage moves and task and status activity), suggestions, in_flight (tasks, latest activity, live agents), untracked, fleet and budgets. " +
+				"The header lists each source's freshness and says when one is stale or missing; gaps lists what Ops cannot answer yet. Includes a markdown rendering. Without since, shows what changed since this caller's last brief (24 hours on the first). Read-only.",
+			Input: schema(`"since":{"type":"string","description":"RFC 3339 start of the changed_since window."},` +
+				`"scope":{"type":"string","description":"all (default), owner:<urn>, or workstream:<id> (the item and its descendants)."},` +
+				`"max_items":{"type":"integer","minimum":1,"maximum":200,"description":"Items per section (default 40); the rest are counted as truncated."}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				a, err := args[struct {
+					Since    string `json:"since"`
+					Scope    string `json:"scope"`
+					MaxItems int    `json:"max_items"`
+				}](in)
+				if err != nil {
+					return nil, err
+				}
+				return m.brief(ctx, briefOptions{Since: a.Since, Scope: a.Scope, MaxItems: a.MaxItems})
+			}},
+		{Name: "ops_usage", Level: module.LevelRead,
+			Description: "Usage against limits for what we pay for or are rate-limited on: one card per source with status, usage, limit and reset time. tether-ai is Tether's own AI router (calls Tether makes itself), not llm-gateway; llm-gateway, which carries Basalisk and Studio turns, is a gap until wired. design, audio and video are the media suites' estimated spend against their optional daily caps; tripo is a prepaid credit balance. With a source, include its details; for tether-ai: request and token totals since 00:00 UTC, 7 and 30 days, the biggest providers and models, budgets and recent budget alerts. Subscriptions not yet collected are gaps, not zero. Read-only; cached for a minute.",
+			Input:       schema(`"source":{"type":"string","description":"A card id from the list (llm-gateway, tether-ai, design, audio, video, tripo, openrouter, claude, codex, agy, opencode); omitted lists cards."}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				a, err := args[struct{ Source string }](in)
+				if err != nil {
+					return nil, err
+				}
+				return m.usage(ctx, a.Source)
 			}},
 		{Name: "ops_list", Level: module.LevelRead,
 			Description: "The Operations board: workstreams by lane (stage), the Queued band in launch order, and for each its owner, held reason, parent and children, Torque roll-up and last activity (from the cache). Top-level concepts by default; parent lists one concept's children; all lists every level. stage, owner and held narrow it.",
@@ -112,8 +143,8 @@ func (m *mod) tools() []module.Tool {
 				return m.toolGet(ctx, a.ID)
 			}},
 		{Name: "ops_activity", Level: module.LevelRead,
-			Description: "Activity across all workstreams when id is omitted; with id, that workstream and its children. Newest first: Torque task states and STATUS comments, status-stream entries and Ops moves. since (RFC 3339), source (torque, comment, status, ops) and task narrow it; workstream and stage also filter the global feed. refresh reads another bounded batch now.",
-			Input:       schema(idProp + `,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300},"workstream":{"type":"string"},"stage":{"type":"string",` + stageEnum + `}`),
+			Description: "Activity across all workstreams when id is omitted; with id, that workstream and its children. Newest first: Torque task states and STATUS comments, status-stream entries, Ops moves, and liveness rows for open tasks assigned to an agent that is not live. since (RFC 3339), source (torque, comment, status, ops, liveness) and task narrow it; workstream and stage also filter the global feed. refresh reads another bounded batch now.",
+			Input:       schema(idProp + `,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops","liveness"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300},"workstream":{"type":"string"},"stage":{"type":"string",` + stageEnum + `}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				a, err := args[struct {
 					ID, Since, Source, Task, Workstream, Stage string
@@ -382,6 +413,9 @@ func (m *mod) toolList(ctx context.Context, stage, owner, parent string, held *b
 			if c.Suggest != "" {
 				r["suggested_stage"] = c.Suggest + ": " + c.SuggestWhy
 			}
+			if len(c.NoLiveAgent) > 0 {
+				r["no_live_agent"] = c.NoLiveAgent
+			}
 		}
 		lanes[w.Stage] = append(lanes[w.Stage], r)
 	}
@@ -425,6 +459,9 @@ func (m *mod) toolGet(ctx context.Context, id string) (any, error) {
 		out["activity"] = last
 		if r.Suggest != "" {
 			out["suggested_stage"] = r.Suggest + ": " + r.SuggestWhy
+		}
+		if len(r.NoLiveAgent) > 0 {
+			out["no_live_agent"] = r.NoLiveAgent
 		}
 		if len(r.Errors) > 0 {
 			out["problems"] = r.Errors

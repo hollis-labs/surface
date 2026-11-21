@@ -194,8 +194,14 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	if err != nil {
 		return nil, fmt.Errorf("agent: context budget: %w", err)
 	}
+	// host.yaml is the seat's whatever is staged over it.
+	tether, mailbox, err := s.naniteMailbox(dir)
+	if err != nil {
+		return nil, err
+	}
 	db := s.k.DB()
 	r, err := chatrunner.Open(ctx, chatrunner.Options{
+		Mailbox: mailbox,
 		Agent: nanite.Options{
 			Dir: open,
 			// Keep runtime state and tool approvals outside the authored/staged directory.
@@ -212,6 +218,8 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			CompactKeepTokens: keep,
 			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: contextBudget},
 			Steering:          s.naniteSteering(),
+			// The agent's own Tether address (host.yaml identity.tether), when it has one.
+			Tether: tether,
 		},
 		TurnProfile: func(ctx context.Context, turn chat.Turn) (string, map[string]string, error) {
 			var meta struct {
@@ -244,6 +252,11 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 				}
 			}
 			id = originalChatID(id)
+			// The agent's own mail is shown in the conversation in front.
+			id, turn, mailErr := w.mailboxDisplay(ctx, id, turn)
+			if mailErr != nil {
+				return mailErr
+			}
 			turn.ConversationID = id
 			return w.svc.Observe(ctx, id, turn, s.watchWireRun(turn, run))
 		},
@@ -279,6 +292,9 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	info, infoErr := r.Agent().Info(ctx)
 	if infoErr != nil {
 		s.log.Warn("daily token budget could not be read", "err", infoErr)
+	}
+	if mailbox != nil {
+		s.log.Info("the agent reads its own Tether mail", "address", r.Agent().TetherURN(), "tether", s.cfg.Mailbox.URL)
 	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
 		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget, "auto_approve", c.AutoApprove, "daily_token_budget", info.Definition.Profile.Runtime.DailyTokenBudget)
@@ -392,7 +408,7 @@ func (w *wire) naniteHistory(ctx context.Context, conversation string) []librefl
 	if err != nil {
 		return nil
 	}
-	c, err := w.nanite.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id))
+	c, err := w.nanite.Agent().EnsureConversation(ctx, w.nanite.ConversationOf(id))
 	if err != nil {
 		return nil // history unavailable
 	}

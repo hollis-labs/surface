@@ -7,7 +7,7 @@ database is only a working copy. Torque CW-20261120-0117; the design is the Oper
 (Tesseract workspace `project/surface/workspace/operations`, key `operations_module_design_2026_11_20`).
 
 Operations never launches anything. Its Tether link is its own and allowlisted (`ops.go`, `allowed`): no
-session, team, dispatch, claim or start tool is on it, and a test fails if one is added.
+session launch, team, dispatch, claim or start tool is on it, and a test fails if one is added.
 
 ## Data: `ops/v1`
 
@@ -175,6 +175,46 @@ retry later. The response reports pending work, truncation and source errors; pa
 shown in the view. Background refresh uses the same cycle and publishes `ops.activity`; the page
 does not poll. Caster board synchronization keeps its existing separate read-back schedule.
 
+## Live agents
+
+The board's Agents tab reads Tether's `tether_agents_live` snapshot: launched sessions and kit seats,
+with authoritative host, busy/idle state, activity time and summary, and workstream identity.
+Busy is shown as Awake and idle as Sleeping. Missing state stays unknown; stale registrations are
+excluded. Agent and workstream references open Cite identities.
+
+`GET /agents` and the read-only `ops_agents` tool share the same cache with Fleet. At most one
+Tether snapshot is fetched per 15 seconds, with a 12-second deadline and a 500-row display bound.
+Errors are cached too, and a truncated result is labelled incomplete. The open Agents/Fleet tab
+triggers server refresh events; the page does not poll. A failed refresh explicitly labels any
+previous observation. If Tether explicitly reports `tether_agents_live` missing, the reader temporarily uses bounded
+`tether_session_list` and health reads (two list pages, at most 50 health calls, four at once).
+A banner explains that kit-booted agents appear when the unified feed is deployed; unknown hosts
+remain labelled. Every expired cache retries the unified feed automatically. Other source failures
+never trigger this fallback and never appear as an empty healthy fleet.
+
+## Assigned, no live agent
+
+Gap G6 of the system-of-record brief (Torque CW-20261121-0152). Each roll-up checks its open tasks (linked,
+epic, plan or discovered) that are assigned or claimed against the live agents, using the same cached reader as
+the Agents tab. A task's holder is read from its typed Torque record (`liveness.go`, `taskAssignment`): Torque's
+`assignment` object (CW-20261121-0148: `assignee_urn`, `tether_session_id`, `team_run_id`, `claim_id`, `source`
+owner|doing|claim|dispatch, `state` active|expired|released, `end_reason`), else `metadata.owner_urn` when it is
+an agent urn (until 0148 ships; Torque then projects it into `assignment`). A released assignment is no holder;
+an expired one is flagged whoever is live. A holder bound to a session is live only when that session is
+(`session:<id>`); otherwise its urn, or its team run (`seat:<run>`), must be live.
+
+- Each task carries `holder: {agent, session, run, source, live: live|none|unknown, why, unconfirmed}`.
+- The roll-up and the board card list `no_live_agent` (task ids); `ops_list`, `ops_get` and the slot's in-flight
+  rows carry it too.
+- Each flagged task adds a feed row with source `liveness` (state `no_live_agent`) to the workstream's and the
+  global activity, filterable as `source=liveness`. It does not replace a card's latest activity.
+- The check never guesses: unreadable or truncated live agents mark holders `unknown` and flag nothing. The
+  fallback source (no kit seats) flags as `unconfirmed`.
+- Roll-ups with no held task do not read the live agents.
+
+Torque's half (CW-20261121-0148) expires an assignment when its session ends or its lease lapses; Ops covers the
+window before that and owner assignments, which have no session.
+
 ## Seeding from the tracker
 
 The owner's workstream tracker (kept by the Local Orchestrator: threads with stage, phase, owner, summary,
@@ -211,6 +251,7 @@ tests.
 
 | Route | |
 |---|---|
+| `GET /agents` | Live agent observations shared with Fleet |
 | `GET /activity` | Global feed with workstream, stage, source and since filters; `refresh=1` refreshes a bounded batch |
 | `GET /board` (`?force=1`) | Every workstream with its cached roll-up line, the queue, the owner's follow-ups |
 | `POST /workstreams` | Create |
@@ -231,6 +272,7 @@ owner. Writes are recorded as the actor the core names. Every write publishes `o
 
 | Tool | Level | |
 |---|---|---|
+| `ops_agents` | read | Live agent identity, host, state and last activity |
 | `ops_list` | read | The board by lane at one level (`parent`, or `all`), the queue, filters `stage`, `owner`, `held` |
 | `ops_get` | read | One workstream, its roll-up and last 10 activity rows |
 | `ops_activity` | read | Without `id`, global activity; with `id`, a workstream roll-up. Filters: `workstream`, `stage` (global), `since`, `source`, `task`; bounded `limit` |

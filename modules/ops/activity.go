@@ -22,7 +22,7 @@ import (
 // Entry is one row of the merged feed.
 type Entry struct {
 	At         string   `json:"at"`
-	Source     string   `json:"source"` // torque, comment, status, ops
+	Source     string   `json:"source"` // torque, comment, status, ops, liveness
 	State      string   `json:"state,omitempty"`
 	Summary    string   `json:"summary"`
 	SubjectURN string   `json:"subject_urn,omitempty"`
@@ -49,6 +49,9 @@ type Task struct {
 	EpicID        string `json:"epic_id,omitempty"`
 	Kind          string `json:"kind,omitempty"`
 	DiscoveredVia string `json:"discovered_via,omitempty"`
+	// Holder is who the task is assigned to or claimed by, and whether they are live
+	// (liveness.go); nil when nobody is.
+	Holder *Holder `json:"holder,omitempty"`
 }
 
 // Rollup is a workstream's tasks and activity, with its children's.
@@ -62,9 +65,11 @@ type Rollup struct {
 	Last *Entry `json:"last,omitempty"`
 	// Suggest is a stage the tasks suggest the workstream is in, when it differs (a hint:
 	// moves are the owner's).
-	Suggest     string   `json:"suggest,omitempty"`
-	SuggestWhy  string   `json:"suggest_why,omitempty"`
-	Errors      []string `json:"errors,omitempty"`
+	Suggest    string   `json:"suggest,omitempty"`
+	SuggestWhy string   `json:"suggest_why,omitempty"`
+	Errors     []string `json:"errors,omitempty"`
+	// NoLiveAgent is the open tasks assigned or claimed that no live agent holds.
+	NoLiveAgent []string `json:"no_live_agent,omitempty"`
 	FetchedAt   string   `json:"fetched_at"`
 	Unavailable bool     `json:"unavailable,omitempty"`
 }
@@ -425,10 +430,7 @@ func finish(out *Rollup, w Workstream) {
 			return e.Source == "comment" && mirrored[mirrorKey(e.Task, e.Summary)]
 		})
 	}
-	sort.SliceStable(out.Entries, func(i, j int) bool { return When(out.Entries[i].At).After(When(out.Entries[j].At)) })
-	if len(out.Entries) > maxEntries {
-		out.Entries = out.Entries[:maxEntries]
-	}
+	out.Entries = sortEntries(out.Entries)
 	for i := range out.Entries {
 		if out.Entries[i].Source != "ops" {
 			out.Last = &out.Entries[i]
@@ -445,6 +447,15 @@ func finish(out *Rollup, w Workstream) {
 		return out.Tasks[i].ID < out.Tasks[j].ID
 	})
 	out.Suggest, out.SuggestWhy = suggest(w.Stage, out.Counts)
+}
+
+// sortEntries orders a feed newest first and bounds it.
+func sortEntries(es []Entry) []Entry {
+	sort.SliceStable(es, func(i, j int) bool { return When(es[i].At).After(When(es[j].At)) })
+	if len(es) > maxEntries {
+		es = es[:maxEntries]
+	}
+	return es
 }
 
 // openRank orders tasks: in progress first, then review, then waiting, then finished.
@@ -524,12 +535,14 @@ func (r reader) task(ctx context.Context, id string) (Task, error) {
 			ParentID  string `json:"parent_id"`
 			EpicID    string `json:"epic_id"`
 			Kind      string `json:"kind"`
+			taskAssignment
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil || out.Data.ID != id {
 		return Task{}, errors.New("torque answered, but not with the task")
 	}
-	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt, PhaseID: out.Data.PhaseID, ParentID: out.Data.ParentID, EpicID: out.Data.EpicID, Kind: out.Data.Kind}, nil
+	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt, PhaseID: out.Data.PhaseID, ParentID: out.Data.ParentID, EpicID: out.Data.EpicID, Kind: out.Data.Kind,
+		Holder: out.Data.assignment()}, nil
 }
 
 func (r reader) epicTasks(ctx context.Context, epic string) ([]string, error) {

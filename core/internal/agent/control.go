@@ -45,7 +45,7 @@ func (r *controlledRunner) Start(ctx context.Context, turn chat.Turn) (chat.Run,
 	if err != nil {
 		return nil, err
 	}
-	tracked := &controlledRun{Run: run, owner: r, done: make(chan struct{})}
+	tracked := &controlledRun{Run: run, owner: r, conversation: turn.ConversationID, done: make(chan struct{})}
 	if r.active == nil {
 		r.active = make(map[*controlledRun]struct{})
 	}
@@ -89,8 +89,21 @@ func (r *controlledRunner) stopAll(ctx context.Context) error {
 
 type controlledRun struct {
 	chat.Run
-	owner *controlledRunner
-	done  chan struct{}
+	owner        *controlledRunner
+	conversation string
+	done         chan struct{}
+}
+
+// busy reports a run the host started on the conversation that has not ended.
+func (r *controlledRunner) busy(conversation string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for run := range r.active {
+		if run.conversation == conversation {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *controlledRun) Events() iter.Seq2[chatstream.Event, error] {

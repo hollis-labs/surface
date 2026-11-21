@@ -47,7 +47,8 @@ import { type Desk, Icon, type SurfaceEvent, useEvent, useSetting } from "../sdk
 import { describeToolCall, inferTopicFromText } from "./ActivityTimeline"
 import { AgentBindings } from "./AgentBindings"
 import { AgentInspectorModal } from "./AgentInspectorModal"
-import { type Assembly, agentApi, type ProfileState, type Setup, type SlotInfo } from "./api"
+import { type Assembly, agentApi, type ProfileState, type RecoverAction, type Setup, type SlotInfo } from "./api"
+import { interruptedActions, interruptedReason } from "./interrupted"
 import { ItemView, type ToolItem, toolCards } from "./items"
 import { type AgentSession, createAgentSession } from "./session"
 
@@ -97,6 +98,7 @@ export function AgentPanel({ desk = globalDesk, title = "Agent" }: AgentPanelPro
       <Thread store={store} desk={desk} />
       <CardDock />
       <ApprovalBar store={store} />
+      <InterruptedBar store={store} />
       <InputHolder store={store} />
       <Composer store={store} />
     </div>
@@ -688,6 +690,53 @@ function ApprovalBar({ store }: { store: ChatStore }) {
           <Button variant="ghost" size="xs" onClick={() => void store.answer("deny")}>
             Don't
           </Button>
+        </ItemFooter>
+      </Item>
+    </div>
+  )
+}
+
+const RECOVER: Record<RecoverAction, { label: string; variant: "default" | "outline" | "ghost" }> = {
+  resume: { label: "Resume", variant: "default" },
+  discard: { label: "Discard the turn", variant: "outline" },
+  reset: { label: "Reset conversation", variant: "outline" },
+}
+
+/** A turn the previous run of the app left unfinished, and what the owner can do with it. */
+function InterruptedBar({ store }: { store: ChatStore }) {
+  const offer = useChat(store, (s) => s.interrupted ?? null)
+  const [pending, setPending] = useState<RecoverAction | null>(null)
+  const [error, setError] = useState("")
+  if (!offer) return null
+  const blocked = offer.integrity === "blocked"
+  const act = (action: RecoverAction) => {
+    setPending(action)
+    setError("")
+    store
+      .recover(action)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "That did not work."))
+      .finally(() => setPending(null))
+  }
+  return (
+    <div role="alertdialog" aria-label="Interrupted turn" className="border-t border-border p-2.5">
+      <Item variant="outline" size="sm">
+        <ItemContent className="min-w-0">
+          <ItemTitle>{blocked ? "This conversation needs a reset" : "The agent was interrupted"}</ItemTitle>
+          <ItemDescription className="text-xs">{interruptedReason(offer)}</ItemDescription>
+          {error && <ItemDescription className="text-xs text-destructive">{error}</ItemDescription>}
+        </ItemContent>
+        <ItemFooter className="flex-wrap justify-start">
+          {interruptedActions(offer).map((action) => (
+            <Button
+              key={action}
+              size="xs"
+              variant={RECOVER[action].variant}
+              disabled={pending !== null}
+              onClick={() => act(action)}
+            >
+              {RECOVER[action].label}
+            </Button>
+          ))}
         </ItemFooter>
       </Item>
     </div>

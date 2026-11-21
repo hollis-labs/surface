@@ -5,7 +5,7 @@ go 1.26.11
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
-	github.com/hollis-labs/libs/agent/agentdir v0.5.0
+	github.com/hollis-labs/libs/agent/agentdir v0.6.0
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/desk v0.1.0
@@ -14,8 +14,8 @@ require (
 	github.com/hollis-labs/libs/llm/core v0.5.0
 	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
-	github.com/hollis-labs/nanite v0.12.1
-	github.com/hollis-labs/substrate v0.1.1-0.20261120230950-f70a16348138
+	github.com/hollis-labs/nanite v0.16.0
+	github.com/hollis-labs/substrate v0.1.1-0.20261121043943-b123217072c4
 	github.com/spf13/cobra v1.10.2
 	github.com/tdewolff/parse/v2 v2.25.0
 	golang.org/x/net v0.62.0

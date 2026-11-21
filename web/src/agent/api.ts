@@ -190,6 +190,9 @@ export interface ReplayReport {
   misses?: { id: number; text: string; chosen: string; top: string; p: number; corrected_to?: string }[]
 }
 
+/** What the owner can do with an interrupted turn (core/internal/agent/interrupted.go). */
+export type RecoverAction = "resume" | "discard" | "reset"
+
 const base = "/api/agent"
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -230,4 +233,11 @@ export const agentApi = {
   replay: () => call<ReplayReport>("GET", "/classify/replay"),
   classifyFeedback: (body: { text: string; facet: string; label: string; accepted: boolean }) =>
     call<Assembly>("POST", "/classify/feedback", body),
+  /** Answer an interrupted turn; reset answers {conversation}: the agent's new history. */
+  recover: (conversation: string, action: RecoverAction) =>
+    call<{ status?: string; conversation?: string }>(
+      "POST",
+      `/conversations/${encodeURIComponent(conversation)}/interrupted/${action}`,
+      {},
+    ),
 }

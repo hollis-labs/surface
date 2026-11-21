@@ -26,12 +26,14 @@ export const SOURCE_ICON: Record<string, string> = {
   comment: "message-square",
   status: "activity",
   ops: "radar",
+  liveness: "user-x",
 }
 export const SOURCE_LABEL: Record<string, string> = {
   torque: "Torque",
   comment: "Status comments",
   status: "Status stream",
   ops: "Ops moves",
+  liveness: "No live agent",
 }
 
 /** Format an ISO timestamp as a crisp 24-hour local clock time (`14:10`). */

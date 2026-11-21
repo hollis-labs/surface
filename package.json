@@ -9,7 +9,7 @@
     "build": "vite build --config web/vite.config.ts",
     "typecheck": "tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p packages/chat/tsconfig.json && tsc --noEmit -p packages/cards/tsconfig.json && tsc --noEmit -p packages/genui/tsconfig.json && tsc --noEmit -p packages/theme/tsconfig.json",
     "lint": "biome check web modules packages",
-    "test": "node --test packages/*/src/*.test.ts web/src/cite/*.test.ts web/src/cite/core/*.test.ts web/src/desk/*.test.ts",
+    "test": "node --test packages/*/src/*.test.ts web/src/cite/*.test.ts web/src/cite/core/*.test.ts web/src/desk/*.test.ts web/src/agent/*.test.ts",
     "lint:fix": "biome check --write web modules packages",
     "build:packages": "for p in chat cards genui theme page; do npm run build --prefix packages/$p || exit 1; done",
     "pack-check": "node scripts/pack-check.mjs"
@@ -18,7 +18,6 @@
     "@base-ui/react": "^1.9.0",
     "@hollis-labs/ade-core": "0.1.0",
     "@xterm/addon-fit": "0.11.0",
-    "@xterm/addon-web-links": "0.12.0",
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "6.0.0",
     "ajv": "8.17.1",

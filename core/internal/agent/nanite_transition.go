@@ -29,7 +29,10 @@ func (w *wire) naniteChatID(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 	upgraded := hostUpgradePrefix + id
-	if strings.HasPrefix(c.RunnerRef, "thr_") || c.RunnerRef == chatrunner.ConversationID(upgraded) {
+	// After a reset (Runner.ResetChat) the runner reference names a later generation,
+	// <ConversationID>-g<n>, of the same upgraded chat.
+	first := chatrunner.ConversationID(upgraded)
+	if strings.HasPrefix(c.RunnerRef, "thr_") || c.RunnerRef == first || strings.HasPrefix(c.RunnerRef, first+"-g") {
 		return upgraded, nil
 	}
 	return id, nil
@@ -54,7 +57,8 @@ func (r naniteWireRunner) prepare(ctx context.Context, turn chat.Turn) (chat.Tur
 	if err != nil {
 		return turn, err
 	}
-	c, err := r.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id))
+	// The conversation serving the chat now: a reset moves the chat to a new one.
+	c, err := r.Agent().EnsureConversation(ctx, r.ConversationOf(id))
 	if err != nil {
 		return turn, err
 	}

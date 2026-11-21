@@ -669,7 +669,7 @@ function Activity({
   refresh: () => void
   onOpenWorkstream?: (id: string, newWindow?: boolean) => void
 }) {
-  const [sources, setSources] = useState<string[]>(["torque", "comment", "status", "ops"])
+  const [sources, setSources] = useState<string[]>(["torque", "comment", "status", "ops", "liveness"])
   const [open, setOpen] = useState<string | null>(null)
   const rows = useMemo(() => (roll?.entries ?? []).filter((e) => sources.includes(e.source)), [roll, sources])
   const episodes = useMemo(() => {

@@ -166,6 +166,13 @@ func (s *Store) keep(ctx context.Context, it Item, updated string) error {
 	return err
 }
 
+// Refreshed is when the copy was last refreshed from Caster (zero before the first).
+func (s *Store) Refreshed() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.refreshed
+}
+
 // LastError is what went wrong on the last refresh, if anything.
 func (s *Store) LastError() string {
 	s.mu.Lock()

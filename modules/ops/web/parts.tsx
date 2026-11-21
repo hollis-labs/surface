@@ -270,6 +270,7 @@ const LAST_SOURCE_ICON: Record<string, string> = {
   comment: "message-square-text",
   status: "sparkles",
   ops: "git-commit-horizontal",
+  liveness: "user-x",
 }
 
 /**
@@ -642,6 +643,15 @@ export function WorkstreamCard({
           >
             <Icon name="pause-circle" size={10} />
             Held
+          </span>
+        )}
+        {(w.no_live_agent?.length ?? 0) > 0 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-xs border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-warning"
+            title={`Assigned or claimed with no live agent: ${w.no_live_agent?.join(", ")}`}
+          >
+            <Icon name="user-x" size={10} />
+            No live agent ({w.no_live_agent?.length})
           </span>
         )}
         {w.suggest && (

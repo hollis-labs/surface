@@ -3,6 +3,9 @@
 // its mailbox, read or unread, for every other reader too. The owner's addresses are a setting;
 // every call is made as one of them, never as an address a request names.
 //
+// GET /api/m/inbox/unread returns the cached {unread, ready} snapshot. The existing
+// refresh loop and unread listings publish inbox.unread when that snapshot changes.
+//
 // Ported from Basalisk (internal/inbox, frontend/src/apps/inbox), Tether being its first source.
 package inbox
 
@@ -29,10 +32,14 @@ type mod struct {
 	// caller replaces the configured link (tests).
 	caller tetherlink.Caller
 
-	mu     sync.Mutex
-	names  map[string]name
-	unread int
-	stop   context.CancelFunc
+	listMu      sync.Mutex // serialize snapshots so an older listing cannot publish after a newer one
+	mu          sync.Mutex
+	names       map[string]name
+	unread      int
+	unreadReady bool
+	wake        chan struct{}
+	stop        context.CancelFunc
+	done        chan struct{}
 }
 
 type name struct {
@@ -129,7 +136,16 @@ func (m *mod) addresses() []string {
 	var out []string
 	for _, a := range strings.Split(m.h.Config().String("addresses"), ",") {
 		if a = strings.TrimSpace(a); strings.HasPrefix(a, "msg://") {
-			out = append(out, a)
+			duplicate := false
+			for _, existing := range out {
+				if sameAddress(existing, a) {
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				out = append(out, a)
+			}
 		}
 	}
 	return out
@@ -216,6 +232,11 @@ const (
 
 // list reads every owned address's mail in box, newest first.
 func (m *mod) list(ctx context.Context, box Box, limit int) ([]Message, error) {
+	m.listMu.Lock()
+	defer m.listMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c, err := m.link()
 	if err != nil {
 		return nil, err
@@ -228,6 +249,7 @@ func (m *mod) list(ctx context.Context, box Box, limit int) ([]Message, error) {
 	per := min(limit, 15)
 	var out []Message
 	var problems []string
+	unread, countComplete := 0, true
 	for _, a := range m.addresses() {
 		args := map[string]any{"to": a, "limit": per}
 		switch box {
@@ -244,17 +266,31 @@ func (m *mod) list(ctx context.Context, box Box, limit int) ([]Message, error) {
 		}
 		var page struct {
 			Messages []envelope `json:"messages"`
+			Total    *int       `json:"total"`
 		}
 		if err := decode(text, &page); err != nil {
 			problems = append(problems, err.Error())
 			continue
+		}
+		if box == BoxUnread {
+			if page.Total != nil && *page.Total >= 0 {
+				unread += *page.Total
+			} else if len(page.Messages) < per { // compatibility with an unpaginated small response
+				for _, e := range page.Messages {
+					if !set(e.ReadAt) && !set(e.ArchivedAt) {
+						unread++
+					}
+				}
+			} else {
+				countComplete = false
+			}
 		}
 		for _, e := range page.Messages {
 			msg := e.message(a)
 			if box == BoxArchived && !msg.Archived {
 				continue
 			}
-			if box == BoxUnread && msg.Read {
+			if box == BoxUnread && (msg.Read || msg.Archived) {
 				continue
 			}
 			msg.FromName = m.nameOf(ctx, c, msg.From)
@@ -267,6 +303,9 @@ func (m *mod) list(ctx context.Context, box Box, limit int) ([]Message, error) {
 	}
 	if len(out) == 0 && len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
+	}
+	if box == BoxUnread && countComplete && len(problems) == 0 {
+		m.setUnread(unread)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Created > out[j].Created })
 	if len(out) > limit {
@@ -438,6 +477,22 @@ func (m *mod) reply(ctx context.Context, id, as, body string) (string, error) {
 func (m *mod) changed() {
 	if m.h != nil {
 		m.h.Events().Publish("inbox.changed", map[string]any{})
+		select {
+		case m.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// setUnread publishes only complete mailbox snapshots. Errors leave the last good count.
+func (m *mod) setUnread(n int) {
+	m.mu.Lock()
+	changed := !m.unreadReady || n != m.unread
+	m.unread, m.unreadReady = n, true
+	m.mu.Unlock()
+	if changed {
+		m.h.Events().Publish("inbox.unread", map[string]any{"unread": n, "ready": true})
+		m.h.Events().Publish("inbox.changed", map[string]any{"unread": n})
 	}
 }
 
@@ -445,19 +500,7 @@ func (m *mod) changed() {
 func (m *mod) poll(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
-	check := func() {
-		msgs, err := m.list(ctx, BoxUnread, 100)
-		if err != nil {
-			return
-		}
-		m.mu.Lock()
-		was := m.unread
-		m.unread = len(msgs)
-		m.mu.Unlock()
-		if len(msgs) != was {
-			m.h.Events().Publish("inbox.changed", map[string]any{"unread": len(msgs)})
-		}
-	}
+	check := func() { _, _ = m.list(ctx, BoxUnread, 100) }
 	check()
 	for {
 		select {
@@ -465,16 +508,20 @@ func (m *mod) poll(ctx context.Context, every time.Duration) {
 			return
 		case <-t.C:
 			check()
+		case <-m.wake:
+			check()
 		}
 	}
 }
 
 func (m *mod) Start(_ context.Context, h module.Host) error {
 	m.h = h
+	m.wake = make(chan struct{}, 1)
 	every := time.Duration(max(h.Config().Int("check_seconds"), 15)) * time.Second
 	ctx, cancel := context.WithCancel(context.Background())
 	m.stop = cancel
-	go m.poll(ctx, every)
+	m.done = make(chan struct{})
+	go func() { defer close(m.done); m.poll(ctx, every) }()
 
 	handle := func(pattern string, fn func(r *http.Request) (any, error)) {
 		h.Handle(pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -498,6 +545,11 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 			}
 		}))
 	}
+	handle("GET /unread", func(*http.Request) (any, error) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return map[string]any{"unread": m.unread, "ready": m.unreadReady}, nil
+	})
 	handle("GET /status", func(*http.Request) (any, error) {
 		_, err := m.link()
 		m.mu.Lock()
@@ -539,9 +591,14 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	return nil
 }
 
-func (m *mod) Stop(context.Context) error {
+func (m *mod) Stop(ctx context.Context) error {
 	if m.stop != nil {
 		m.stop()
+		select {
+		case <-m.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	return nil
 }

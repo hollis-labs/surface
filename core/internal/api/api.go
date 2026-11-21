@@ -38,6 +38,8 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("POST /api/events", s.publish)
 
+	mux.HandleFunc("GET /api/palette/providers", s.paletteProviders)
+	mux.HandleFunc("GET /api/palette/search", s.paletteSearch)
 	mux.HandleFunc("GET /api/commands", s.commands)
 	mux.HandleFunc("POST /api/commands/{id}", s.runCommand)
 

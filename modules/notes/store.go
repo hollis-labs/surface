@@ -2,6 +2,7 @@ package notes
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -148,13 +149,23 @@ func titleOf(path string, text []byte) string {
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 // list returns every note, most recently changed first, without its text.
-func (s *store) list() ([]Note, error) {
+func (s *store) list() ([]Note, error) { return s.listContext(context.Background(), 0) }
+
+func (s *store) listContext(ctx context.Context, maxEntries int) ([]Note, error) {
 	root, err := s.root()
 	if err != nil {
 		return nil, err
 	}
 	out := []Note{}
+	visited := 0
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		visited++
+		if maxEntries > 0 && visited > maxEntries {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			return nil //nolint:nilerr // An unreadable folder is skipped, not fatal.
 		}

@@ -5,6 +5,17 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.11.0] - 2026-11-21
+
+- **Front desk (opt-in).** `"front_desk"` in the agent config turns on Nanite's front desk: a request can become a
+  plan the owner accepts or declines in the panel, with background jobs whose results are delivered in order,
+  once, across restarts (durable plan and delivery rows, recovery at start). Off by default.
+- **Browser: styled snapshots.** A page that cannot be framed can open as a static, styled snapshot: fetched
+  through the public-only fetcher, sanitized (no scripts, forms, frames or navigation), CSS and images inlined, shown
+  in a fully sandboxed frame under a no-network CSP; links are listed beside it. Unsupported CSS is dropped per
+  rule and counted. Logins and script-driven pages do not work there; Reader remains the fallback.
+- A Scratch test no longer reads a row before the import wrote it.
+
 ## [0.10.2] - 2026-11-21
 
 - **Fixed: Studio crashed on start in 0.10.1.** The agent's worker could ask a module to describe a desk window

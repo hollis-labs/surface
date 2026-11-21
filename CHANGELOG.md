@@ -5,6 +5,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.14.0] - 2026-11-21
+
 - **The agent's own Tether mailbox.** With `identity.tether` in the agent directory's `host.yaml` and a `mailbox`
   section (`url`, `credential_file`, `poll_seconds`) in the agent config, Nanite reads the agent's own mail: each
   unread message becomes a notice turn, shown in the conversation as *Tether mail* and marked read once handled.
@@ -14,6 +16,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   conversation** (owner only, refused while a run is active) moves the chat to a new Nanite conversation
   through `Runner.ResetChat` and keeps the old one on disk. The agent panel now draws every interrupted-turn
   offer (resume, discard, reset), and turns after a reset follow the chat's current Nanite conversation.
+- **Ops Usage:** the Tether AI router has its own card with a labelled window (since 00:00 UTC, plus 30 days); the
+  LLM gateway card says it is not collected yet; a budget that cannot be evaluated says why.
 
 ## [0.13.1] - 2026-11-21
 

@@ -38,6 +38,7 @@ const RunnerScripted = "scripted"
 
 // wire is the conversation wire, when it is on.
 type wire struct {
+	control  *controlledRunner
 	svc      *chat.Service
 	store    *sqlitestore.Store
 	handler  http.Handler
@@ -85,6 +86,11 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		w.scripted = chattest.NewScripted(chattest.WithDelay(scriptDelay()))
 		run = w.scripted
 	}
+	w.control = &controlledRunner{Runner: run}
+	if w.nanite != nil {
+		w.control.stopAgent = w.nanite.Agent().StopAll
+	}
+	run = w.control
 	closeRunner := func() { closeRunnerNow(w) }
 	// Runs announce themselves on the app bus.
 	if s.runs, err = openRunLog(ctx, s.k.DB()); err != nil {
@@ -184,7 +190,8 @@ func (w *wire) close(ctx context.Context) {
 //	POST   /api/agent/test/replace                  scripted runner only: replace the agent's side
 func (s *Service) mountWire(mux *http.ServeMux) {
 	w := s.wire
-	h := http.StripPrefix(Prefix, w.handler)
+	h := http.StripPrefix(Prefix, refusalStatus(w.handler))
+	mux.HandleFunc("POST "+Prefix+"/stop-all", s.stopAll)
 	mux.Handle(Prefix+"/agents/", h)
 	mux.Handle(Prefix+"/conversations/", h)
 	mux.HandleFunc("GET "+Prefix+"/grants", func(rw http.ResponseWriter, r *http.Request) {

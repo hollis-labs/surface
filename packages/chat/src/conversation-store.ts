@@ -331,6 +331,8 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     dispose,
     /** This page's attachment, to compare with `holder`. Empty until attached. */
     attachment: () => attachment,
+    /** The conversation this page follows. Empty until opened. */
+    conversation: () => conversation,
     /** "viewer" while this window only watches; a takeover makes it a controller. */
     role: (): Role => role,
     /** The stream is the history: there is nothing to read again. Kept so a caller of the run store need not change. */

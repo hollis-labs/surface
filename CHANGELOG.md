@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Nanite v0.16.0** (Substrate BOM unchanged, b123217). Conversation integrity: an interrupted-turn offer
+  with `integrity: blocked` shows only the offered discard and reset actions, with the reason. **Reset
+  conversation** (owner only, refused while a run is active) moves the chat to a new Nanite conversation
+  through `Runner.ResetChat` and keeps the old one on disk. The agent panel now draws every interrupted-turn
+  offer (resume, discard, reset), and turns after a reset follow the chat's current Nanite conversation.
+
 ## [0.13.1] - 2026-11-21
 
 - **Ops: Usage tab, first source.** Cards per paid or rate-limited source with usage against limit, reset time and

@@ -91,6 +91,9 @@ export interface Setup {
   agent?: string
 }
 
+/** What the owner can do with an interrupted turn (core/internal/agent/interrupted.go). */
+export type RecoverAction = "resume" | "discard" | "reset"
+
 const base = "/api/agent"
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -122,4 +125,11 @@ export const agentApi = {
   profiles: () => call<ProfileState>("GET", "/profiles"),
   /** Pin a profile: a module id, "default" (the app's own), or "auto" to let the window in front choose. */
   pinProfile: (profile: string) => call<ProfileState>("POST", "/profiles/pin", { profile }),
+  /** Answer an interrupted turn; reset answers {conversation}: the agent's new history. */
+  recover: (conversation: string, action: RecoverAction) =>
+    call<{ status?: string; conversation?: string }>(
+      "POST",
+      `/conversations/${encodeURIComponent(conversation)}/interrupted/${action}`,
+      {},
+    ),
 }

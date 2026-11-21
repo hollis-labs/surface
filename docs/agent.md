@@ -626,6 +626,16 @@ activities publish `agent.compacted` on the app bus. Nanite steering matches liv
 Surface performs their command/tool actions and records firing counts. Event and focus reflexes use
 Nanite's conversation steering, and compaction reflexes run once from Nanite's own event.
 
+**Interrupted turns and conversation integrity.** Nanite offers a turn the previous process left
+unfinished as a `nanite.interrupted` activity; the agent panel shows the offer with only the actions it
+names. The owner answers through `POST /api/agent/conversations/{id}/interrupted/{resume|discard|reset}`
+(owner only; 403 for any delegate). An offer with `integrity: blocked` means the Nanite conversation
+failed its integrity checks: resume is never shown, only the offered discard and reset, with the
+reason. **Reset conversation** calls `chatrunner.Runner.ResetChat`: the chat keeps its ID and
+transcript but continues on a new, empty Nanite conversation (`<id>-g<n>`); the old one is kept on
+disk for inspection and `nanite rebuild-index`. Reset is refused (409) while a run is active on the
+conversation, and while an interrupted turn remains that discard can still close.
+
 When a conversation last used a host thread, Surface selects a fresh Nanite history while keeping its
 chat ID and transcript. The first model turn says earlier messages remain in that transcript and points
 to the slot notes and standing instructions. The saved runner reference preserves the new history across

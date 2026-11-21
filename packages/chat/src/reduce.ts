@@ -34,6 +34,21 @@ export interface Approval {
   standing: boolean
 }
 
+/**
+ * A turn the agent's previous process left unfinished, offered to the person (Nanite's
+ * nanite.interrupted activity). `actions` is what is on offer: resume, discard, reset. With
+ * `integrity` "blocked" the conversation failed its integrity checks: resume is never on
+ * offer, and reset moves the chat to a new conversation (the old one is kept). `turn` is ""
+ * when no turn is left, only a conversation to reset.
+ */
+export interface InterruptedOffer {
+  turn: string
+  actions: readonly string[]
+  integrity: string
+  /** Why, when the host says (beyond `integrity`). */
+  reason: string
+}
+
 export interface ChatState {
   /** Whether the host has an agent and a model, once asked. */
   host: { available: boolean; ready: boolean; model: string } | null
@@ -47,6 +62,8 @@ export interface ChatState {
   parts: Readonly<Record<string, string>>
   /** A question waiting for the person. */
   approval: Approval | null
+  /** An interrupted turn on offer; it outlives the run that announced it. */
+  interrupted?: InterruptedOffer | null
   error: string
   /** On the conversation wire: the last event taken, so a reconnect resumes after it. */
   cursor?: number
@@ -115,23 +132,25 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
   switch (ev.verb) {
     case "part.start": {
       if (!ev.part_id) return s
+      // A run that answers (a resumed turn, a new one) means the offer was taken up.
+      const base = s.interrupted ? { ...s, interrupted: null } : s
       if (ev.kind === "text") {
-        const next = { ...s, parts: { ...s.parts, [ev.part_id]: "text" } }
+        const next = { ...base, parts: { ...base.parts, [ev.part_id]: "text" } }
         return append(next, { kind: "text", id: key(ev.part_id), text: "", streaming: true })
       }
       if (ev.kind === "tool_call") {
-        const next = { ...s, parts: { ...s.parts, [ev.part_id]: "tool_call" } }
+        const next = { ...base, parts: { ...base.parts, [ev.part_id]: "tool_call" } }
         return append(next, { kind: "tool", id: key(ev.part_id), name: String(ev.meta?.name ?? ""), status: "running" })
       }
       if (ev.kind === "tool_result") {
         const call = key(String(ev.meta?.call_id ?? ""))
-        const next = { ...s, parts: { ...s.parts, [ev.part_id]: `result:${call}` } }
+        const next = { ...base, parts: { ...base.parts, [ev.part_id]: `result:${call}` } }
         const failed = ev.meta?.is_error === true
         return patch(next, call, (it) =>
           it.kind === "tool" ? { ...it, result: "", status: failed ? "error" : "done" } : it,
         )
       }
-      return s
+      return base
     }
     case "part.delta": {
       if (!ev.part_id || !ev.text) return s
@@ -166,6 +185,14 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
         },
       }
     case "activity": {
+      if (ev.kind === "nanite.interrupted") return interrupted(s, ev.value ?? {}, key)
+      if (ev.kind === "nanite.chat_reset")
+        return note(
+          { ...s, interrupted: null },
+          key("chat_reset"),
+          "The agent starts a new history here. The earlier one is kept on disk; this conversation is unchanged.",
+          "quiet",
+        )
       if (ev.kind === "nanite.desk.plan" && typeof ev.value?.id === "string" && typeof ev.value.card === "string")
         return append(s, {
           kind: "plan",
@@ -211,4 +238,30 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
     default:
       return s
   }
+}
+
+const DISCARDED: Record<string, string> = {
+  "new message": "The interrupted turn was set aside for the new message.",
+  timeout: "The interrupted turn was set aside: nobody picked it up in time.",
+  requested: "The interrupted turn was discarded.",
+}
+
+/** An interrupted-turn activity: an offer, or what became of the turn. */
+function interrupted(s: ChatState, value: Record<string, unknown>, key: (part: string) => string): ChatState {
+  const str = (v: unknown) => (typeof v === "string" ? v : "")
+  if (Array.isArray(value.actions)) {
+    const integrity = str(value.integrity)
+    // A blocked conversation is never resumed, whatever the offer says.
+    const actions = value.actions.filter(
+      (a): a is string => typeof a === "string" && !(integrity === "blocked" && a === "resume"),
+    )
+    if (!actions.length) return s
+    return { ...s, interrupted: { turn: str(value.turn), actions, integrity, reason: str(value.reason) } }
+  }
+  if (value.disposition === "discarded") {
+    const turn = str(value.turn)
+    const next = !s.interrupted || s.interrupted.turn === turn ? { ...s, interrupted: null } : s
+    return note(next, key(`discarded:${turn}`), DISCARDED[str(value.reason)] ?? DISCARDED.requested, "quiet")
+  }
+  return s
 }

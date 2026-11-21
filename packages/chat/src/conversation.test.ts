@@ -373,3 +373,64 @@ test("front-desk plans and deliveries survive replay without duplicate rows", ()
   const replayed = events.reduce(reduceConversation, s)
   assert.equal(replayed, s)
 })
+
+test("an interrupted-turn offer outlives its run; a blocked one never offers resume, and a reset clears it", () => {
+  // The shapes are nanite/chatrunner's: each offer or disposition is a run of its own.
+  let seq = 0
+  const announce = (run: string, kind: string, value: Record<string, unknown>): StreamEvent[] =>
+    [
+      { seq: ++seq, run_id: run, verb: "run.start" },
+      { seq: ++seq, run_id: run, verb: "activity", kind, value },
+      { seq: ++seq, run_id: run, verb: "run.finish", reason: "stop" },
+    ] as StreamEvent[]
+  let s: ChatState = initialState
+  const take = (events: StreamEvent[]) => {
+    for (const e of events) s = reduceConversation(s, e)
+  }
+
+  take(announce("o1", "nanite.interrupted", { turn: "t1", actions: ["resume", "discard"] }))
+  assert.deepEqual(s.interrupted, { turn: "t1", actions: ["resume", "discard"], integrity: "", reason: "" })
+  assert.equal(s.run, null)
+
+  // Blocked: resume is dropped even if a host named it.
+  take(
+    announce("o2", "nanite.interrupted", { turn: "t1", actions: ["resume", "discard", "reset"], integrity: "blocked" }),
+  )
+  assert.deepEqual(s.interrupted?.actions, ["discard", "reset"])
+  assert.equal(s.interrupted?.integrity, "blocked")
+
+  // Discarding the turn leaves the reset-only offer the runner announces next.
+  take(announce("d1", "nanite.interrupted", { turn: "t1", disposition: "discarded", reason: "requested" }))
+  assert.equal(s.interrupted, null)
+  take(announce("o3", "nanite.interrupted", { actions: ["reset"], integrity: "blocked" }))
+  assert.deepEqual(s.interrupted, { turn: "", actions: ["reset"], integrity: "blocked", reason: "" })
+
+  take(
+    announce("r1", "nanite.chat_reset", {
+      previous_conversation: "chat-c1",
+      conversation: "chat-c1-g1",
+      reason: "integrity",
+    }),
+  )
+  assert.equal(s.interrupted, null)
+  assert.deepEqual(shown(s), [
+    "note: The interrupted turn was discarded.",
+    "note: The agent starts a new history here. The earlier one is kept on disk; this conversation is unchanged.",
+  ])
+})
+
+test("a resumed turn that answers clears the offer", () => {
+  let s: ChatState = initialState
+  const events = [
+    { seq: 1, run_id: "o1", verb: "run.start" },
+    { seq: 2, run_id: "o1", verb: "activity", kind: "nanite.interrupted", value: { turn: "t1", actions: ["resume"] } },
+    { seq: 3, run_id: "o1", verb: "run.finish" },
+    { seq: 4, run_id: "resumed", verb: "run.start" },
+    { seq: 5, run_id: "resumed", verb: "message.start", role: "assistant", message_id: "m" },
+    { seq: 6, run_id: "resumed", verb: "part.start", part_id: "p", kind: "text" },
+  ] as StreamEvent[]
+  for (const e of events.slice(0, 5)) s = reduceConversation(s, e)
+  assert.notEqual(s.interrupted, null)
+  s = reduceConversation(s, events[5])
+  assert.equal(s.interrupted, null)
+})

@@ -113,7 +113,7 @@ func (m *mod) sendOrchestration(ctx context.Context, id string, in sendInput) (W
 		return Workstream{}, err
 	}
 	if out.Message.ID == "" {
-		return Workstream{}, fmt.Errorf("Tether returned no message receipt; retry the same request")
+		return Workstream{}, fmt.Errorf("tether returned no message receipt; retry the same request")
 	}
 	req.MessageID = out.Message.ID
 	got, err := m.st.change(ctx, id, 0, func(d *Doc, current Workstream) error {

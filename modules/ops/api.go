@@ -84,6 +84,7 @@ func gated(what string, fn http.HandlerFunc) http.HandlerFunc {
 func (m *mod) routes(h module.Host) {
 	handle := func(pattern string, fn http.HandlerFunc) { h.Handle(pattern, fn) }
 	handle("GET /board", m.apiBoard)
+	handle("GET /activity", m.apiGlobalActivity)
 	handle("POST /workstreams", gated("making a workstream", m.apiCreate))
 	handle("GET /workstreams/{id}", m.apiGet)
 	handle("PUT /workstreams/{id}", gated("changing a workstream", m.apiUpdate))

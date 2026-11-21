@@ -138,6 +138,15 @@ export interface Rollup {
   unavailable?: boolean
 }
 
+export interface GlobalFeed {
+  entries: Entry[]
+  errors?: string[]
+  pending: number
+  truncated?: boolean
+  calls: number
+  fetched_at: string
+}
+
 export interface Detail {
   workstream: Workstream
   children: { id: string; title: string; stage: Stage; held?: Held; children: number }[]
@@ -221,6 +230,8 @@ export function opsClient(api: ModuleAPI) {
     link: (id: string, l: Link) => api.post<Workstream>(`workstreams/${q(id)}/links`, l),
     unlink: (id: string, kind: string, ref: string) =>
       api.del<Workstream>(`workstreams/${q(id)}/links?kind=${q(kind)}&ref=${q(ref)}`),
+    globalActivity: (filters: Record<string, string>, refresh = false) =>
+      api.get<GlobalFeed>(`activity?${new URLSearchParams({ ...filters, ...(refresh ? { refresh: "1" } : {}) })}`),
     activity: (id: string, refresh = false) =>
       api.get<Rollup>(`workstreams/${q(id)}/activity${refresh ? "?refresh=1" : ""}`),
     history: (id: string) => api.get<History>(`workstreams/${q(id)}/history`),

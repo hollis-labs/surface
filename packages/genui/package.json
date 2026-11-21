@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-genui",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Generated UI without any styling: the reviewed GenUI contract (strict decoding and validation of surfaces, calls and outcomes) and the controller that takes one surface through an action, a confirmation and recovery. Visuals are the Surface registry's genui-surface component.",
   "license": "MIT",
   "repository": {

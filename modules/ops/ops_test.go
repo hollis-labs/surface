@@ -121,7 +121,7 @@ func TestAllowlistNeverLaunches(t *testing.T) {
 		}
 	}
 	for tool := range allowed {
-		for _, w := range []string{"launch", "dispatch", "claim", "team_", "_start", "message_send"} {
+		for _, w := range []string{"launch", "dispatch", "claim", "team_", "_start"} {
 			if strings.Contains(tool, w) {
 				t.Errorf("%s looks like a launch tool", tool)
 			}

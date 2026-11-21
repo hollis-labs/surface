@@ -94,6 +94,12 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	}))
 	h.Handle("POST /snapshot", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		if strings.TrimSpace(r.URL.Query().Get("url")) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "url is required"})
+			return
+		}
 		written := false
 		err := m.withSnapshot(r.Context(), r.URL.Query().Get("url"), func(p Snapshot) error {
 			out := boundedBuffer{limit: maxSerializedBytes}
@@ -294,11 +300,14 @@ func (m *mod) tools() []module.Tool {
 	return []module.Tool{
 		{Name: "browser_snapshot", Level: module.LevelRead,
 			Description: "Read a static public-page snapshot: text, links, timestamp and missing-asset/dropped-CSS counts. No scripts, forms, cookies or browser session. Opens nothing.",
-			Input:       raw(`{"type":"object","properties":{"url":{"type":"string"},"window":{"type":"string"}}}`),
+			Input:       raw(`{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
-				var a struct{ URL, Window string }
+				var a struct{ URL string }
 				_ = json.Unmarshal(in, &a)
-				u, err := m.target(ctx, a.URL, a.Window)
+				if strings.TrimSpace(a.URL) == "" {
+					return nil, errors.New("url is required")
+				}
+				u, err := normalize(a.URL)
 				if err != nil {
 					return nil, err
 				}

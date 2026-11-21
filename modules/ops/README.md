@@ -252,3 +252,57 @@ Settings: `ops.tether_command`, or `ops.tether_url` with `ops.tether_token_file`
 - **A conditional put in Caster** (`caster_put` with an expected revision, refused when the item moved on).
   Until Caster has one, a race between writers can still lose a write (see Writes); with it, `putOver` becomes
   a plain compare-and-swap loop.
+
+### Settle and Send to orchestration
+
+A Complete workstream can be **settled**. Its stage stays `complete`; Caster keeps
+`settled_at` (RFC3339), `settled_by`, and `settled_summary`, a one-paragraph snapshot
+of the reviewed revision, completion checks, linked-task counts, tracking read time
+and source warnings. Complete is the owner's judgment: unfinished linked tasks or
+unavailable tracking sources are recorded, not silently treated as done. A same-stage
+transition records the action. **Unsettle** clears those three fields and records
+another transition; previous summaries remain in Caster revisions.
+
+Board and `ops_list` hide settled workstreams by default. **Show settled** includes
+them; Activity and direct workstream History remain available. Hiding a settled
+parent promotes unfinished children to its nearest visible ancestor in the board
+projection only. It never reparents or deletes documents. Unsettle before moving a
+settled workstream to another stage.
+
+- `POST /workstreams/{id}/settle` and `/unsettle`: `{base_rev}`.
+- `GET /board?show_settled=1`; `ops_list` accepts `show_settled: true`.
+- `ops_settle`: `{id, base_rev}`, a write tool requiring owner approval.
+
+**Send to orchestration** is an owner-only action on Planned, Parked and Queued
+cards and workstream headers. The dialog accepts an optional note. Configure
+`ops.sender_address` with Surface's Tether identity; the existing Ops Tether link
+must permit `tether_message_send`. This is the only additional Tether capability.
+It asks the Lead Orchestrator to sequence and launch by current priorities (or
+its judgment when none are set) and queue for execution. The Orchestrator handles
+acknowledgement, stage movement and dispatch.
+
+`POST /workstreams/{id}/orchestration` takes `{base_rev, request_id, note}`. The
+request ID is a fresh UUID per intentional send and must stay unchanged for retries.
+The note is limited to 4096 bytes. Tether receives `kind=request`, subject
+`Sequence and launch: <title>`, and these flat payload fields:
+
+- `kind=request`, `to=@claude-code`, `re=ops:<id>`, `attention=agent`,
+  `awaiting=@claude-code`, plus the subject and request body;
+- `intent=sequence_and_launch`, `schema_version=1`, `request_id`,
+  `workstream_id` (the Ops ID / Registry key), optional `registry_id` from the
+  workstream's Registry identity link, `title`, `stage`, `links:[{kind,id}]`,
+  `note`, `cite=ops:<id>`, `requested_by`, and RFC3339 `at`.
+
+Before delivery, `orchestration_request` stores `{at,note,message_id,request_id}`
+with an empty receipt, plus the exact sender and serialized payload for recovery.
+Those recovery fields stay out of the public Workstream JSON. Delivery uses a
+stable Tether idempotency key. A failed or ambiguous send remains **Send pending**;
+retry sends the same envelope, including after restart. A received message ID is
+recorded without overwriting intervening stage changes, adds an Ops activity row,
+and displays **Sent to orchestration**. Pending requests must be retried before
+starting another. The badge confirms delivery, not execution. Caster remains the
+record; no local-only outbox or dispatch mechanism is introduced.
+
+All three action routes reject delegates. Sending has no agent tool: an agent
+cannot bypass the owner's dialog through Ops. Settling through `ops_settle` uses
+the usual owner-approved write-tool path.

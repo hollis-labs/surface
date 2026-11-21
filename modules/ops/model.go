@@ -114,22 +114,26 @@ const maxTransitions = 50
 
 // Workstream is one ops/v1 document as the app reads it.
 type Workstream struct {
-	ID          string       `json:"id"`
-	Title       string       `json:"title"`
-	Owner       string       `json:"owner,omitempty"`
-	Project     string       `json:"project,omitempty"`
-	StatusNS    string       `json:"status_ns,omitempty"`
-	Stage       string       `json:"stage"`
-	StageSince  string       `json:"stage_since,omitempty"`
-	Parent      string       `json:"parent,omitempty"`
-	Held        *Held        `json:"held,omitempty"`
-	ActiveWhen  []Check      `json:"active_when"`
-	Links       []Link       `json:"links"`
-	Correlation Correlation  `json:"correlation"`
-	Transitions []Transition `json:"transitions"`
-	Purpose     string       `json:"purpose,omitempty"`
-	ActiveMeans string       `json:"active_means,omitempty"`
-	Notes       string       `json:"notes,omitempty"`
+	OrchestrationRequest *OrchestrationRequest `json:"orchestration_request,omitempty"`
+	SettledAt            string                `json:"settled_at,omitempty"`
+	SettledBy            string                `json:"settled_by,omitempty"`
+	SettledSummary       string                `json:"settled_summary,omitempty"`
+	ID                   string                `json:"id"`
+	Title                string                `json:"title"`
+	Owner                string                `json:"owner,omitempty"`
+	Project              string                `json:"project,omitempty"`
+	StatusNS             string                `json:"status_ns,omitempty"`
+	Stage                string                `json:"stage"`
+	StageSince           string                `json:"stage_since,omitempty"`
+	Parent               string                `json:"parent,omitempty"`
+	Held                 *Held                 `json:"held,omitempty"`
+	ActiveWhen           []Check               `json:"active_when"`
+	Links                []Link                `json:"links"`
+	Correlation          Correlation           `json:"correlation"`
+	Transitions          []Transition          `json:"transitions"`
+	Purpose              string                `json:"purpose,omitempty"`
+	ActiveMeans          string                `json:"active_means,omitempty"`
+	Notes                string                `json:"notes,omitempty"`
 
 	Rev     int    `json:"rev"`
 	Updated string `json:"updated,omitempty"`
@@ -167,6 +171,9 @@ func fillFrom(w *Workstream, d *Doc) {
 	if v := d.Str("ops"); v != Contract {
 		w.Problem = fmt.Sprintf("not an ops/v1 document (ops: %q)", v)
 	}
+	w.SettledAt, w.SettledBy = d.Str("settled_at"), d.Str("settled_by")
+	_ = d.Decode("orchestration_request", &w.OrchestrationRequest)
+	w.SettledSummary = d.Str("settled_summary")
 	w.Title = d.Str("title")
 	if w.Title == "" {
 		w.Title = w.ID

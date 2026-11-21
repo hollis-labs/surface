@@ -272,3 +272,20 @@ func TestSnapshotAggregateRasterBudget(t *testing.T) {
 		t.Fatal("aggregate pixel budget ignored")
 	}
 }
+
+func TestSnapshotRequiresURL(t *testing.T) {
+	m, _ := snapshotMod(t, nil)
+	h := moduletest.Start(t, m)
+	for _, query := range []string{"", "?url=", "?url=%20%20"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/m/browser/snapshot"+query, nil))
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "url is required") {
+			t.Fatalf("%s: %d %s", query, w.Code, w.Body.String())
+		}
+	}
+	for _, input := range []string{`{}`, `{"url":""}`, `{"url":"  "}`} {
+		if _, err := h.Tool("browser_snapshot", input); err == nil || !strings.Contains(err.Error(), "url is required") {
+			t.Fatalf("%s: %v", input, err)
+		}
+	}
+}

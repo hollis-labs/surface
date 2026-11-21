@@ -857,6 +857,9 @@ func (s *Store) Move(ctx context.Context, id, to, why, by string) (Workstream, e
 	defer s.mu.Unlock()
 	var from string
 	w, err := s.changeLocked(ctx, id, 0, func(d *Doc, w Workstream) error {
+		if w.SettledAt != "" && to != w.Stage {
+			return bad("unsettle the workstream before moving it")
+		}
 		from = w.Stage
 		if from == to {
 			return nil

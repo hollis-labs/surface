@@ -222,8 +222,10 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			}
 			return meta.AgentDir, nil, nil
 		},
-		ContextSlot: nanite.SlotContext,
-		Tools:       s.runnerTools(),
+		ContextSlot:       nanite.SlotContext,
+		Desk:              c.FrontDesk.options(),
+		ResumeInterrupted: c.FrontDesk != nil && c.FrontDesk.ResumeInterrupted,
+		Tools:             s.runnerTools(),
 		Observe: func(ctx context.Context, id string, turn chat.Turn, run chat.Run) error {
 			if w.svc == nil {
 				return errors.New("agent: chat service is not ready")

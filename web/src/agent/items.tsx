@@ -4,7 +4,8 @@
  * for it, and every other tool by the plain row.
  */
 import type { ChatItem } from "@hollis-labs/surface-chat"
-import type { ComponentType } from "react"
+import { type ComponentType, useState } from "react"
+import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
 import { Spinner } from "@/components/ui/spinner"
@@ -133,6 +134,47 @@ function ToolRow({ item }: { item: ToolItem }) {
   )
 }
 
+function DeskPlan({ item }: { item: Of<"plan"> }) {
+  const [status, setStatus] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const answer = async (action: "accept" | "decline") => {
+    setBusy(true)
+    setError("")
+    try {
+      const r = await fetch(`/api/agent/front-desk/plans/${encodeURIComponent(item.planID)}/${action}`, {
+        method: "POST",
+      })
+      const body = await r.json()
+      if (!r.ok) throw new Error(body.message || "This plan could not be answered.")
+      setStatus(action === "accept" ? "Started" : "Declined")
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      <MessageNotice>
+        {status || (item.disposition === "dispatch" ? "Background plan started" : "Suggested background plan")}
+      </MessageNotice>
+      <Markdown>{item.text}</Markdown>
+      {item.disposition === "suggest" && !status && (
+        <div className="flex gap-2">
+          <Button size="sm" disabled={busy} onClick={() => void answer("accept")}>
+            Start plan
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void answer("decline")}>
+            Decline
+          </Button>
+        </div>
+      )}
+      {error && <MessageNotice tone="error">{error}</MessageNotice>}
+    </div>
+  )
+}
+
 /** One kind → how it is drawn. */
 export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }> } = {
   user: ({ item }) =>
@@ -159,6 +201,7 @@ export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }
     const Card = toolCards[item.name] ?? ToolRow
     return <Card item={item} />
   },
+  plan: DeskPlan,
   notice: ({ item }) => <MessageNotice tone={item.tone}>{item.text}</MessageNotice>,
 }
 

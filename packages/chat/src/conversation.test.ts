@@ -338,3 +338,38 @@ test("an answer while another window holds the input says so and keeps the quest
   assert.match(store.get().error, /Another window has the input/)
   assert.notEqual(store.get().approval, null, "the question stays to be answered")
 })
+
+test("front-desk plans and deliveries survive replay without duplicate rows", () => {
+  let s = initialState
+  const events = [
+    { seq: 1, run_id: "desk1", verb: "run.start" },
+    {
+      seq: 2,
+      run_id: "desk1",
+      verb: "activity",
+      kind: "nanite.desk.plan",
+      value: { id: "plan-1", disposition: "suggest", card: "Read two sources" },
+    },
+    { seq: 3, run_id: "desk1", verb: "run.finish" },
+    { seq: 4, run_id: "delivery1", verb: "run.start" },
+    {
+      seq: 5,
+      run_id: "delivery1",
+      verb: "activity",
+      kind: "nanite.notice",
+      value: { id: "notice-1", kind: "desk", body: "PILOT_SUM=80" },
+    },
+    { seq: 6, run_id: "delivery1", verb: "run.finish" },
+  ]
+  for (const event of events) s = reduceConversation(s, event)
+  assert.equal(s.ids.length, 2)
+  assert.equal(s.items["desk1:plan:plan-1"].kind, "plan")
+  assert.deepEqual(s.items["delivery1:delivery:notice-1"], {
+    kind: "notice",
+    id: "delivery1:delivery:notice-1",
+    text: "PILOT_SUM=80",
+    tone: "quiet",
+  })
+  const replayed = events.reduce(reduceConversation, s)
+  assert.equal(replayed, s)
+})

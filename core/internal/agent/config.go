@@ -37,6 +37,8 @@ type FileConfig struct {
 	CompactAt int    `json:"compact_at,omitempty"`
 	// AutoApprove bypasses approval asks for testing; explicit denies still apply.
 	AutoApprove bool `json:"auto_approve,omitempty"`
+	// FrontDesk opts into Nanite planning and paced background deliveries.
+	FrontDesk *FrontDeskConfig `json:"front_desk,omitempty"`
 	// MCP lists outside MCP servers whose tools the agent gets. Reserved: the engine does
 	// not use this field; configure MCP in the Nanite agent directory.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
@@ -183,6 +185,9 @@ func LoadConfig(app string) (FileConfig, error) {
 	c.Tether.URL = strings.TrimRight(c.Tether.URL, "/")
 	c.Tether.KeyFile = expandHome(c.Tether.KeyFile)
 	if err := c.Tether.validate(); err != nil {
+		return c, err
+	}
+	if err := c.FrontDesk.validate(); err != nil {
 		return c, err
 	}
 	c.KeyFile = expandHome(c.KeyFile)

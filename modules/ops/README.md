@@ -183,8 +183,11 @@ excluded. Agent and workstream references open Cite identities.
 Tether snapshot is fetched per 15 seconds, with a 12-second deadline and a 500-row display bound.
 Errors are cached too, and a truncated result is labelled incomplete. The open Agents/Fleet tab
 triggers server refresh events; the page does not poll. A failed refresh explicitly labels any
-previous observation. Tether must provide `tether_agents_live`; source failure never appears as an
-empty healthy fleet.
+previous observation. If Tether explicitly reports `tether_agents_live` missing, the reader temporarily uses bounded
+`tether_session_list` and health reads (two list pages, at most 50 health calls, four at once).
+A banner explains that kit-booted agents appear when the unified feed is deployed; unknown hosts
+remain labelled. Every expired cache retries the unified feed automatically. Other source failures
+never trigger this fallback and never appear as an empty healthy fleet.
 
 ## Seeding from the tracker
 

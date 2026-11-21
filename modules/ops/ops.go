@@ -49,7 +49,7 @@ var allowed = tetherlink.Allowed{
 	"tether_workstream_get": true, "tether_workstream_digest": true,
 	"tether_message_send":  true,
 	"registry_record_list": true, "registry_record_get": true,
-	"tether_agents_live": true,
+	"tether_agents_live": true, "tether_session_list": true, "tether_session_health": true,
 }
 
 // forbidden are tools Ops must never reach, whatever is asked.

@@ -44,6 +44,7 @@ const (
 var allowed = tetherlink.Allowed{
 	"cerberus_fleet_snapshot": true, "cerberus_host_list": true, "cerberus_host_samples": true,
 	"tether_ai_usage": true, "tether_ai_budgets": true, "tether_ai_budget_alerts": true,
+	"design_budget": true, "audio_budget": true, "video_budget": true, "tripo_balance": true, "tripo_usage": true,
 	"caster_get": true, "caster_ls": true, "caster_put": true, "caster_log": true,
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,

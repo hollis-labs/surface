@@ -90,8 +90,8 @@ func (m *mod) tools() []module.Tool {
 				return m.fleet(ctx, a.Host)
 			}},
 		{Name: "ops_usage", Level: module.LevelRead,
-			Description: "Usage against limits for what we pay for or are rate-limited on: one card per source with status, usage, limit and reset time. tether-ai is Tether's own AI router (calls Tether makes itself), not llm-gateway; llm-gateway, which carries Basalisk and Studio turns, is a gap until wired. With source=tether-ai, include its details: request and token totals since 00:00 UTC, 7 and 30 days, the biggest providers and models, budgets and recent budget alerts. Subscriptions not yet collected are gaps, not zero. Read-only; cached for a minute.",
-			Input:       schema(`"source":{"type":"string","description":"A card id from the list (llm-gateway, tether-ai, claude, codex, agy, opencode); omitted lists cards."}`),
+			Description: "Usage against limits for what we pay for or are rate-limited on: one card per source with status, usage, limit and reset time. tether-ai is Tether's own AI router (calls Tether makes itself), not llm-gateway; llm-gateway, which carries Basalisk and Studio turns, is a gap until wired. design, audio and video are the media suites' estimated spend against their optional daily caps; tripo is a prepaid credit balance. With a source, include its details; for tether-ai: request and token totals since 00:00 UTC, 7 and 30 days, the biggest providers and models, budgets and recent budget alerts. Subscriptions not yet collected are gaps, not zero. Read-only; cached for a minute.",
+			Input:       schema(`"source":{"type":"string","description":"A card id from the list (llm-gateway, tether-ai, design, audio, video, tripo, openrouter, claude, codex, agy, opencode); omitted lists cards."}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				a, err := args[struct{ Source string }](in)
 				if err != nil {

@@ -15,6 +15,7 @@ interface UsageCard {
   status: Status
   used: number | null
   limit: number | null
+  remaining?: number
   unit?: string
   window?: string
   reset_at?: string
@@ -46,11 +47,14 @@ interface Budget {
   error?: string
 }
 interface Detail {
-  windows: { label: string; since: string; total: Totals }[]
-  by_provider: Totals[]
-  by_model: Totals[]
-  budgets: Budget[]
-  alerts: { at: string; provider?: string; model?: string; operation?: string; error?: string }[]
+  windows?: { label: string; since: string; total: Totals }[]
+  by_provider?: Totals[]
+  by_model?: Totals[]
+  budgets?: Budget[]
+  alerts?: { at: string; provider?: string; model?: string; operation?: string; error?: string }[]
+  spend?: { provider: string; calls: number; failed: number; cost_usd: number }[]
+  recent?: { id: string; at: string; what: string; amount?: number; unit?: string; note?: string; ok: boolean }[]
+  notes?: string[]
   warnings?: string[]
 }
 interface UsageData {
@@ -122,7 +126,89 @@ function Consumers({ title, rows }: { title: string; rows: Totals[] }) {
   )
 }
 
+const usd = (v?: number) => (v == null ? "Unknown" : `$${v.toFixed(2)}`)
+
+function SpendDetail({ d }: { d: Detail }) {
+  return (
+    <section aria-label="Spend details" className="flex flex-col gap-3">
+      {d.warnings?.map((w) => (
+        <p key={w} role="status" className="text-sm">
+          {w}
+        </p>
+      ))}
+      {d.spend && (
+        <>
+          <h4 className="font-medium text-sm">Spend by provider · last 30 days</h4>
+          {d.spend.length === 0 ? (
+            <p className="text-muted-foreground text-sm">None recorded.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Spend</TableHead>
+                  <TableHead>Calls</TableHead>
+                  <TableHead>Failed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {d.spend.map((r) => (
+                  <TableRow key={r.provider}>
+                    <TableCell>{r.provider}</TableCell>
+                    <TableCell>{usd(r.cost_usd)}</TableCell>
+                    <TableCell>{n(r.calls)}</TableCell>
+                    <TableCell>{n(r.failed)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </>
+      )}
+      {d.recent && (
+        <>
+          <h4 className="font-medium text-sm">Recent charges</h4>
+          {d.recent.length === 0 ? (
+            <p className="text-muted-foreground text-sm">None recorded.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>What</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Note</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {d.recent.map((r) => (
+                  <TableRow key={`${r.id}:${r.at}:${r.what}:${r.note}`}>
+                    <TableCell>{time(r.at)}</TableCell>
+                    <TableCell>{r.what}</TableCell>
+                    <TableCell>{r.unit === "USD" ? usd(r.amount) : `${n(r.amount)} ${r.unit ?? ""}`}</TableCell>
+                    <TableCell>
+                      {!r.ok && <StatusBadge status="error" />} {r.note}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </>
+      )}
+      {d.notes?.map((note) => (
+        <p key={note} className="text-muted-foreground text-xs">
+          {note}
+        </p>
+      ))}
+    </section>
+  )
+}
+
 function RouterDetail({ d }: { d: Detail }) {
+  const windows = d.windows ?? []
+  const budgets = d.budgets ?? []
+  const alerts = d.alerts ?? []
   return (
     <section aria-label="Tether AI router details" className="flex flex-col gap-3">
       {d.warnings?.map((w) => (
@@ -143,7 +229,7 @@ function RouterDetail({ d }: { d: Detail }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {d.windows.map((w) => (
+          {windows.map((w) => (
             <TableRow key={w.label}>
               <TableCell title={`Since ${time(w.since)}`}>{w.label}</TableCell>
               <TableCell>{n(w.total.requests)}</TableCell>
@@ -158,10 +244,10 @@ function RouterDetail({ d }: { d: Detail }) {
       <p className="text-muted-foreground text-xs">
         The router records requests and tokens but no cost. Daily history beyond these windows is not stored yet.
       </p>
-      <Consumers title="Biggest providers · last 30 days" rows={d.by_provider} />
-      <Consumers title="Biggest models · last 30 days" rows={d.by_model} />
+      <Consumers title="Biggest providers · last 30 days" rows={d.by_provider ?? []} />
+      <Consumers title="Biggest models · last 30 days" rows={d.by_model ?? []} />
       <h4 className="font-medium text-sm">Budgets</h4>
-      {d.budgets
+      {budgets
         .filter((b) => b.error)
         .map((b) => (
           <p key={`problem:${b.provider}:${b.model}:${b.scope}`} role="status" className="text-sm">
@@ -175,7 +261,7 @@ function RouterDetail({ d }: { d: Detail }) {
             catalog.
           </p>
         ))}
-      {d.budgets.length === 0 ? (
+      {budgets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No gateway budgets are configured.</p>
       ) : (
         <Table>
@@ -189,7 +275,7 @@ function RouterDetail({ d }: { d: Detail }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {d.budgets.map((b) => (
+            {budgets.map((b) => (
               <TableRow key={`${b.provider}:${b.model}:${b.scope}`}>
                 <TableCell>
                   {b.provider}
@@ -216,11 +302,11 @@ function RouterDetail({ d }: { d: Detail }) {
         </Table>
       )}
       <h4 className="font-medium text-sm">Budget rejections · last 7 days</h4>
-      {d.alerts.length === 0 ? (
+      {alerts.length === 0 ? (
         <p className="text-muted-foreground text-sm">None.</p>
       ) : (
         <ul className="flex flex-col gap-1 text-sm">
-          {d.alerts.map((a) => (
+          {alerts.map((a) => (
             <li key={`${a.at}:${a.provider}:${a.error}`}>
               {time(a.at)} · {a.provider || "unknown provider"}
               {a.model ? ` · ${a.model}` : ""}: {a.error}
@@ -293,7 +379,12 @@ export function Usage({ win, desk, api }: ViewProps) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-1 text-sm">
-                  {c.status !== "gap" && (
+                  {c.remaining != null && (
+                    <p>
+                      <span className="font-semibold">{n(c.remaining)}</span> {c.unit} remaining
+                    </p>
+                  )}
+                  {c.status !== "gap" && c.status !== "error" && c.remaining == null && (
                     <p>
                       <span className="font-semibold">{n(c.used)}</span>
                       {c.unit ? ` ${c.unit}` : ""} · limit {c.limit == null ? "not reported" : n(c.limit)}
@@ -315,8 +406,10 @@ export function Usage({ win, desk, api }: ViewProps) {
             <section aria-label={`${selected.title} details`} className="flex flex-col gap-3">
               <h3 className="font-semibold">{selected.title}</h3>
               {selected.summary && <p className="text-sm">{selected.summary}</p>}
-              {data.detail ? (
+              {data.detail?.windows ? (
                 <RouterDetail d={data.detail} />
+              ) : data.detail ? (
+                <SpendDetail d={data.detail} />
               ) : (
                 <p className="text-muted-foreground text-sm">{selected.gap || "No details for this source."}</p>
               )}

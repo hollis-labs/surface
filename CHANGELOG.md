@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.9.1] - 2026-11-21
+
+- **Ops finds plans and epics through linked tasks.** When a linked task belongs to a Torque plan (or epic), the
+  workstream shows that plan expanded, marked with the task it was found through; its tasks join the roll-up and
+  Activity within the same bounds, and "Link this plan" links it for good.
+
 ## [0.9.0] - 2026-11-21
 
 - **Ops: Activity across workstreams.** A board-level Activity view: one feed, newest first, over every workstream

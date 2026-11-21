@@ -5,10 +5,20 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.10.0] - 2026-11-21
+
 - **Choose a module’s agent.** Settings and the agent panel’s Profile picker can bind any module to a
   validated Nanite agent folder. Bindings override built-in profiles and reset live. Turns use isolated
   authored snapshots and record the selected source folder in the run log. Bound agents share the app’s
-  runtime and permissions; ignored `host.yaml` runtime keys are shown in the UI and logged.
+  runtime and permissions; ignored `host.yaml` runtime keys are shown in the UI and logged. A bound agent's tool
+  packages may not ask for environment passthrough or Warden tokens.
+- **Workflows (`modules/workflows`, in Studio).** Workflow briefs with user, agent and system stages, a review
+  handoff (prepared Markdown) and the designer's slot; the home for the workflow-designer agent.
+- **Command palette search providers.** A module contract addition (`Manifest.Palette`): read-only async search
+  from any module, with Notes, Files and Browser providing; a Tabs mode over open Browser windows (close, All or
+  Focused scope). See docs/writing-a-module.md.
+- **The top bar's Inbox shows the unread count**, live from the inbox module's existing check.
+- **A Module-conventions pack** for agents that design Surface modules (`agents/packs/surface-module-conventions`).
 
 ## [0.9.1] - 2026-11-21
 

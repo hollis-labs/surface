@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Terminal: links open whole, however they wrap.** A URL a program hard-wraps at the edge (as `claude
+  setup-token` prints its login URL) is linked across its lines, as a soft-wrapped one already was; clicking any
+  part of it opens the whole URL. Only http and https open, in a new tab, with no opener and no referrer. The
+  web-links addon is replaced by the terminal's own provider (`registry/ui/terminal.links.ts`).
+
 ## [0.15.0] - 2026-11-21
 
 - **Ops: `ops_brief`**, the Lead Orchestrator's running brief built from Ops data: what needs the owner or the

@@ -51,7 +51,7 @@ func str(a map[string]any, k string) string {
 
 const (
 	idProp     = `"id":{"type":"string","description":"The workstream's Ops id (a slug, as ops_list gives it; written ops:<id> in text)."}`
-	stageEnum  = `"enum":["planning","planned","queued","in_flight","in_review","adoption","active","dropped"]`
+	stageEnum  = `"enum":["planned","parked","queued","in_flight","landing","complete","dropped"]`
 	linkSchema = `{"type":"object","properties":{"kind":{"type":"string","description":"A Cite kind: torque.task, torque.epic, torque.plan, torque.project, work.item, registry.record, caster.doc, tesseract.item, tether.agent, tether.message, tether.team, ops.workstream, url."},` +
 		`"id":{"type":"string","description":"The id in that kind's form (CW-…, EP-…, <workspace>/<item>, workstream:<ULID>, caster://…)."},` +
 		`"role":{"type":"string","description":"What it is to the workstream: origin, scope, identity, architecture, design, task, team, thread…"},` +
@@ -129,7 +129,7 @@ func (m *mod) tools() []module.Tool {
 				return map[string]any{"workstream": a.ID, "entries": es, "errors": r.Errors, "fetched_at": r.FetchedAt}, nil
 			}},
 		{Name: "ops_create", Level: module.LevelWrite,
-			Description: "Create a workstream: a concept of any size, from one task to a mesh-wide change. id is a slug chosen now and never changed (it is the Registry workstream key). Stage defaults to planning; parent nests it under another workstream. Links are typed (Cite kinds).",
+			Description: "Create a workstream: a concept of any size, from one task to a mesh-wide change. id is a slug chosen now and never changed (it is the Registry workstream key). Stage defaults to planned; parent nests it under another workstream. Links are typed (Cite kinds).",
 			Input: schema(idProp+`,"title":{"type":"string"},"owner":{"type":"string"},"project":{"type":"string","description":"Torque project (PRJ-…)."},`+
 				`"status_ns":{"type":"string","description":"Where its status entries are read, e.g. project/<slug>/event/status."},`+
 				`"stage":{"type":"string",`+stageEnum+`},"parent":{"type":"string"},"links":{"type":"array","items":`+linkSchema+`},`+

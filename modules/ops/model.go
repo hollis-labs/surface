@@ -14,29 +14,45 @@ import (
 // Contract is the value of a workstream's `ops:` key.
 const Contract = "v1"
 
-// The owner's lifecycle, in board order, then dropped.
+// The owner's six lifecycle stages, plus the separate discarded state.
 const (
-	StagePlanning = "planning"
 	StagePlanned  = "planned"
+	StageParked   = "parked"
 	StageQueued   = "queued"
 	StageInFlight = "in_flight"
-	StageInReview = "in_review"
-	StageAdoption = "adoption"
-	StageActive   = "active"
+	StageLanding  = "landing"
+	StageComplete = "complete"
 	StageDropped  = "dropped"
 )
 
-// Stages are the stages in lifecycle order.
-var Stages = []string{StagePlanning, StagePlanned, StageQueued, StageInFlight, StageInReview, StageAdoption, StageActive, StageDropped}
+// Stages are the lifecycle in board order, followed by the optional discarded state.
+var Stages = []string{StagePlanned, StageParked, StageQueued, StageInFlight, StageLanding, StageComplete, StageDropped}
 
 // StageLabel is a stage as a person reads it.
 var StageLabel = map[string]string{
-	StagePlanning: "Planning", StagePlanned: "Planned", StageQueued: "Queued", StageInFlight: "In Flight",
-	StageInReview: "In Review", StageAdoption: "Adoption", StageActive: "Active", StageDropped: "Dropped",
+	StagePlanned: "Planned", StageParked: "Parked", StageQueued: "Queued", StageInFlight: "In Flight",
+	StageLanding: "Landing", StageComplete: "Complete", StageDropped: "Dropped",
 }
 
-// ValidStage reports whether s is a stage.
+// ValidStage reports whether s is a current stage accepted for new writes.
 func ValidStage(s string) bool { _, ok := StageLabel[s]; return ok }
+
+// ReadStage maps legacy ops/v1 and tracker vocabulary without changing the document.
+// Unknown values remain unknown so migration callers can flag them for review.
+func ReadStage(s string) string {
+	switch s {
+	case "planning":
+		return StagePlanned
+	case "flight", "in flight":
+		return StageInFlight
+	case "review", "in_review", "adoption":
+		return StageLanding
+	case "active":
+		return StageComplete
+	default:
+		return s
+	}
+}
 
 func stageRank(s string) int {
 	for i, x := range Stages {
@@ -140,7 +156,7 @@ func parseWorkstream(id, content string, rev int) Workstream {
 	w := Workstream{ID: id, Rev: rev, ActiveWhen: []Check{}, Links: []Link{}, Transitions: []Transition{}, Children: []string{}}
 	d, err := ParseDoc(content)
 	if err != nil {
-		w.Title, w.Stage, w.Problem = id, StagePlanning, err.Error()
+		w.Title, w.Stage, w.Problem = id, StagePlanned, err.Error()
 		return w
 	}
 	fillFrom(&w, d)
@@ -156,13 +172,16 @@ func fillFrom(w *Workstream, d *Doc) {
 		w.Title = w.ID
 	}
 	w.Owner, w.Project, w.StatusNS = d.Str("owner"), d.Str("project"), d.Str("status_ns")
-	w.Stage, w.StageSince, w.Parent = d.Str("stage"), d.Str("stage_since"), d.Str("parent")
+	w.Stage, w.StageSince, w.Parent = ReadStage(d.Str("stage")), d.Str("stage_since"), d.Str("parent")
 	if !ValidStage(w.Stage) {
-		w.Stage = StagePlanning
+		w.Problem = strings.TrimSpace(w.Problem + fmt.Sprintf(" unknown stage %q", w.Stage))
 	}
 	var h Held
 	if d.Decode("held", &h) == nil && strings.TrimSpace(h.Reason) != "" {
 		w.Held = &h
+		if raw := d.Str("stage"); raw == "planning" || raw == StagePlanned {
+			w.Stage = StageParked
+		}
 	}
 	_ = d.Decode("active_when", &w.ActiveWhen)
 	_ = d.Decode("links", &w.Links)

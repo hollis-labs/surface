@@ -487,16 +487,16 @@ func suggest(stage string, counts map[string]int) (string, string) {
 		return "", ""
 	}
 	switch stage {
-	case StagePlanning, StagePlanned, StageQueued:
+	case StagePlanned, StageParked, StageQueued:
 		if doing > 0 {
 			return StageInFlight, fmt.Sprintf("%d of its tasks are in progress", doing)
 		}
 	case StageInFlight:
 		if doing == 0 && finished+review == total && review > 0 {
-			return StageInReview, "no task is in progress, and the rest are in review or done"
+			return StageLanding, "no task is in progress, and the rest are in review or done"
 		}
 		if finished == total {
-			return StageInReview, "all its tasks are done"
+			return StageLanding, "all its tasks are done"
 		}
 	}
 	return "", ""

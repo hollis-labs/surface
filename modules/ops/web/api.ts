@@ -4,31 +4,28 @@
  */
 import type { ModuleAPI } from "@hollis-labs/surface-page/sdk"
 
-export type Stage = "planning" | "planned" | "queued" | "in_flight" | "in_review" | "adoption" | "active" | "dropped"
+export type Stage = "planned" | "parked" | "queued" | "in_flight" | "landing" | "complete" | "dropped"
 
-export const STAGES: Stage[] = [
-  "planning",
-  "planned",
-  "queued",
-  "in_flight",
-  "in_review",
-  "adoption",
-  "active",
-  "dropped",
-]
+export const STAGES: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete", "dropped"]
 
 export const STAGE_LABEL: Record<string, string> = {
-  planning: "Planning",
   planned: "Planned",
+  parked: "Parked",
   queued: "Queued",
   in_flight: "In Flight",
+  landing: "Landing",
+  complete: "Complete",
+  dropped: "Dropped",
+  // Transition history retains the vocabulary used when each move was recorded.
+  planning: "Planning",
+  flight: "In Flight",
+  review: "In Review",
   in_review: "In Review",
   adoption: "Adoption",
   active: "Active",
-  dropped: "Dropped",
 }
 
-export const stageLabel = (s: string) => STAGE_LABEL[s] ?? s
+export const stageLabel = (s: string) => STAGE_LABEL[s] ?? `Unknown stage: ${s || "(empty)"}`
 
 export interface Held {
   reason: string
@@ -62,7 +59,7 @@ export interface Workstream {
   owner?: string
   project?: string
   status_ns?: string
-  stage: Stage
+  stage: string
   stage_since?: string
   parent?: string
   held?: Held

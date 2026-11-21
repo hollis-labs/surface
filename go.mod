@@ -16,6 +16,7 @@ require (
 	github.com/hollis-labs/nanite v0.12.1
 	github.com/hollis-labs/substrate v0.1.1-0.20261120230950-f70a16348138
 	github.com/spf13/cobra v1.10.2
+	github.com/tdewolff/parse/v2 v2.25.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1

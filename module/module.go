@@ -58,6 +58,8 @@ type Manifest struct {
 	Views    []View    `json:"views,omitempty"`
 	Commands []Command `json:"commands,omitempty"`
 	Tools    []Tool    `json:"tools,omitempty"`
+	// Palette registers asynchronous search providers; handlers are bound to this module's Host.
+	Palette []PaletteProvider `json:"palette,omitempty"`
 
 	// Store, when set, gives the module a local SQLite database of its own.
 	Store *Store `json:"store,omitempty"`

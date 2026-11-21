@@ -65,6 +65,7 @@ export interface ProfileState {
 }
 
 export interface Setup {
+  stop_all?: boolean
   /** Whether the embedded Nanite runner bypasses approval asks (testing only). */
   auto_approve?: boolean
   ready: boolean
@@ -102,6 +103,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const agentApi = {
+  stopAll: () => call<{ restart_required: boolean; message: string }>("POST", "/stop-all", {}),
   context: () => call<Assembly>("GET", "/context"),
   setup: () => call<Setup>("GET", "/setup"),
   slots: () => call<SlotInfo[]>("GET", "/slots"),

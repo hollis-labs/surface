@@ -14,7 +14,7 @@
  */
 
 import { useChat, useChatBusy, useChatIds, useChatItem, useStickToBottom } from "@hollis-labs/surface-chat"
-import { Bot, Check, ChevronDown, ChevronUp, Copy } from "lucide-react"
+import { Bot, Check, ChevronDown, ChevronUp, Copy, Ellipsis } from "lucide-react"
 import { type FormEvent, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ import {
   ConversationScrollButton,
   ConversationViewport,
 } from "@/components/ui/conversation"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item"
 import { Label } from "@/components/ui/label"
 import { MessageNotice } from "@/components/ui/message"
@@ -223,17 +224,55 @@ function ProfilePicker({ state, onPick }: { state: ProfileState; onPick: (profil
 }
 
 function ChatHeader({ store, title }: { store: ChatStore; title: string }) {
+  const [canStop, setCanStop] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [notice, setNotice] = useState("")
+  useEffect(() => {
+    agentApi.setup().then(
+      (s) => setCanStop(s.stop_all === true),
+      () => {},
+    )
+  }, [])
+  const stopAll = async () => {
+    setStopping(true)
+    try {
+      setNotice((await agentApi.stopAll()).message)
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not stop agent work.")
+    } finally {
+      setStopping(false)
+    }
+  }
   const busy = useChatBusy(store)
   const model = useChat(store, (s) => s.host?.model ?? "")
   const empty = useChat(store, (s) => s.ids.length === 0)
   return (
-    <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
-      <span className="text-sm font-semibold">{title}</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{busy ? "working…" : model}</span>
-      <Button variant="ghost" size="xs" disabled={busy || empty} onClick={() => void store.newThread()}>
-        New
-      </Button>
-    </div>
+    <>
+      <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{busy ? "working…" : model}</span>
+        {canStop && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="xs" aria-label="Agent menu">
+                  <Ellipsis />
+                </Button>
+              }
+            />
+            <DropdownMenuContent>
+              <DropdownMenuItem disabled={stopping} onClick={() => void stopAll()}>
+                Stop everything
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <Button variant="ghost" size="xs" disabled={busy || empty} onClick={() => void store.newThread()}>
+          New
+        </Button>
+      </div>
+      {notice && <MessageNotice>{notice}</MessageNotice>}
+    </>
   )
 }
 

@@ -62,7 +62,7 @@ func (s *Service) Mount(mux *http.ServeMux) {
 				model = s.cfg.Model
 			}
 			reply(w, 200, map[string]any{"ready": true, "model": model, "runner": s.wire.runner, "config_path": ConfigPath(s.k.AppName()),
-				"wire": "conversation", "agent": s.wire.agent, "auto_approve": s.wire.nanite != nil && s.cfg.AutoApprove})
+				"wire": "conversation", "stop_all": true, "agent": s.wire.agent, "auto_approve": s.wire.nanite != nil && s.cfg.AutoApprove})
 			return
 		}
 		reason := s.SetupProblem()

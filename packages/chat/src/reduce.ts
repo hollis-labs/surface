@@ -166,6 +166,8 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
       }
     case "activity": {
       const what = (ev.kind ?? "").replace(/^[a-z]+\./, "")
+      if (ev.kind === "nanite.notice" && ev.value?.kind === "budget" && typeof ev.value.body === "string")
+        return note(s, key(`budget:${String(ev.value.id ?? "warning")}`), ev.value.body, "quiet")
       if (what === "approval" && s.approval?.id === ev.value?.approval_id) return { ...s, approval: null }
       if (what === "compact" && typeof ev.value?.state === "string")
         return note(

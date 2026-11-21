@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -53,7 +56,39 @@ func (c *FrontDeskConfig) options() *chatrunner.DeskOptions {
 	}
 	return &chatrunner.DeskOptions{Intake: desk.Intake{Mode: mode}, PlanWithModel: c.PlanWithModel, PlannerInstructions: c.PlannerInstructions, IntakeTimeout: time.Duration(c.IntakeTimeoutSeconds) * time.Second, Policy: &policy}
 }
+func openPlanDecisions(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS agent_plan_decisions (
+ conversation TEXT NOT NULL, plan TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN ('accept','decline')),
+ PRIMARY KEY(conversation, plan))`)
+	return err
+}
+
+func (s *Service) planDecision(ctx context.Context, conversation, plan string) (string, error) {
+	var action string
+	err := s.k.DB().QueryRowContext(ctx, `SELECT action FROM agent_plan_decisions WHERE conversation=? AND plan=?`, conversation, plan).Scan(&action)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return action, err
+}
+
+func (s *Service) recordPlanDecision(ctx context.Context, conversation, plan, action string) error {
+	_, err := s.k.DB().ExecContext(ctx, `INSERT INTO agent_plan_decisions(conversation,plan,action) VALUES(?,?,?)`, conversation, plan, action)
+	if err == nil {
+		s.k.Events().Publish("agent.plan.decision", map[string]string{"plan": plan, "status": action})
+	}
+	return err
+}
+
 func (s *Service) mountFrontDesk(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+Prefix+"/front-desk/plans/{plan}", func(w http.ResponseWriter, r *http.Request) {
+		action, err := s.planDecision(r.Context(), s.conversationID(r.Context()), r.PathValue("plan"))
+		if err != nil {
+			fail(w, 500, "could not read the plan decision")
+			return
+		}
+		reply(w, 200, map[string]string{"status": action})
+	})
 	mux.HandleFunc("GET "+Prefix+"/front-desk", func(w http.ResponseWriter, r *http.Request) {
 		if s.wire.nanite == nil || s.wire.nanite.Desk() == nil {
 			reply(w, 200, map[string]any{"enabled": false})
@@ -78,6 +113,15 @@ func (s *Service) mountFrontDesk(mux *http.ServeMux) {
 				fail(w, http.StatusConflict, err.Error())
 				return
 			}
+			previous, err := s.planDecision(r.Context(), conversation, r.PathValue("plan"))
+			if err != nil {
+				fail(w, 500, "could not read the plan decision")
+				return
+			}
+			if previous != "" {
+				fail(w, http.StatusConflict, "this plan was already answered")
+				return
+			}
 			d := s.wire.nanite.Desk()
 			if action == "accept" {
 				err = d.AcceptPlan(r.Context(), id, r.PathValue("plan"), nil)
@@ -86,6 +130,13 @@ func (s *Service) mountFrontDesk(mux *http.ServeMux) {
 			}
 			if err != nil {
 				fail(w, http.StatusConflict, err.Error())
+				return
+			}
+			// The answer has taken effect; persist it even if the browser disconnects.
+			save, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+			defer cancel()
+			if err := s.recordPlanDecision(save, conversation, r.PathValue("plan"), action); err != nil {
+				fail(w, 500, "plan answered but its display state could not be saved")
 				return
 			}
 			reply(w, 200, map[string]string{"status": action})

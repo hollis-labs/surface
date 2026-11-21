@@ -306,3 +306,25 @@ record; no local-only outbox or dispatch mechanism is introduced.
 All three action routes reject delegates. Sending has no agent tool: an agent
 cannot bypass the owner's dialog through Ops. Settling through `ops_settle` uses
 the usual owner-approved write-tool path.
+
+### Fleet
+
+The board's Fleet tab and read-only `ops_fleet` tool share the Cerberus health
+projection (`GET /fleet?host=...`). The selected machine is saved in the window's
+`host` argument. Tether agent placement uses the same reader and row as Agents;
+unknown placement is counted, never inferred from names.
+
+The preferred source is `cerberus_fleet_snapshot` v1: at most 100 hosts and 12
+recent five-minute buckets, with CPU utilization, memory and per-mount disk usage.
+Empty buckets and nullable metrics remain unknown. Each bucket shows the latest
+actual observation, not an interpolated value. Older collectors may lack CPU
+utilization or per-mount disks. If the snapshot read fails, the view labels its
+fallback to bounded `cerberus_host_list` (four pages of 25) plus the selected
+host's `cerberus_host_samples` (one hour, 5m grain, 12 entries). Fallback CPU is
+core count, and fallback history contains averages. Load is never called CPU
+utilization. Inventory connection details and hardware identifiers are omitted.
+
+Fleet refreshes every 30 seconds while mounted, without overlapping browser
+requests. The module shares cached reads, including failures, for 30 seconds
+across tools/windows; upstream calls have a 20-second request deadline. No
+background probes or machine-control actions are added.

@@ -20,6 +20,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WorkstreamActions } from "./actions"
 import { BoardActivity } from "./activity"
 import { type BoardData, type Card, message, opsClient, STAGES, type Stage, stageLabel } from "./api"
+import { Fleet } from "./fleet"
 import { DRAG_TYPE, WorkstreamCard } from "./parts"
 
 const MAIN: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete"]
@@ -27,7 +28,14 @@ const MAIN: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "c
 export function Board({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])
   const parent = typeof win.args.parent === "string" ? win.args.parent : ""
-  const layout = win.args.layout === "activity" ? "activity" : win.args.layout === "cards" ? "cards" : "kanban"
+  const layout =
+    win.args.layout === "fleet"
+      ? "fleet"
+      : win.args.layout === "activity"
+        ? "activity"
+        : win.args.layout === "cards"
+          ? "cards"
+          : "kanban"
   const showSettled = win.args.show_settled === true || layout === "activity"
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
@@ -60,7 +68,10 @@ export function Board({ win, desk, api }: ViewProps) {
 
   const go = (set: Record<string, unknown>) => void desk.setArgs(win.id, { ...win.args, ...set })
   useEffect(() => {
-    desk.report(win.id, { kind: "data", ref: parent && layout !== "activity" ? `ops:${parent}` : "ops" })
+    desk.report(win.id, {
+      kind: "data",
+      ref: parent && layout !== "activity" && layout !== "fleet" ? `ops:${parent}` : "ops",
+    })
   }, [desk, win.id, parent, layout])
 
   const byID = useMemo(() => new Map((data?.workstreams ?? []).map((w) => [w.id, w])), [data])
@@ -272,8 +283,9 @@ export function Board({ win, desk, api }: ViewProps) {
           <ToggleGroupItem value="kanban">Kanban</ToggleGroupItem>
           <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
           <ToggleGroupItem value="activity">Activity</ToggleGroupItem>
+          <ToggleGroupItem value="fleet">Fleet</ToggleGroupItem>
         </ToggleGroup>
-        {layout !== "activity" && (
+        {layout !== "activity" && layout !== "fleet" && (
           <>
             <Label className="flex items-center gap-1.5 text-xs">
               <Switch
@@ -332,7 +344,9 @@ export function Board({ win, desk, api }: ViewProps) {
           </ul>
         </section>
       )}
-      {!data ? (
+      {layout === "fleet" ? (
+        <Fleet win={win} desk={desk} api={api} />
+      ) : !data ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>

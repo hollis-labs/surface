@@ -75,6 +75,16 @@ func (m *mod) tools() []module.Tool {
 				}
 				return m.settle(ctx, a.ID, a.BaseRev)
 			}},
+		{Name: "ops_fleet", Level: module.LevelRead,
+			Description: "Fleet machines and their latest observed Cerberus health. With host, include its recent 5-minute health samples and shared Tether agent rows. CPU percent is utilization when available; cpu is logical core count in the inventory fallback. Load is not utilization. Reads are cached for 30 seconds. Missing observations remain unknown.",
+			Input:       schema(`"host":{"type":"string","description":"A machine name from the fleet list; omitted lists machines."}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				a, err := args[struct{ Host string }](in)
+				if err != nil {
+					return nil, err
+				}
+				return m.fleet(ctx, a.Host)
+			}},
 		{Name: "ops_list", Level: module.LevelRead,
 			Description: "The Operations board: workstreams by lane (stage), the Queued band in launch order, and for each its owner, held reason, parent and children, Torque roll-up and last activity (from the cache). Top-level concepts by default; parent lists one concept's children; all lists every level. stage, owner and held narrow it.",
 			Input: schema(`"stage":{"type":"string",` + stageEnum + `},"owner":{"type":"string"},"held":{"type":"boolean"},` +

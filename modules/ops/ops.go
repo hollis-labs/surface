@@ -42,6 +42,7 @@ const (
 // Tesseract reads for activity, Tether workstream reads, and Registry reads. Nothing on it
 // launches, dispatches, claims or forms a team (forbidden, checked by a test).
 var allowed = tetherlink.Allowed{
+	"cerberus_fleet_snapshot": true, "cerberus_host_list": true, "cerberus_host_samples": true,
 	"caster_get": true, "caster_ls": true, "caster_put": true, "caster_log": true,
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
@@ -74,6 +75,7 @@ type mod struct {
 	bg      sync.WaitGroup
 	// tasks is the Torque reads shared by every roll-up.
 	liveSessions    sessionCache
+	liveFleet       fleetCache
 	tasks           *taskCache
 	activityMu      sync.Mutex
 	activityPending []string
@@ -125,7 +127,7 @@ func (m *mod) Manifest() module.Manifest {
 			Name:  "ops",
 			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
-			Tools: []string{"ops_list", "ops_get", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
+			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",
 			Instructions: "The board is the owner's. Read before you write (ops_get gives rev, the base_rev for ops_update). Propose moves; make them on the owner's word, with why. " +
 				"Moves are explicit: a suggested stage is a hint to put to the owner, never a move you make on your own. " +
@@ -282,6 +284,10 @@ func (m *mod) rollup(ctx context.Context, id string, force bool) (Rollup, error)
 
 func (m *mod) describeBoard(_ context.Context, _ module.Host, w module.Window) (module.WindowContext, error) {
 	wc := module.WindowContext{Kind: "data", Ref: "ops", Extra: map[string]any{"layout": w.Args["layout"]}}
+	if w.Args["layout"] == "fleet" {
+		wc.Extra["host"] = w.Args["host"]
+		return wc, nil
+	}
 	if w.Args["layout"] == "activity" {
 		for _, k := range []string{"workstream", "stage", "source", "since"} {
 			wc.Extra[k] = w.Args[k]

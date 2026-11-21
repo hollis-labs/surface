@@ -15,6 +15,7 @@ import (
 	"github.com/hollis-labs/libs/agent/chat/chattest"
 	"github.com/hollis-labs/libs/agent/chat/sqlitestore"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
+	"github.com/hollis-labs/substrate/modules/httphost"
 	"github.com/hollis-labs/surface/core/internal/agent/profile"
 
 	"github.com/hollis-labs/nanite/chatrunner"
@@ -71,6 +72,10 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		return nil, fmt.Errorf("agent: conversation store: %w", err)
 	}
 	if err = openGrants(ctx, s.k.DB()); err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	if err = openPlanDecisions(ctx, s.k.DB()); err != nil {
 		_ = st.Close()
 		return nil, err
 	}
@@ -198,7 +203,7 @@ func (w *wire) close(ctx context.Context) {
 func (s *Service) mountWire(mux *http.ServeMux) {
 	w := s.wire
 	s.mountFrontDesk(mux)
-	h := http.StripPrefix(Prefix, refusalStatus(w.handler))
+	h := http.StripPrefix(Prefix, stopConversationStreams(refusalStatus(w.handler)))
 	mux.HandleFunc("POST "+Prefix+"/stop-all", s.stopAll)
 	mux.Handle(Prefix+"/agents/", h)
 	mux.Handle(Prefix+"/conversations/", h)
@@ -464,4 +469,26 @@ func (s *Service) contextLimit() int {
 		room -= len(extra) + 2
 	}
 	return max(room, 1000)
+}
+
+// Substrate leaves ordinary requests alive while draining. Long-lived conversation
+// readers instead finish at Stopping, before the deferred runner/store cleanup.
+func stopConversationStreams(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stopping := httphost.Stopping(r)
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/events") || stopping == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		go func() {
+			select {
+			case <-stopping:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

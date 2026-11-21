@@ -97,6 +97,8 @@ export interface Card extends Workstream {
   last?: Entry
   suggest?: string
   suggest_why?: string
+  /** Open tasks assigned or claimed that no live agent holds. */
+  no_live_agent?: string[]
 }
 
 export interface BoardData {
@@ -116,6 +118,21 @@ export interface Task {
   plan_id?: string
   phase_id?: string
   discovered_via?: string
+  /** Who the task is assigned to or claimed by, and whether they are live. */
+  holder?: Holder
+}
+
+/** A task's assignee or claimant (modules/ops/liveness.go). */
+export interface Holder {
+  agent?: string
+  session?: string
+  run?: string
+  source: "claim" | "owner"
+  /** live, none (nobody live holds it) or unknown (could not tell). */
+  live: "live" | "none" | "unknown"
+  why?: string
+  /** Found by the fallback source, which cannot see kit-booted agents. */
+  unconfirmed?: boolean
 }
 
 export interface Plan {
@@ -138,6 +155,8 @@ export interface Rollup {
   suggest?: string
   suggest_why?: string
   errors?: string[]
+  /** Open tasks assigned or claimed that no live agent holds. */
+  no_live_agent?: string[]
   fetched_at: string
   unavailable?: boolean
 }

@@ -443,7 +443,7 @@ function Activity({
   busy: boolean
   refresh: () => void
 }) {
-  const [sources, setSources] = useState<string[]>(["torque", "comment", "status", "ops"])
+  const [sources, setSources] = useState<string[]>(["torque", "comment", "status", "ops", "liveness"])
   const [open, setOpen] = useState<string | null>(null)
   if (!roll) return <Spinner />
   const rows = roll.entries.filter((e) => sources.includes(e.source))

@@ -189,6 +189,27 @@ A banner explains that kit-booted agents appear when the unified feed is deploye
 remain labelled. Every expired cache retries the unified feed automatically. Other source failures
 never trigger this fallback and never appear as an empty healthy fleet.
 
+## Assigned, no live agent
+
+Gap G6 of the system-of-record brief (Torque CW-20261121-0152). Each roll-up checks its open tasks (linked,
+epic, plan or discovered) that are assigned or claimed against the live agents, using the same cached reader as
+the Agents tab. A task's holder is read from its typed Torque record (`liveness.go`, `taskAssignment`): an active
+`claim` (claim id, holder or actor urn, session id, team run id, state) wins, else `metadata.owner_urn` when it is
+an agent urn. A holder matches a live agent by urn, a claim's session by `session:<id>`, and a team run by
+`seat:<run>`.
+
+- Each task carries `holder: {agent, session, run, source: claim|owner, live: live|none|unknown, why, unconfirmed}`.
+- The roll-up and the board card list `no_live_agent` (task ids); `ops_list`, `ops_get` and the slot's in-flight
+  rows carry it too.
+- Each flagged task adds a feed row with source `liveness` (state `no_live_agent`) to the workstream's and the
+  global activity, filterable as `source=liveness`. It does not replace a card's latest activity.
+- The check never guesses: unreadable or truncated live agents mark holders `unknown` and flag nothing. The
+  fallback source (no kit seats) flags as `unconfirmed`. An expired claim is flagged whoever is live.
+- Roll-ups with no held task do not read the live agents.
+
+Torque's half (CW-20261121-0148: a claim expires when its session dies) will add the claim fields; their names
+are read in `taskAssignment` only.
+
 ## Seeding from the tracker
 
 The owner's workstream tracker (kept by the Local Orchestrator: threads with stage, phase, owner, summary,

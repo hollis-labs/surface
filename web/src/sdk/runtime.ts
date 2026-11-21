@@ -107,7 +107,7 @@ export interface SettingEntry {
   full_key: string
   title: string
   about?: string
-  type: "string" | "bool" | "int" | "enum"
+  type: "string" | "bool" | "int" | "enum" | "object"
   default: unknown
   options?: string[]
   value: unknown

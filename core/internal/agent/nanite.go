@@ -169,7 +169,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	// With module profiles the agent opens on a staged directory: the seat, with the active
 	// profile over it, written again before each turn (profiles.go).
 	open := dir
-	if len(s.prof.order) > 0 {
+	if len(s.prof.order) > 0 || len(s.modules) > 0 {
 		s.prof.seat, s.prof.stage = dir, s.stageDir(w.agent)
 		if err = s.stageProfile(ProfileChoice{Why: "default"}); err != nil {
 			s.prof.stage = ""
@@ -210,6 +210,15 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			CompactKeepTokens: keep,
 			SlotBudgets:       map[nanite.SlotName]int{nanite.SlotContext: contextBudget},
 			Steering:          s.naniteSteering(),
+		},
+		TurnProfile: func(ctx context.Context, turn chat.Turn) (string, map[string]string, error) {
+			var meta struct {
+				AgentDir string `json:"surface_agent_dir"`
+			}
+			if decodeErr := json.Unmarshal(turn.Meta, &meta); decodeErr != nil && len(turn.Meta) > 0 {
+				return "", nil, decodeErr
+			}
+			return meta.AgentDir, nil, nil
 		},
 		ContextSlot: nanite.SlotContext,
 		Tools:       s.runnerTools(),

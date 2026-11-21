@@ -130,14 +130,17 @@ const (
 	SettingBool   SettingType = "bool"
 	SettingInt    SettingType = "int"
 	SettingEnum   SettingType = "enum"
+	SettingObject SettingType = "object"
 )
 
 // Setting is one live setting of a module. Its full key in the app is "<module>.<Key>".
 type Setting struct {
-	Key   string      `json:"key"`
-	Title string      `json:"title"`
-	About string      `json:"about,omitempty"`
-	Type  SettingType `json:"type"`
+	// Validate checks a coerced value before persistence. It must not read settings.
+	Validate func(any) error `json:"-"`
+	Key      string          `json:"key"`
+	Title    string          `json:"title"`
+	About    string          `json:"about,omitempty"`
+	Type     SettingType     `json:"type"`
 	// Default is the value until the user sets one. It must match Type.
 	Default any `json:"default"`
 	// Options are the allowed values of a SettingEnum.

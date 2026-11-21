@@ -57,6 +57,9 @@ type Approver interface {
 
 // Options are the service's optional parts.
 type Options struct {
+	// Bindings reads live module-to-agent directory settings. Modules lists all bindable modules.
+	Bindings func() map[string]string
+	Modules  map[string]string
 	// Approver, when set, replaces the in-panel question for write and confirm calls.
 	Approver Approver
 	// Selector, when set, replaces the default: the focus selector, overruled by the
@@ -93,7 +96,9 @@ type Service struct {
 	// late delivers the owner's late answers to the agent's cards (late.go).
 	late *lateDelivery
 	// prof is the modules' agent profiles (profiles.go).
-	prof *profiles
+	prof     *profiles
+	bindings func() map[string]string
+	modules  map[string]string
 
 	wake    chan struct{}
 	stop    func()
@@ -135,7 +140,7 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	if err != nil {
 		log.Warn("agent config not read; the agent is off until it is fixed", "err", err)
 	}
-	s := &Service{k: k, log: log, cfg: cfg, cfgErr: err, approver: o.Approver, tools: map[string]kernel.BoundTool{},
+	s := &Service{bindings: o.Bindings, modules: o.Modules, k: k, log: log, cfg: cfg, cfgErr: err, approver: o.Approver, tools: map[string]kernel.BoundTool{},
 		wake: make(chan struct{}, 1), done: make(chan struct{})}
 
 	if s.notes, err = slots.OpenNotes(ctx, k.DB()); err != nil {

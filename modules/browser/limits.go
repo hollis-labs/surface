@@ -2,8 +2,16 @@ package browser
 
 import "time"
 
-// Shared fetch/snapshot budgets. Snapshot-specific limits are consumed by the next slice.
+// Shared fetch/snapshot budgets. Snapshot reservations are per application instance.
 const (
+	maxSnapshotPixels      = 32_000_000
+	maxRetainedAssetBytes  = 12 << 20
+	maxSnapshotConcurrency = 2
+	maxCSSTokens           = 100_000
+	maxSnapshotNodes       = 20_000
+	maxSnapshotDepth       = 128
+	maxSnapshotText        = 200_000
+	maxSnapshotLinks       = 300
 	maxPage                = 6 << 20 // legacy owner Reader
 	maxHTML                = 2 << 20
 	maxCSS                 = 512 << 10

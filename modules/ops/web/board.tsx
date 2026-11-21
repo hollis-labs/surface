@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { BoardActivity } from "./activity"
 import { type BoardData, type Card, message, opsClient, type Stage, stageLabel } from "./api"
 import { DRAG_TYPE, WorkstreamCard } from "./parts"
 
@@ -26,7 +27,7 @@ const LATER: Stage[] = ["in_review", "adoption", "active"]
 export function Board({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])
   const parent = typeof win.args.parent === "string" ? win.args.parent : ""
-  const layout = win.args.layout === "cards" ? "cards" : "kanban"
+  const layout = win.args.layout === "activity" ? "activity" : win.args.layout === "cards" ? "cards" : "kanban"
   const later = win.args.later === true
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
@@ -59,8 +60,8 @@ export function Board({ win, desk, api }: ViewProps) {
 
   const go = (set: Record<string, unknown>) => void desk.setArgs(win.id, { ...win.args, ...set })
   useEffect(() => {
-    desk.report(win.id, { kind: "data", ref: parent ? `ops:${parent}` : "ops" })
-  }, [desk, win.id, parent])
+    desk.report(win.id, { kind: "data", ref: parent && layout !== "activity" ? `ops:${parent}` : "ops" })
+  }, [desk, win.id, parent, layout])
 
   const byID = useMemo(() => new Map((data?.workstreams ?? []).map((w) => [w.id, w])), [data])
   const level = (data?.workstreams ?? []).filter((w) => (w.parent ?? "") === parent)
@@ -252,15 +253,20 @@ export function Board({ win, desk, api }: ViewProps) {
         >
           <ToggleGroupItem value="kanban">Kanban</ToggleGroupItem>
           <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
+          <ToggleGroupItem value="activity">Activity</ToggleGroupItem>
         </ToggleGroup>
-        <Label className="flex items-center gap-1.5 text-xs">
-          <Switch checked={later} onCheckedChange={(c) => go({ later: c })} aria-label="Later lanes" />
-          Later
-        </Label>
-        <Label className="flex items-center gap-1.5 text-xs">
-          <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
-          Dropped
-        </Label>
+        {layout !== "activity" && (
+          <>
+            <Label className="flex items-center gap-1.5 text-xs">
+              <Switch checked={later} onCheckedChange={(c) => go({ later: c })} aria-label="Later lanes" />
+              Later
+            </Label>
+            <Label className="flex items-center gap-1.5 text-xs">
+              <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
+              Dropped
+            </Label>
+          </>
+        )}
         {(data?.followups.length ?? 0) > 0 && (
           <Button size="sm" variant={showFollowups ? "secondary" : "ghost"} onClick={() => setShowFollowups((v) => !v)}>
             <Icon name="inbox" />
@@ -308,6 +314,8 @@ export function Board({ win, desk, api }: ViewProps) {
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
+      ) : layout === "activity" ? (
+        <BoardActivity win={win} desk={desk} api={api} workstreams={data.workstreams} />
       ) : level.length === 0 ? (
         <Empty className="flex-1">
           <EmptyHeader>

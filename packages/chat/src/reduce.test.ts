@@ -63,3 +63,19 @@ test("the end of a run settles what was still going", () => {
   assert.equal((s.items["r1:c1"] as { status: string }).status, "done")
   assert.deepEqual(s.items["r1:error"], { kind: "notice", id: "r1:error", text: "boom", tone: "error" })
 })
+
+test("Nanite's daily budget owner notice reaches the conversation", () => {
+  const s = reduceEvent(
+    startRun(initialState, "r1"),
+    ev("activity", {
+      kind: "nanite.notice",
+      value: { id: "budget-day", kind: "budget", body: "Daily token budget reached 80%: 80/100 tokens." },
+    }),
+  )
+  assert.deepEqual(s.items["r1:budget:budget-day"], {
+    kind: "notice",
+    id: "r1:budget:budget-day",
+    text: "Daily token budget reached 80%: 80/100 tokens.",
+    tone: "quiet",
+  })
+})

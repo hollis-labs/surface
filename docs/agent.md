@@ -565,6 +565,17 @@ The default compaction prompt and stream idle timeout come from Nanite. Context 
 budget and is not compactable. Ordinary tools have five-minute deadlines; tools accepting
 `timeout_seconds` may wait for the owner for up to 70 minutes.
 
+`runtime.daily_token_budget` caps the agent's token usage per UTC day. Zero (or omission) means no cap;
+Surface supplies no default. The panel displays Nanite's 80% budget notice. Once the cap is spent,
+turn submissions return HTTP 429 with `daily_budget` and a message naming the 00:00 UTC reset.
+
+The agent panel menu's **Stop everything** calls the owner-only `POST /api/agent/stop-all` route.
+For Nanite this cancels turns, subtasks and background jobs and permanently stops that instance.
+The response includes `restart_required: true`: restart the app before sending more turns. Until then,
+turns return HTTP 503 with `agent_stopped`. In-process reopening is not implemented; existing wire,
+profile and event callbacks retain the runner. The scripted test runner cancels its current turns and
+remains available. The route leaves transcripts and agent files intact.
+
 Surface connects runner notices and recovered turns to the chat service. Startup calls `RecoverTurns`
 after the service is ready, exposing interrupted turns for owner action. Successful `nanite.compact`
 activities publish `agent.compacted` on the app bus. Nanite steering matches live Surface reflexes;

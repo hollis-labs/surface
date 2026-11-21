@@ -1,7 +1,7 @@
 // Package browser is the Browser module: web pages in windows, for the owner and the agent.
 //
 // A window shows a page in a frame when the site allows it, and otherwise (or on request) in
-// reader mode: the page as the server read it, words and links only. The agent reads pages
+// a static styled snapshot, with Reader as fallback. The agent reads pages
 // on the server (browser_read), never through the owner's frame, so what it sees is the same
 // whether a window is open or not, and a page's scripts never reach it.
 //
@@ -25,9 +25,10 @@ func init() { module.Register(&mod{f: newFetcher()}) }
 
 type mod struct {
 	module.Base
-	f      *fetcher // owner-only cache/client
-	public *fetcher // all agent fetches; never shares the owner cache
-	h      module.Host
+	f         *fetcher // owner-only cache/client
+	public    *fetcher // all agent fetches; never shares the owner cache
+	h         module.Host
+	snapshots chan struct{}
 }
 
 const searchURL = "https://duckduckgo.com/?q="
@@ -69,7 +70,7 @@ func (m *mod) Manifest() module.Manifest {
 		Slots: []module.Slot{{
 			Name: "browser", About: "reading and researching on the web: the page in front, searches, and keeping what matters",
 			Views: []string{"browser"},
-			Tools: []string{"browser_read", "browser_links", "browser_search", "browser_open", "scratch_add", "drafts_create", "notes_write", "marks_add"},
+			Tools: []string{"browser_read", "browser_links", "browser_search", "browser_snapshot", "browser_open", "scratch_add", "drafts_create", "notes_write", "marks_add"},
 			Where: "the page in front (browser_read); the other Browser windows (desk_windows); what the owner kept (scratch, notes, drafts)",
 			Instructions: "Read the page with browser_read before saying what it says, and cite its URL. " +
 				"Open pages for the owner only when they ask or when showing is the answer; reading needs no window. " +
@@ -87,6 +88,31 @@ func (m *mod) Start(_ context.Context, h module.Host) error {
 	if m.public == nil {
 		m.public = newGuardedFetcher()
 	}
+	m.snapshots = make(chan struct{}, maxSnapshotConcurrency)
+	h.Handle("GET /snapshot-limits", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reply(w, map[string]int{"max_response_bytes": maxSerializedBytes, "max_windows": maxSnapshotConcurrency}, nil)
+	}))
+	h.Handle("POST /snapshot", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		written := false
+		err := m.withSnapshot(r.Context(), r.URL.Query().Get("url"), func(p Snapshot) error {
+			out := boundedBuffer{limit: maxSerializedBytes}
+			enc := json.NewEncoder(&out)
+			enc.SetEscapeHTML(false)
+			if err := enc.Encode(p); err != nil {
+				return errors.New("snapshot JSON size limit exceeded")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			// Bound a stalled response writer too, so it cannot keep a reservation forever.
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(resourceTimeout))
+			written = true
+			_, err := w.Write(out.Bytes())
+			return err
+		})
+		if !written {
+			reply(w, nil, err)
+		}
+	}))
 	readPage := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, err := normalize(r.URL.Query().Get("url"))
 		if err != nil {
@@ -266,6 +292,22 @@ func (m *mod) target(ctx context.Context, given, window string) (string, error) 
 
 func (m *mod) tools() []module.Tool {
 	return []module.Tool{
+		{Name: "browser_snapshot", Level: module.LevelRead,
+			Description: "Read a static public-page snapshot: text, links, timestamp and missing-asset/dropped-CSS counts. No scripts, forms, cookies or browser session. Opens nothing.",
+			Input:       raw(`{"type":"object","properties":{"url":{"type":"string"},"window":{"type":"string"}}}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				var a struct{ URL, Window string }
+				_ = json.Unmarshal(in, &a)
+				u, err := m.target(ctx, a.URL, a.Window)
+				if err != nil {
+					return nil, err
+				}
+				p, err := m.snapshot(ctx, u)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"url": p.URL, "final_url": p.FinalURL, "title": p.Title, "text": clip(p.Text, 40_000), "links": p.Links, "fetched": p.Fetched, "missing_assets": p.Missing, "dropped_css": p.Dropped}, nil
+			}},
 		{Name: "browser_read", Level: module.LevelRead,
 			Description: "Read a web page on the server: its title and text (and, with links: true, its links). Defaults to the page in front. find returns only the paragraphs that contain it. offset pages through a long text.",
 			Input:       raw(`{"type":"object","properties":{"url":{"type":"string"},"window":{"type":"string"},"find":{"type":"string"},"links":{"type":"boolean"},"offset":{"type":"integer"}}}`),

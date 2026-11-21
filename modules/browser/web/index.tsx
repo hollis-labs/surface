@@ -1,6 +1,6 @@
 /**
  * Browser: a page in a window. It is shown in a frame when the site allows that, else in
- * reader mode (the page's words and links as the server read them). History lives in the
+ * a static sandboxed snapshot, with Reader fallback. History lives in the
  * window's args, so back and forward survive a reload and a saved layout.
  */
 
@@ -25,6 +25,49 @@ import { Spinner } from "@/components/ui/spinner"
 import { Toggle } from "@/components/ui/toggle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "./browser.css"
+
+interface Snapshot {
+  url: string
+  final_url: string
+  title: string
+  html: string
+  fetched: string
+  links: { text: string; url: string }[]
+  missing_assets: number
+  dropped_css: number
+}
+
+// Reserve before fetching; the server supplies budgets from limits.go.
+// Only byte reservations are shared; bodies live in the requesting window.
+const snapshotReservations = new Set<symbol>()
+
+async function readSnapshot(response: Response, signal: AbortSignal, maxBytes: number): Promise<Snapshot> {
+  const stream = response.body?.getReader()
+  if (!stream) throw new Error("Empty snapshot response")
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      signal.throwIfAborted()
+      const { value, done } = await stream.read()
+      if (done) break
+      size += value.byteLength
+      if (size > maxBytes) throw new Error("Snapshot exceeds the window memory limit")
+      chunks.push(value)
+    }
+  } finally {
+    await stream.cancel()
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  const data = JSON.parse(new TextDecoder().decode(bytes))
+  if (!response.ok) throw new Error(data.error || "Snapshot failed")
+  return data as Snapshot
+}
 
 interface Page {
   url: string
@@ -71,6 +114,10 @@ function BrowserView({ win, desk, api }: ViewProps) {
   const [err, setErr] = useState("")
   const [loading, setLoading] = useState(false)
   const [reader, setReader] = useState<boolean>(readerDefault)
+  const [snapshotMode, setSnapshotMode] = useState(false)
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
+  const [snapshotError, setSnapshotError] = useState("")
+  const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [tick, setTick] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const addressAnchor = useAnchor(win, "address", "The address bar")
@@ -81,7 +128,61 @@ function BrowserView({ win, desk, api }: ViewProps) {
     if (win.args.focus_address || !url) input.current?.focus()
   }, [win.args.focus_address, url])
 
-  const showReader = !page?.search && (reader || page?.public_only === true || (page !== null && !page.framable))
+  const wantsSnapshot =
+    !reader && !page?.search && page?.url === url && (snapshotMode || page.public_only === true || !page.framable)
+  const showSnapshot = wantsSnapshot && snapshot?.url === url
+  const showReader = !page?.search && (reader || (wantsSnapshot && !!snapshotError))
+
+  // Abort requests and release both the body and its reservation on navigation/close.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick deliberately reloads a snapshot
+  useEffect(() => {
+    setSnapshot(null)
+    setSnapshotError("")
+    setSnapshotLoading(false)
+    if (!wantsSnapshot) return
+    const reservation = Symbol(win.id)
+    const controller = new AbortController()
+    setSnapshotLoading(true)
+    const load = async () => {
+      const policy = await fetch(api.url("snapshot-limits"), { signal: controller.signal })
+      if (!policy.ok) throw new Error("Snapshot limits unavailable")
+      const limits: { max_response_bytes: number; max_windows: number } = await policy.json()
+      controller.signal.throwIfAborted()
+      if (
+        !Number.isSafeInteger(limits.max_response_bytes) ||
+        limits.max_response_bytes <= 0 ||
+        !Number.isSafeInteger(limits.max_windows) ||
+        limits.max_windows <= 0
+      )
+        throw new Error("Invalid snapshot limits")
+      if (snapshotReservations.size >= limits.max_windows)
+        throw new Error("Close another styled snapshot to free memory")
+      snapshotReservations.add(reservation)
+      const response = await fetch(api.url(`snapshot?url=${encodeURIComponent(url)}`), {
+        method: "POST",
+        signal: controller.signal,
+        cache: "no-store",
+      })
+      return readSnapshot(response, controller.signal, limits.max_response_bytes)
+    }
+    load()
+      .then((result) => {
+        if (!controller.signal.aborted) setSnapshot(result)
+      })
+      .catch((error: Error) => {
+        if (!controller.signal.aborted) {
+          setSnapshotError(`${error.message}. Showing Reader.`)
+          snapshotReservations.delete(reservation)
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSnapshotLoading(false)
+      })
+    return () => {
+      controller.abort()
+      snapshotReservations.delete(reservation)
+    }
+  }, [wantsSnapshot, url, tick, api, win.id])
 
   // Read the page on the server: its title, whether it may be framed, and the reader text.
   // Only a new address or a reload (tick) reads it again.
@@ -112,7 +213,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
   }, [page, showReader, desk, win.id])
 
   const go = useCallback(
-    async (to: string) => {
+    async (to: string, publicOnly = false) => {
       if (!to.trim()) return
       const r = await api.get<{ url: string }>(`resolve?q=${encodeURIComponent(to)}`).catch((e: Error) => {
         setErr(e.message)
@@ -120,7 +221,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
       })
       if (!r) return
       const hist = [...history.slice(0, at + 1), r.url].slice(-100)
-      void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1, public_only: false })
+      void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1, public_only: publicOnly })
     },
     [api, desk, win.id, history, at],
   )
@@ -137,7 +238,6 @@ function BrowserView({ win, desk, api }: ViewProps) {
     const s = window.getSelection()?.toString().trim() ?? ""
     desk.report(win.id, { title: page?.title, reader: true, selection: s.slice(0, 2000) })
   }
-  const unframable = page !== null && (!page.framable || page.public_only === true)
   const readerComponents = useMemo<ComponentProps<typeof Markdown>["components"]>(
     () => ({
       a: ({ href, children }) => (
@@ -154,13 +254,13 @@ function BrowserView({ win, desk, api }: ViewProps) {
         </a>
       ),
       img: ({ src, alt }) =>
-        page?.public_only ? (
+        page?.public_only || win.args.public_only === true || wantsSnapshot ? (
           <span>{alt || "Image"}</span>
         ) : (
           <img src={src} alt={alt ?? ""} className="max-w-full" loading="lazy" referrerPolicy="no-referrer" />
         ),
     }),
-    [go, page?.public_only],
+    [go, page?.public_only, win.args.public_only, wantsSnapshot],
   )
 
   return (
@@ -211,25 +311,30 @@ function BrowserView({ win, desk, api }: ViewProps) {
           onChange={(e) => setAddress(e.target.value)}
           onFocus={(e) => e.target.select()}
         />
-        <Tip
-          label={
-            page?.public_only
-              ? "Read-only page opened by the agent"
-              : page?.search
-                ? "Search results"
-                : unframable
-                  ? "This site cannot be shown in a frame: reader mode"
-                  : "Reader mode"
-          }
-        >
+        <Tip label="Reader mode">
           <Toggle
             size="sm"
             aria-label="Reader mode"
             pressed={showReader}
-            disabled={unframable || page?.search}
+            disabled={page?.search}
             onPressedChange={setReader}
           >
             <BookOpenText />
+          </Toggle>
+        </Tip>
+        <Tip label="Styled snapshot: scripts and sign-in disabled">
+          <Toggle
+            size="sm"
+            aria-label="Styled snapshot"
+            pressed={wantsSnapshot}
+            disabled={page?.search}
+            onPressedChange={(pressed) => {
+              setReader(!pressed)
+              setSnapshotMode(pressed)
+              if (pressed) setTick((t) => t + 1)
+            }}
+          >
+            <Globe />
           </Toggle>
         </Tip>
         {url && (
@@ -247,6 +352,11 @@ function BrowserView({ win, desk, api }: ViewProps) {
           </Tip>
         )}
       </form>
+      {snapshotError && (
+        <p role="status" className="px-3 py-1.5 text-xs text-muted-foreground">
+          {snapshotError}
+        </p>
+      )}
       {err && <div className="bg-destructive/10 px-3 py-1.5 text-xs text-destructive">{err}</div>}
       <div ref={pageAnchor} className="min-h-0 flex-1">
         {!url && (
@@ -259,20 +369,68 @@ function BrowserView({ win, desk, api }: ViewProps) {
             </EmptyHeader>
           </Empty>
         )}
-        {url && page?.url === url && !win.args.public_only && !page.search && !showReader && (
-          <iframe
-            key={`${url}#${tick}`}
-            className="browser-frame block size-full border-0"
-            src={url}
-            title={page?.title ?? url}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-          />
-        )}
-        {loading && (
+        {url &&
+          page?.url === url &&
+          !win.args.public_only &&
+          !page.search &&
+          !showReader &&
+          !wantsSnapshot &&
+          page.framable && (
+            <iframe
+              key={`${url}#${tick}`}
+              className="browser-frame block size-full border-0"
+              src={url}
+              title={page?.title ?? url}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+            />
+          )}
+        {(loading || snapshotLoading) && (
           <p role="status" className="p-4 text-sm text-muted-foreground">
             Loading…
           </p>
+        )}
+        {showSnapshot && snapshot && (
+          <section className="flex h-full min-h-0 flex-col" aria-label="Styled snapshot">
+            <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+              <p>Styled snapshot · scripts and sign-in disabled</p>
+              <p className="truncate">
+                {snapshot.final_url} · {snapshot.fetched}
+              </p>
+              <p>
+                {snapshot.missing_assets} missing assets · {snapshot.dropped_css} dropped CSS rules or declarations
+              </p>
+              <p>Forms, video, custom fonts and JavaScript apps may be incomplete. Use Reader or the system browser.</p>
+              <Collapsible>
+                <CollapsibleTrigger render={<Button variant="link" size="xs" />}>
+                  Links ({snapshot.links.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="max-h-40 overflow-auto">
+                  {snapshot.links.map((link) => (
+                    <div key={link.url}>
+                      <Button
+                        variant="link"
+                        size="xs"
+                        onClick={() => {
+                          setSnapshotMode(true)
+                          void go(link.url, true)
+                        }}
+                      >
+                        {link.text || link.url}
+                      </Button>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+            <iframe
+              className="browser-frame block min-h-0 w-full flex-1 border-0"
+              srcDoc={snapshot.html}
+              sandbox=""
+              referrerPolicy="no-referrer"
+              title={`${snapshot.title} — styled snapshot`}
+            />
+          </section>
         )}
         {page?.search && (
           <section className="h-full overflow-auto p-4" aria-label="Search results">
@@ -306,7 +464,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
             </ol>
           </section>
         )}
-        {url && showReader && page && (
+        {url && showReader && page?.url === url && (
           <article className="h-full overflow-auto px-7 pt-4 pb-10 @max-lg:px-3.5" onMouseUp={onReaderSelect}>
             <h1>{page.title}</h1>
             <div className="truncate text-xs text-muted-foreground">{page.final_url}</div>

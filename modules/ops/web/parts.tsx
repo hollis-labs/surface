@@ -77,6 +77,7 @@ export function WorkstreamCard({
         )}
       </span>
       {w.held && <span className="line-clamp-2 text-destructive text-xs">{w.held.reason}</span>}
+      {w.problem && <span className="text-destructive text-xs">{w.problem}</span>}
       {w.tasks && <span className="text-xs">{w.tasks}</span>}
       {w.last && (
         <span className="line-clamp-2 text-muted-foreground text-xs">

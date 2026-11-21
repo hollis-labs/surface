@@ -147,9 +147,9 @@ export function WorkstreamView({ win, desk, api }: ViewProps) {
             </Button>
           </p>
         )}
-        <section aria-label="Active when" className="flex flex-col gap-1">
+        <section aria-label="Complete when" className="flex flex-col gap-1">
           <span className="text-muted-foreground text-xs">
-            Active when ({done}/{w.active_when.length})
+            Complete when ({done}/{w.active_when.length})
           </span>
           {w.active_when.map((c, i) => (
             <span key={c.text} className="flex items-center gap-2 text-sm">
@@ -167,7 +167,7 @@ export function WorkstreamView({ win, desk, api }: ViewProps) {
             </span>
           ))}
           <AddLine
-            placeholder="Add what 'active' means here…"
+            placeholder="Add what 'complete' means here…"
             add={(text) => act(() => ops.update(id, { base_rev: w.rev, add_check: { text, done: false } }))}
           />
         </section>
@@ -364,7 +364,7 @@ function Overview({
         w[k]?.trim() ? (
           <section key={k} aria-label={k}>
             <h3 className="mb-1 font-medium">
-              {k === "active_means" ? "Active means" : k === "purpose" ? "Purpose" : "Notes"}
+              {k === "active_means" ? "Complete means" : k === "purpose" ? "Purpose" : "Notes"}
             </h3>
             <Markdown {...citeMarkdownExtensions}>{w[k] ?? ""}</Markdown>
           </section>

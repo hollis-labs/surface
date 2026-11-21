@@ -1,10 +1,10 @@
 /**
- * The Operations board. Planning, Planned, the Queued band and In Flight; Review, Adoption and
- * Active behind "Later". The Queued band is its own frame, numbered in launch order, and is
+ * The Operations board: Planned, Parked, the Queued band, In Flight, Landing and Complete.
+ * The Queued band is its own frame, numbered in launch order, and is
  * the only place that is ordered: drag a workstream within it, or use its arrows (siblings
  * only). Dragging a card to a lane moves it. The board shows one level at a time: the top
  * concepts by default; "N inside" steps into one. What it shows is in the window's args
- * (parent, layout, later), so the agent knows the level in front.
+ * (parent, layout), so the agent knows the level in front.
  */
 import { CiteText, Icon, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
@@ -18,17 +18,15 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { BoardActivity } from "./activity"
-import { type BoardData, type Card, message, opsClient, type Stage, stageLabel } from "./api"
+import { type BoardData, type Card, message, opsClient, STAGES, type Stage, stageLabel } from "./api"
 import { DRAG_TYPE, WorkstreamCard } from "./parts"
 
-const MAIN: Stage[] = ["planning", "planned", "queued", "in_flight"]
-const LATER: Stage[] = ["in_review", "adoption", "active"]
+const MAIN: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete"]
 
 export function Board({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])
   const parent = typeof win.args.parent === "string" ? win.args.parent : ""
   const layout = win.args.layout === "activity" ? "activity" : win.args.layout === "cards" ? "cards" : "kanban"
-  const later = win.args.later === true
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
   const [error, setError] = useState("")
@@ -122,10 +120,19 @@ export function Board({ win, desk, api }: ViewProps) {
     onDrop,
   })
 
-  const lanes: Stage[] = [...MAIN, ...(later ? LATER : []), ...(dropped ? (["dropped"] as Stage[]) : [])]
+  const lanes: Stage[] = [...MAIN, ...(dropped ? (["dropped"] as Stage[]) : [])]
   const inLane = (s: Stage) => level.filter((w) => w.stage === s).sort((a, b) => a.title.localeCompare(b.title))
 
+  const unknown = level.filter((w) => !STAGES.some((s) => s === w.stage))
+
   const card = (w: Card) => <WorkstreamCard key={w.id} w={w} open={open} enter={enter} />
+
+  const unknownLane = unknown.length > 0 && (
+    <section aria-label="Unknown stage" className="flex min-w-72 flex-col gap-2 p-2">
+      <h3 className="font-semibold text-sm">Unknown stage</h3>
+      {unknown.map(card)}
+    </section>
+  )
 
   const band = (
     <section
@@ -258,10 +265,6 @@ export function Board({ win, desk, api }: ViewProps) {
         {layout !== "activity" && (
           <>
             <Label className="flex items-center gap-1.5 text-xs">
-              <Switch checked={later} onCheckedChange={(c) => go({ later: c })} aria-label="Later lanes" />
-              Later
-            </Label>
-            <Label className="flex items-center gap-1.5 text-xs">
               <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
               Dropped
             </Label>
@@ -327,12 +330,14 @@ export function Board({ win, desk, api }: ViewProps) {
           </EmptyHeader>
         </Empty>
       ) : layout === "kanban" ? (
-        <div className="flex min-h-0 flex-1 items-start gap-2 overflow-auto p-2">{lanes.map((s) => lane(s))}</div>
+        <div className="flex min-h-0 flex-1 items-start gap-2 overflow-auto p-2">
+          {lanes.map((s) => lane(s))}
+          {unknownLane}
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2">
-          {(["in_flight", "queued", "planned", "planning", ...lanes.filter((s) => !MAIN.includes(s))] as Stage[]).map(
-            (s) => lane(s, true),
-          )}
+          {lanes.map((s) => lane(s, true))}
+          {unknownLane}
         </div>
       )}
     </div>
@@ -351,7 +356,7 @@ function NewForm({
   const [title, setTitle] = useState("")
   const [id, setID] = useState("")
   const [owner, setOwner] = useState("")
-  const [stage, setStage] = useState<Stage>("planning")
+  const [stage, setStage] = useState<Stage>("planned")
   const slug =
     id ||
     title
@@ -391,7 +396,7 @@ function NewForm({
           <SelectValue>{(v: string) => stageLabel(v)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {(["planning", "planned", "queued", "in_flight"] as Stage[]).map((s) => (
+          {MAIN.map((s) => (
             <SelectItem key={s} value={s}>
               {stageLabel(s)}
             </SelectItem>

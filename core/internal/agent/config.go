@@ -53,6 +53,11 @@ type FileConfig struct {
 	// the app's tools.
 	Builtins []string `json:"builtins,omitempty"`
 
+	// Mailbox gives the Nanite agent a Tether mailbox of its own: the agent directory's
+	// host.yaml names the address (identity.tether), and this names Tether and the
+	// credential. Unread mail to that address arrives in the conversation as notice turns.
+	Mailbox *MailboxConfig `json:"mailbox,omitempty"`
+
 	// Classifier configures the classifier's async tier: a decision gateway (JEV) asked
 	// about each message after the turn. Without GatewayURL there is no async tier.
 	Classifier ClassifierConfig `json:"classifier,omitempty"`
@@ -79,6 +84,34 @@ func (c TetherConfig) validate() error {
 	}
 	if strings.TrimSpace(c.Seat) == "" || strings.ContainsAny(c.Seat, "/\\?#") || c.Seat == "." || c.Seat == ".." {
 		return errors.New("tether.seat must name one seat")
+	}
+	return nil
+}
+
+// MailboxConfig is where the agent's own Tether mail is read (Nanite's mailbox).
+type MailboxConfig struct {
+	// URL is Tether's HTTP API (registry and messages), HTTPS except on loopback.
+	URL string `json:"url"`
+	// CredentialFile holds the agent's bearer credential ("~/" is the home directory), read
+	// by Nanite; it is never put in the environment or sent to the page. 0600.
+	CredentialFile string `json:"credential_file"`
+	// PollSeconds is how often unread mail is looked for (default 30).
+	PollSeconds int `json:"poll_seconds,omitempty"`
+}
+
+func (c *MailboxConfig) validate() error {
+	if c == nil {
+		return nil
+	}
+	u, err := url.Parse(c.URL)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("mailbox.url must be Tether's HTTP(S) URL without credentials, query or fragment")
+	}
+	if strings.TrimSpace(c.CredentialFile) == "" {
+		return errors.New("mailbox.credential_file is required: the agent's Tether credential, in a file")
+	}
+	if c.PollSeconds < 0 {
+		return errors.New("mailbox.poll_seconds must not be negative")
 	}
 	return nil
 }
@@ -188,6 +221,13 @@ func LoadConfig(app string) (FileConfig, error) {
 		return c, err
 	}
 	if err := c.FrontDesk.validate(); err != nil {
+		return c, err
+	}
+	if c.Mailbox != nil {
+		c.Mailbox.URL = strings.TrimRight(c.Mailbox.URL, "/")
+		c.Mailbox.CredentialFile = expandHome(c.Mailbox.CredentialFile)
+	}
+	if err := c.Mailbox.validate(); err != nil {
 		return c, err
 	}
 	c.KeyFile = expandHome(c.KeyFile)

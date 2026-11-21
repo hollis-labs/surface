@@ -626,6 +626,29 @@ activities publish `agent.compacted` on the app bus. Nanite steering matches liv
 Surface performs their command/tool actions and records firing counts. Event and focus reflexes use
 Nanite's conversation steering, and compaction reflexes run once from Nanite's own event.
 
+**The agent's own Tether mailbox.** An agent directory whose `host.yaml` sets
+`identity.tether` (an existing `msg://agent/...` address, or `auto`) reads its own mail through
+Nanite. The agent config names Tether and the credential:
+
+```json
+"mailbox": { "url": "https://tether.example", "credential_file": "~/.config/<app>/tether-agent.credential", "poll_seconds": 30 }
+```
+
+`url` is Tether's HTTP API (registry and messages), HTTPS except on loopback. `credential_file` is
+a private (0600) file holding the agent's bearer credential; Nanite reads it, and it is never put
+in the environment or sent to the page. Unread mail to the address is polled oldest first and
+handed to the agent as a notice turn, then marked read once handled; a message that fails three
+times is parked and marked read. Mail turns keep a Nanite history of their own (chat
+`surface-mailbox`), separate from the owner's conversation and unaffected by **New**, and are
+shown in the conversation in front, labeled *Tether mail*. With `identity.tether` and no `mailbox`
+section the agent does not start and says what is missing; a `mailbox` section without the identity
+leaves the mailbox off.
+
+Nothing else in Surface polls the agent's own address: the tether module's mail tools
+(`tether.agent_address`) read it only when the model calls them, and the assist and inbox modules
+read the owner's addresses. Keep the agent's address out of `assist.addresses` and
+`inbox.addresses` while the mailbox is on, or the same mail is handled twice.
+
 **Interrupted turns and conversation integrity.** Nanite offers a turn the previous process left
 unfinished as a `nanite.interrupted` activity; the agent panel shows the offer with only the actions it
 names. The owner answers through `POST /api/agent/conversations/{id}/interrupted/{resume|discard|reset}`

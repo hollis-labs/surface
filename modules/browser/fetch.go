@@ -16,11 +16,14 @@ import (
 
 // Page is a web page as the server read it: its words and its links, without its scripts.
 type Page struct {
-	URL      string `json:"url"`
-	FinalURL string `json:"final_url"`
-	Title    string `json:"title"`
-	Text     string `json:"text"`
-	Links    []Link `json:"links,omitempty"`
+	URL      string   `json:"url"`
+	FinalURL string   `json:"final_url"`
+	Title    string   `json:"title"`
+	Text     string   `json:"text"`
+	Search   bool     `json:"search,omitempty"`
+	Query    string   `json:"query,omitempty"`
+	Results  []Result `json:"results,omitempty"`
+	Links    []Link   `json:"links,omitempty"`
 	// Framable says whether the site lets another page show it in a frame.
 	Framable bool   `json:"framable"`
 	Fetched  string `json:"fetched"`
@@ -90,6 +93,21 @@ func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
 	if p, ok := f.cachedPage(u); ok {
 		return p, nil
 	}
+	if q, ok := searchQuery(u); ok {
+		rows := []Result{}
+		if q != "" {
+			var err error
+			rows, err = f.search(ctx, q)
+			if err != nil {
+				return Page{}, err
+			}
+		}
+		title := "Search DuckDuckGo"
+		if q != "" {
+			title = q + " — DuckDuckGo"
+		}
+		return Page{URL: u, FinalURL: u, Title: title, Search: true, Query: q, Results: rows, Fetched: time.Now().UTC().Format(time.RFC3339)}, nil
+	}
 	// Fetching the address the owner or the agent gave is the module's purpose; the app is
 	// single-user and loopback-only.
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil) //nolint:gosec // see above
@@ -156,108 +174,44 @@ var chrome = map[string]bool{"nav": true, "aside": true, "form": true, "button":
 var block = map[string]bool{"p": true, "div": true, "br": true, "li": true, "tr": true, "section": true, "article": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "pre": true, "blockquote": true, "header": true, "footer": true, "table": true, "ul": true, "ol": true}
 
-// extract reads a page's title, its text (blocks on their own lines, headings marked) and links.
+// extract selects readable content while retaining the page's title and navigable links.
 func extract(doc string, base *url.URL) (title, text string, links []Link) {
 	root, err := html.Parse(strings.NewReader(doc))
 	if err != nil {
-		return "", doc, nil
+		return "", mdText(doc), nil
 	}
-	var b strings.Builder
 	seen := map[string]bool{}
-	textOnly := false
-	var walk func(n *html.Node, pre bool)
-	walk = func(n *html.Node, pre bool) {
-		if n.Type == html.ElementNode {
-			if n.Data == "title" && title == "" && n.FirstChild != nil {
-				title = strings.TrimSpace(n.FirstChild.Data)
-				return
-			}
-			if textOnly && chrome[n.Data] {
-				return
-			}
-			if skip[n.Data] {
-				// The title lives in head; read it and skip the rest.
-				if n.Data == "head" {
-					for c := n.FirstChild; c != nil; c = c.NextSibling {
-						if c.Type == html.ElementNode && c.Data == "title" {
-							walk(c, false)
-						}
-					}
-				}
-				return
-			}
-			if block[n.Data] {
-				b.WriteString("\n")
-				if len(n.Data) == 2 && n.Data[0] == 'h' {
-					b.WriteString(strings.Repeat("#", int(n.Data[1]-'0')) + " ")
-				}
-				if n.Data == "li" {
-					b.WriteString("- ")
-				}
-			}
-			if n.Data == "pre" {
-				pre = true
-			}
-			if n.Data == "a" {
-				var href string
-				for _, a := range n.Attr {
-					if a.Key == "href" {
-						href = a.Val
-					}
-				}
-				if u, err := base.Parse(href); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
-					u.Fragment = ""
-					t := strings.Join(strings.Fields(textOf(n)), " ")
-					if t != "" && !seen[u.String()] && len(links) < 300 {
-						seen[u.String()] = true
-						links = append(links, Link{Text: clip(t, 120), URL: u.String()})
-					}
-				}
-			}
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Data == "title" && title == "" {
+			title = strings.TrimSpace(textOf(n))
+			return
 		}
-		if n.Type == html.TextNode {
-			if pre {
-				b.WriteString(n.Data)
-			} else if t := strings.Join(strings.Fields(n.Data), " "); t != "" {
-				if s := b.String(); len(s) > 0 && !strings.HasSuffix(s, "\n") && !strings.HasSuffix(s, " ") {
-					b.WriteString(" ")
+		if skip[n.Data] && n.Data != "head" {
+			return
+		}
+		if n.Data == "a" {
+			if raw := webURL(base, attr(n, "href")); raw != "" {
+				u, _ := url.Parse(raw)
+				u.Fragment = ""
+				key := u.String()
+				label := strings.Join(strings.Fields(textOf(n)), " ")
+				if label != "" && !seen[key] && len(links) < 300 {
+					seen[key] = true
+					links = append(links, Link{Text: clip(label, 120), URL: key})
 				}
-				b.WriteString(t)
 			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c, pre)
-		}
-		if n.Type == html.ElementNode && block[n.Data] {
-			b.WriteString("\n")
+			walk(c)
 		}
 	}
-	// The whole page, for its title and links; then, for the text, its main content when it
-	// marks one (main, else the largest article), so the reader skips the site's chrome.
-	walk(root, false)
-	b.Reset()
-	textOnly = true
-	if content := mainContent(root); content != nil {
-		walk(content, false)
-	} else {
-		walk(root, false)
+	walk(root)
+	content := mainContent(root)
+	if content == nil {
+		content = root
 	}
-	// Collapse runs of blank lines.
-	var out []string
-	blank := 0
-	for _, l := range strings.Split(b.String(), "\n") {
-		l = strings.TrimRight(l, " \t")
-		if strings.TrimSpace(l) == "" {
-			blank++
-			if blank > 1 {
-				continue
-			}
-		} else {
-			blank = 0
-		}
-		out = append(out, l)
-	}
-	return title, strings.TrimSpace(strings.Join(out, "\n")), links
+	return title, readerMarkdown(content, base), links
 }
 
 // mainContent is the page's main element, else its largest article, when it holds a fair
@@ -291,7 +245,7 @@ func mainContent(root *html.Node) *html.Node {
 	if best != nil && bestLen >= enough {
 		return best
 	}
-	return nil
+	return readableContent(root)
 }
 
 func textOf(n *html.Node) string {
@@ -325,22 +279,34 @@ func (f *fetcher) search(ctx context.Context, q string) ([]Result, error) {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("search answered %s", resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("search answered %s; try again or open DuckDuckGo in the system browser", resp.Status)
 	}
 	root, err := html.Parse(io.LimitReader(resp.Body, maxPage))
 	if err != nil {
 		return nil, err
 	}
+	return searchResults(root), nil
+}
+
+func searchResults(root *html.Node) []Result {
 	var out []Result
+	seen := map[string]bool{}
+	current := -1
+	base, _ := url.Parse("https://duckduckgo.com/")
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "a" && hasClass(n, "result__a") {
-			r := Result{Title: strings.Join(strings.Fields(textOf(n)), " "), URL: unwrap(attr(n, "href"))}
-			out = append(out, r)
+			current = -1
+			r := Result{Title: strings.Join(strings.Fields(textOf(n)), " "), URL: webURL(base, unwrap(attr(n, "href")))}
+			if r.URL != "" && r.Title != "" && !seen[r.URL] {
+				out = append(out, r)
+				current = len(out) - 1
+				seen[r.URL] = true
+			}
 		}
-		if n.Type == html.ElementNode && hasClass(n, "result__snippet") && len(out) > 0 && out[len(out)-1].Snippet == "" {
-			out[len(out)-1].Snippet = strings.Join(strings.Fields(textOf(n)), " ")
+		if n.Type == html.ElementNode && hasClass(n, "result__snippet") && current >= 0 && out[current].Snippet == "" {
+			out[current].Snippet = strings.Join(strings.Fields(textOf(n)), " ")
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c)
@@ -350,7 +316,7 @@ func (f *fetcher) search(ctx context.Context, q string) ([]Result, error) {
 	if len(out) > 15 {
 		out = out[:15]
 	}
-	return out, nil
+	return out
 }
 
 func attr(n *html.Node, key string) string {
@@ -392,4 +358,20 @@ func clip(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// Recognize only DuckDuckGo search/home pages; ordinary sites with q= remain pages.
+func searchQuery(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "duckduckgo.com" && host != "www.duckduckgo.com" && host != "html.duckduckgo.com" {
+		return "", false
+	}
+	if u.Path != "" && u.Path != "/" && u.Path != "/html/" && u.Path != "/html" {
+		return "", false
+	}
+	return strings.TrimSpace(u.Query().Get("q")), true
 }

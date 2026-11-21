@@ -25,8 +25,9 @@ func init() { module.Register(&mod{f: newFetcher()}) }
 
 type mod struct {
 	module.Base
-	f *fetcher
-	h module.Host
+	f      *fetcher // owner-only cache/client
+	public *fetcher // all agent fetches; never shares the owner cache
+	h      module.Host
 }
 
 const searchURL = "https://duckduckgo.com/?q="
@@ -80,15 +81,27 @@ func (m *mod) Manifest() module.Manifest {
 
 func (m *mod) Start(_ context.Context, h module.Host) error {
 	m.h = h
-	h.Handle("GET /read", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if m.f == nil {
+		m.f = newFetcher()
+	}
+	if m.public == nil {
+		m.public = newGuardedFetcher()
+	}
+	readPage := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, err := normalize(r.URL.Query().Get("url"))
 		if err != nil {
 			reply(w, nil, err)
 			return
 		}
-		p, err := m.f.get(r.Context(), u)
+		f := m.public
+		if r.Method == http.MethodPost && module.ActorOf(r.Context()) == module.ActorOwner && r.URL.Query().Get("public") != "true" {
+			f = m.f
+		}
+		p, err := f.get(r.Context(), u)
 		reply(w, p, err)
-	}))
+	})
+	h.Handle("GET /read", readPage)  // outside clients always use the guarded path
+	h.Handle("POST /read", readPage) // owner page POST carries the core-validated Origin
 	h.Handle("GET /resolve", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, err := normalize(r.URL.Query().Get("q"))
 		reply(w, map[string]string{"url": u}, err)
@@ -115,6 +128,7 @@ func (m *mod) open(ctx context.Context, in string, newWindow bool) (module.Windo
 		}
 		if ok {
 			args := navigate(w.Args, u)
+			args["public_only"] = module.ActorOf(ctx).Delegate()
 			if err := m.h.Desk().SetArgs(ctx, w.ID, args); err != nil {
 				return w, err
 			}
@@ -124,7 +138,7 @@ func (m *mod) open(ctx context.Context, in string, newWindow bool) (module.Windo
 		}
 	}
 	key := fmt.Sprintf("b%d", time.Now().UnixNano())
-	return m.h.Desk().Open(ctx, "browser", module.OpenOptions{Key: key, Title: hostOf(u), Args: map[string]any{"url": u, "history": []any{u}, "at": 0}})
+	return m.h.Desk().Open(ctx, "browser", module.OpenOptions{Key: key, Title: hostOf(u), Args: map[string]any{"url": u, "history": []any{u}, "at": 0, "public_only": module.ActorOf(ctx).Delegate()}})
 }
 
 // navigate is a window's args after going to u: forward history is dropped.
@@ -206,13 +220,13 @@ func (m *mod) knowledge(_ context.Context, _ module.Host, s module.Situation) (s
 		return "", nil
 	}
 	u := s.Focused.URL
-	p, ok := m.f.cachedPage(u)
+	p, ok := m.public.cachedPage(u)
 	if !ok {
 		// Warm the cache for the next message; it must outlive this (quick) call.
 		go func() { //nolint:gosec // detached on purpose: the read outlives the request
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), resourceTimeout)
 			defer cancel()
-			_, _ = m.f.get(ctx, u)
+			_, _ = m.public.get(ctx, u)
 		}()
 		return "The page in front is " + u + "; it has not been read yet (browser_read reads it).", nil
 	}
@@ -266,7 +280,7 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				p, err := m.f.get(ctx, u)
+				p, err := m.public.get(ctx, u)
 				if err != nil {
 					return nil, err
 				}
@@ -314,7 +328,7 @@ func (m *mod) tools() []module.Tool {
 				if err != nil {
 					return nil, err
 				}
-				p, err := m.f.get(ctx, u)
+				p, err := m.public.get(ctx, u)
 				if err != nil {
 					return nil, err
 				}
@@ -335,7 +349,7 @@ func (m *mod) tools() []module.Tool {
 				if strings.TrimSpace(a.Query) == "" {
 					return nil, errors.New("query is empty")
 				}
-				return m.f.search(ctx, a.Query)
+				return m.public.search(ctx, a.Query)
 			}},
 		{Name: "browser_open", Level: module.LevelAct,
 			Description: "Show a page to the owner: in the Browser window in front (or the frontmost one), or a new window with new: true. Words instead of an address open a search.",
@@ -346,7 +360,7 @@ func (m *mod) tools() []module.Tool {
 					New bool
 				}
 				_ = json.Unmarshal(in, &a)
-				w, err := m.open(ctx, a.URL, a.New)
+				w, err := m.open(module.WithActor(ctx, module.ActorAgent), a.URL, a.New)
 				if err != nil {
 					return nil, err
 				}

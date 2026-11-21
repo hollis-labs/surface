@@ -630,3 +630,47 @@ When a conversation last used a host thread, Surface selects a fresh Nanite hist
 chat ID and transcript. The first model turn says earlier messages remain in that transcript and points
 to the slot notes and standing instructions. The saved runner reference preserves the new history across
 restarts. No old model history, `agenthost_*` tables, or `chat.db` transcript records are deleted.
+
+### Optional front desk
+
+The agent config can opt into Nanite's intake planner and paced background deliveries:
+
+```json
+{
+  "front_desk": {
+    "mode": "auto",
+    "plan_with_model": true,
+    "intake_timeout_seconds": 60,
+    "merge_window_ms": 100,
+    "resume_interrupted": true
+  },
+  "builtins": ["files-read", "subtasks", "background"]
+}
+```
+
+Omit `front_desk` (or set it to null) to retain ordinary chat. An empty object
+paces notices but does not plan. `mode` is `off`, `shadow`, `suggest`, or `auto`:
+shadow evaluates plans without dispatch; suggest waits for the owner; auto can
+dispatch confident plans and asks on uncertain ones. `plan_with_model` enables
+model planning, and optional `planner_instructions` adds host guidance. Neither
+setting changes grants or approvals. Configure the required builtins and any
+custom research/worker variants in the agent directory as usual.
+
+Timeout zero uses Nanite's default (15 seconds); a positive timeout may be at
+most 300 seconds. Merge-window zero uses Nanite's default, and a positive value
+may be at most 60,000 milliseconds. Configuration changes require an app restart.
+`resume_interrupted` is a separate explicit opt-in to resume unfinished root
+turns; otherwise Nanite retains its default interrupted-turn behavior. The front
+desk recovers its saved background work after the conversation service is ready.
+
+The conversation panel shows plan events and paced delivery notices, including
+when history replays after reconnect. Suggested plans have owner-only Start and
+Decline actions; a closed or outdated suggestion is rejected by Nanite. The
+read-only `GET /api/agent/front-desk` reports whether it is enabled and its topic
+ledger. Plan decisions use `POST /api/agent/front-desk/plans/{id}/accept` or
+`/decline` for the current conversation; outside clients cannot answer them.
+
+A headless pilot's token budget may be too small for a full Surface app: the
+app supplies its module tools in addition to Nanite builtins. Measure usage on a
+disposable app before choosing a budget. Tests must use a separate data directory,
+a separate port and copied agent configuration, never an owner's conversation.

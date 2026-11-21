@@ -154,6 +154,12 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 			w.close(ctx)
 			return nil, fmt.Errorf("agent: recover turns: %w", err)
 		}
+		if d := w.nanite.Desk(); d != nil {
+			if err := d.Recover(ctx); err != nil {
+				w.close(ctx)
+				return nil, fmt.Errorf("agent: recover front desk: %w", err)
+			}
+		}
 	}
 	return w, nil
 }
@@ -191,6 +197,7 @@ func (w *wire) close(ctx context.Context) {
 //	POST   /api/agent/test/replace                  scripted runner only: replace the agent's side
 func (s *Service) mountWire(mux *http.ServeMux) {
 	w := s.wire
+	s.mountFrontDesk(mux)
 	h := http.StripPrefix(Prefix, refusalStatus(w.handler))
 	mux.HandleFunc("POST "+Prefix+"/stop-all", s.stopAll)
 	mux.Handle(Prefix+"/agents/", h)

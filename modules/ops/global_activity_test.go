@@ -22,7 +22,7 @@ func TestGlobalActivityRoutesToolsFiltersAndSlot(t *testing.T) {
 	f.comments["CW-20990101-0102"] = [][2]string{{"2099-01-01T12:00:00Z", "STATUS milestone: Ready"}}
 	h, m := start(t, f)
 	call(t, h, "ops_create", `{"id":"parent","title":"Parent","stage":"in_flight","links":[{"kind":"torque.task","id":"CW-20990101-0101"}]}`)
-	call(t, h, "ops_create", `{"id":"child","title":"Child","parent":"parent","stage":"in_review","links":[{"kind":"torque.task","id":"CW-20990101-0102"}]}`)
+	call(t, h, "ops_create", `{"id":"child","title":"Child","parent":"parent","stage":"landing","links":[{"kind":"torque.task","id":"CW-20990101-0102"}]}`)
 	code, body := h.Do("GET", "/activity", "")
 	if code != 200 {
 		t.Fatalf("%d %s", code, body)
@@ -49,7 +49,7 @@ func TestGlobalActivityRoutesToolsFiltersAndSlot(t *testing.T) {
 		count int
 	}{
 		{"workstream=child", 3}, {"stage=in_flight", 2}, {"source=comment", 1},
-		{"since=2099-01-01T11:30:00Z", 1}, {"workstream=child&stage=in_review&source=torque", 1},
+		{"since=2099-01-01T11:30:00Z", 1}, {"workstream=child&stage=landing&source=torque", 1},
 	} {
 		code, body = h.Do("GET", "/activity?"+tc.query, "")
 		if code != 200 {
@@ -93,7 +93,7 @@ func TestGlobalActivityRefreshOrderAndProgress(t *testing.T) {
 	// Put the in-flight stream after the first batch alphabetically.
 	for i := 0; i < rollAtOnce+2; i++ {
 		id := fmt.Sprintf("stream-%02d", i)
-		stage := StagePlanning
+		stage := StagePlanned
 		if i == rollAtOnce+1 {
 			stage = StageInFlight
 		}
@@ -171,7 +171,7 @@ func TestGlobalActivityCallBudgetRetainsCompleteCache(t *testing.T) {
 }
 
 func TestGlobalActivityRowsBoundAndFilterBeforeLimit(t *testing.T) {
-	b := Board{Workstreams: []Workstream{{ID: "first", Stage: StageActive}, {ID: "second", Stage: StagePlanning}}}
+	b := Board{Workstreams: []Workstream{{ID: "first", Stage: StageComplete}, {ID: "second", Stage: StagePlanned}}}
 	cached := map[string]Rollup{}
 	for _, w := range b.Workstreams {
 		r := Rollup{}

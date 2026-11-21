@@ -431,7 +431,7 @@ func TestSeedPreviewMapsTheTracker(t *testing.T) {
 			t.Errorf("bad id %q", w.ID)
 		}
 	}
-	want := map[string]string{"flight": StageInFlight, "queued": StageQueued, "review": StageInReview, "landed": StageAdoption}
+	want := map[string]string{"flight": StageInFlight, "queued": StageQueued, "review": StageLanding, "landed": StageLanding}
 	for i, th := range tr.Threads {
 		if got := p.Workstreams[i].Stage; got != want[th.Stage] {
 			t.Errorf("%s: %s -> %s", th.Name, th.Stage, got)

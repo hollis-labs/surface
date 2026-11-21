@@ -118,7 +118,7 @@ func (m *mod) Manifest() module.Manifest {
 		Refs:  m.refs(),
 		Slots: []module.Slot{{
 			Name:  "ops",
-			About: "the owner's operations board: workstreams (concepts of any size, nested) moving from planning through the queue to in flight, review, adoption and active",
+			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
 			Tools: []string{"ops_list", "ops_get", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",

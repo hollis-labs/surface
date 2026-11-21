@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { message, opsClient, type SeedPlan, type SeedResult, type Stage, stageLabel } from "./api"
 
 const NONE = "\u0000none"
-const SEED_STAGES: Stage[] = ["planning", "planned", "queued", "in_flight", "in_review", "adoption", "active"]
+const SEED_STAGES: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete"]
 
 export function SeedView({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])

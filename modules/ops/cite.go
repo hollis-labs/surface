@@ -71,13 +71,13 @@ func (m *mod) entity(ctx context.Context, w Workstream, full bool) module.RefEnt
 	}
 	if full {
 		var sb strings.Builder
-		for _, s := range []struct{ h, t string }{{"Purpose", w.Purpose}, {"Active means", w.ActiveMeans}, {"Notes", w.Notes}} {
+		for _, s := range []struct{ h, t string }{{"Purpose", w.Purpose}, {"Complete means", w.ActiveMeans}, {"Notes", w.Notes}} {
 			if strings.TrimSpace(s.t) != "" {
 				sb.WriteString("## " + s.h + "\n\n" + strings.TrimSpace(s.t) + "\n\n")
 			}
 		}
 		if len(w.ActiveWhen) > 0 {
-			sb.WriteString("## Active when\n\n")
+			sb.WriteString("## Complete when\n\n")
 			for _, c := range w.ActiveWhen {
 				x := " "
 				if c.Done {
@@ -97,9 +97,9 @@ func stageTone(s string) string {
 		return "info"
 	case StageQueued, StagePlanned:
 		return "neutral"
-	case StageInReview, StageAdoption:
+	case StageLanding:
 		return "warning"
-	case StageActive:
+	case StageComplete:
 		return "success"
 	case StageDropped:
 		return "danger"

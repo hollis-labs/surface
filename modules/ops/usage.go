@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +27,12 @@ const (
 	usageGap       = "gap"
 )
 
-const gatewaySource = "llm-gateway"
+// routerSource is Tether's own AI router (tether_ai_*): the calls Tether makes itself,
+// not the llm-gateway that Basalisk and Studio send their turns through.
+const (
+	routerSource  = "tether-ai"
+	gatewaySource = "llm-gateway"
+)
 
 type UsageCard struct {
 	ID     string `json:"id"`
@@ -140,7 +146,7 @@ func (c *usageCache) clock() time.Time {
 }
 
 func (c *usageCache) read(ctx context.Context, link func() (tetherlink.Caller, error), source string) (UsageResult, error) {
-	if source != "" && source != gatewaySource && !isSubscription(source) {
+	if source != "" && source != routerSource && source != gatewaySource && !isSubscription(source) {
 		return UsageResult{}, fmt.Errorf("unknown usage source %q", source)
 	}
 	c.mu.Lock()
@@ -159,15 +165,17 @@ func (c *usageCache) read(ctx context.Context, link func() (tetherlink.Caller, e
 	g := c.gateway
 	card := g.card
 	if g.err != nil {
-		card = UsageCard{ID: gatewaySource, Title: "LLM gateway", Kind: "gateway", Status: usageError,
-			Gap: "Gateway usage unavailable: " + g.err.Error(), Observed: g.at.UTC().Format(time.RFC3339)}
+		card = UsageCard{ID: routerSource, Title: routerTitle, Kind: "router", Status: usageError,
+			Gap: "Tether AI router usage unavailable: " + g.err.Error(), Observed: g.at.UTC().Format(time.RFC3339)}
 	}
-	out := UsageResult{Cards: []UsageCard{card}, Source: source, FetchedAt: g.at.UTC().Format(time.RFC3339)}
+	gateway := UsageCard{ID: gatewaySource, Title: "LLM gateway", Kind: "gateway", Status: usageGap,
+		Gap: "Not collected yet. Basalisk and Studio turns go through llm-gateway, whose own usage, budgets and spend are not wired in; the Tether AI router card does not include them."}
+	out := UsageResult{Cards: []UsageCard{gateway, card}, Source: source, FetchedAt: g.at.UTC().Format(time.RFC3339)}
 	for _, s := range subscriptions {
 		out.Cards = append(out.Cards, UsageCard{ID: s.id, Title: s.title, Kind: "subscription", Status: usageGap,
 			Gap: "Not collected yet. A read-only collector for this subscription's CLI is pending."})
 	}
-	if source == gatewaySource && g.err == nil {
+	if source == routerSource && g.err == nil {
 		d := g.detail
 		out.Detail = &d
 	}
@@ -222,10 +230,11 @@ func readGateway(ctx context.Context, link tetherlink.Caller, now time.Time) (Us
 
 	today := detail.Windows[0].Total
 	used := float64(today.Requests)
-	card := UsageCard{ID: gatewaySource, Title: "LLM gateway", Kind: "gateway", Status: usageOK, Used: &used, Unit: "requests",
+	month30 := detail.Windows[len(detail.Windows)-1].Total
+	card := UsageCard{ID: routerSource, Title: routerTitle, Kind: "router", Status: usageOK, Used: &used, Unit: "requests since 00:00 UTC",
 		Window: "day (UTC)", ResetAt: day.AddDate(0, 0, 1).Format(time.RFC3339), Observed: now.Format(time.RFC3339),
-		Summary: fmt.Sprintf("%d requests today, %d errors, %d in / %d out tokens. The gateway reports no cost, so spend against budgets is unknown.",
-			today.Requests, today.Errors, today.InputTokens, today.OutputTokens)}
+		Summary: fmt.Sprintf("Calls Tether makes through its own AI router (not llm-gateway). Since %s: %d requests, %d errors, %d in / %d out tokens. Last 30 days: %d requests. The router records no cost, so spend against budgets is unknown.",
+			day.Format("2006-01-02 15:04 UTC"), today.Requests, today.Errors, today.InputTokens, today.OutputTokens, month30.Requests)}
 	if today.Errors > 0 && today.Successes == 0 {
 		card.Status = usageWarning
 	}
@@ -239,9 +248,9 @@ func readGateway(ctx context.Context, link tetherlink.Caller, now time.Time) (Us
 		}
 	}
 	if len(detail.Budgets) == 0 {
-		card.Gap = "No gateway budgets are configured, so there is no limit to measure against."
+		card.Gap = "No router budgets are configured, so there is no limit to measure against."
 	} else if card.Status == usageWarning {
-		card.Gap = "A budget reports an error; see details."
+		card.Gap = budgetProblems(detail.Budgets)
 	}
 	return card, detail, nil
 }
@@ -307,6 +316,50 @@ func readGatewayBudgets(ctx context.Context, link tetherlink.Caller) ([]UsageBud
 			Exhausted: b.Exhausted, Error: b.Error})
 	}
 	return out, nil
+}
+
+const routerTitle = "Tether AI router"
+
+// budgetProblems says which budgets are broken and what that means, in place of an
+// opaque "see details".
+func budgetProblems(budgets []UsageBudget) string {
+	var out []string
+	for _, b := range budgets {
+		if b.Error == "" {
+			continue
+		}
+		name := b.Provider
+		if b.Model != "" {
+			name += " / " + b.Model
+		}
+		out = append(out, fmt.Sprintf("Budget %s (%s, per %s, limit %s) cannot be evaluated: Tether reports %q. A request this budget covers fails with that error and is logged as a budget rejection, so the limit is not being measured. The budget is set in Tether's AI catalog.",
+			name, orUnknown(b.Scope), orUnknown(b.Window), budgetLimit(b), b.Error))
+	}
+	return strings.Join(out, " ")
+}
+
+func orUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
+
+func budgetLimit(b UsageBudget) string {
+	var parts []string
+	if b.MaxCostUSD != nil {
+		parts = append(parts, fmt.Sprintf("$%g", *b.MaxCostUSD))
+	}
+	if b.MaxRequests != nil {
+		parts = append(parts, fmt.Sprintf("%g requests", *b.MaxRequests))
+	}
+	if b.MaxTokens != nil {
+		parts = append(parts, fmt.Sprintf("%g tokens", *b.MaxTokens))
+	}
+	if len(parts) == 0 {
+		return "unknown"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // budgetReset is the window start plus the window; empty when either is unknown.

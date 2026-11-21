@@ -63,15 +63,24 @@ func TestUsageGatewayCardAndDetail(t *testing.T) {
 	now := time.Date(2026, 11, 21, 14, 30, 0, 0, time.UTC)
 	f := &usageFake{}
 	c := &usageCache{now: func() time.Time { return now }}
-	r, err := c.read(t.Context(), fixedLink(f), gatewaySource)
+	r, err := c.read(t.Context(), fixedLink(f), routerSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Cards) != 1+len(subscriptions) {
+	if len(r.Cards) != 2+len(subscriptions) {
 		t.Fatalf("cards: %+v", r.Cards)
 	}
-	g := r.Cards[0]
-	if g.ID != gatewaySource || g.Used == nil || *g.Used != 3 || g.Limit != nil {
+	if gw := r.Cards[0]; gw.ID != gatewaySource || gw.Status != usageGap || gw.Used != nil || gw.Gap == "" {
+		t.Errorf("llm-gateway must be a labeled gap until wired: %+v", gw)
+	}
+	g := r.Cards[1]
+	if !strings.Contains(g.Summary, "Last 30 days: 40 requests") || !strings.Contains(g.Summary, "not llm-gateway") {
+		t.Errorf("summary must name the window and the source: %s", g.Summary)
+	}
+	if !strings.Contains(g.Gap, "jev / jev-1") || !strings.Contains(g.Gap, "scope needs a purpose") || !strings.Contains(g.Gap, "$2") {
+		t.Errorf("budget error must be spelled out on the card: %s", g.Gap)
+	}
+	if g.ID != routerSource || g.Used == nil || *g.Used != 3 || g.Limit != nil {
 		t.Fatalf("gateway card: %+v", g)
 	}
 	if g.ResetAt != "2026-11-22T00:00:00Z" {
@@ -80,7 +89,7 @@ func TestUsageGatewayCardAndDetail(t *testing.T) {
 	if g.Status != usageWarning || g.Gap == "" {
 		t.Errorf("a budget error must warn: %+v", g)
 	}
-	for _, s := range r.Cards[1:] {
+	for _, s := range r.Cards[2:] {
 		if s.Status != usageGap || s.Used != nil || s.Gap == "" {
 			t.Errorf("subscription must be a labeled gap, not zero: %+v", s)
 		}
@@ -112,14 +121,14 @@ func TestUsageExhaustedBudgetAndNoBudgets(t *testing.T) {
 	f := &usageFake{budgets: `{"budgets":[{"provider":"p","exhausted":true,"window_start":"2026-11-21T14:00:00Z","usage_budget":{"window":"hour","max_requests":10}}]}`}
 	c := &usageCache{now: func() time.Time { return now }}
 	r, _ := c.read(t.Context(), fixedLink(f), "")
-	if r.Cards[0].Status != usageExhausted || r.Cards[0].ResetAt != "2026-11-21T15:00:00Z" {
-		t.Fatalf("exhausted: %+v", r.Cards[0])
+	if r.Cards[1].Status != usageExhausted || r.Cards[1].ResetAt != "2026-11-21T15:00:00Z" {
+		t.Fatalf("exhausted: %+v", r.Cards[1])
 	}
 	f2 := &usageFake{budgets: `{"budgets":[]}`}
 	c2 := &usageCache{now: func() time.Time { return now }}
 	r, _ = c2.read(t.Context(), fixedLink(f2), "")
-	if !strings.Contains(r.Cards[0].Gap, "No gateway budgets") {
-		t.Fatalf("no-budget gap: %+v", r.Cards[0])
+	if !strings.Contains(r.Cards[1].Gap, "No router budgets") {
+		t.Fatalf("no-budget gap: %+v", r.Cards[1])
 	}
 }
 
@@ -131,7 +140,7 @@ func TestUsageSharedCacheIncludingFailure(t *testing.T) {
 	for range 10 {
 		wg.Go(func() {
 			r, err := c.read(t.Context(), fixedLink(f), "")
-			if err != nil || r.Cards[0].Status != usageError || !strings.Contains(r.Cards[0].Gap, "unavailable") {
+			if err != nil || r.Cards[1].Status != usageError || !strings.Contains(r.Cards[1].Gap, "unavailable") {
 				t.Errorf("failure card: %+v %v", r.Cards, err)
 			}
 		})
@@ -142,7 +151,7 @@ func TestUsageSharedCacheIncludingFailure(t *testing.T) {
 	}
 	now = now.Add(usageTTL)
 	f.fail = false
-	if r, _ := c.read(t.Context(), fixedLink(f), ""); r.Cards[0].Status == usageError {
+	if r, _ := c.read(t.Context(), fixedLink(f), ""); r.Cards[1].Status == usageError {
 		t.Fatal("did not refresh after TTL")
 	}
 	if _, err := c.read(t.Context(), fixedLink(f), "nope"); err == nil {

@@ -5,6 +5,17 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.12.0] - 2026-11-21
+
+- **Ops: the owner's stage model.** Workstreams move planned → parked → queued → in flight → landing → complete
+  (dropped stays). ops/v1 documents carry `planned | parked | queued | in_flight | landing | complete | dropped`;
+  older values are read and mapped (planning → planned, in_review and adoption → landing, active → complete;
+  planning or planned with `held` → parked), and an unknown stage is shown as a problem instead of being filed as
+  planned. Ops writes only the new keys and keeps fields it does not know. A read-only comparison reports how the
+  live documents map.
+- **Front desk:** decided plans show as decided after a reload; the conversation's live streams close promptly on
+  shutdown.
+
 ## [0.11.0] - 2026-11-21
 
 - **Front desk (opt-in).** `"front_desk"` in the agent config turns on Nanite's front desk: a request can become a

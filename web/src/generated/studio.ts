@@ -17,6 +17,7 @@ import m15 from "../../../modules/work/web/index"
 import m16 from "../../../modules/frag/web/index"
 import m17 from "../../../modules/approvals/web/index"
 import m18 from "../../../modules/workbench/web/index"
+import m19 from "../../../modules/workflows/web/index"
 
 export const app = { name: "studio", title: "Surface Studio" }
 
@@ -38,4 +39,5 @@ export const modules: Record<string, ModuleWeb> = {
   "frag": m16,
   "approvals": m17,
   "workbench": m18,
+  "workflows": m19,
 }

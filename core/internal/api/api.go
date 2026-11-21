@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hollis-labs/substrate/modules/httphost"
 	"io"
 	"io/fs"
 	"net"
@@ -286,6 +287,8 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	for {
 		select {
+		case <-httphost.Stopping(r):
+			return
 		case <-r.Context().Done():
 			return
 		case ev := <-ch:

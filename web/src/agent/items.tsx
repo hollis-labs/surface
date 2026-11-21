@@ -4,7 +4,7 @@
  * for it, and every other tool by the plain row.
  */
 import type { ChatItem } from "@hollis-labs/surface-chat"
-import { type ComponentType, useState } from "react"
+import { type ComponentType, useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ui/tool"
 import { CardView } from "../cards/renderers"
 import { lateOpen, type ServerCard, useCard } from "../cards/store"
+import { useEvent } from "../sdk"
 
 type Of<K extends ChatItem["kind"]> = Extract<ChatItem, { kind: K }>
 export type ToolItem = Of<"tool">
@@ -136,8 +137,28 @@ function ToolRow({ item }: { item: ToolItem }) {
 
 function DeskPlan({ item }: { item: Of<"plan"> }) {
   const [status, setStatus] = useState("")
+  const [loaded, setLoaded] = useState(item.disposition !== "suggest")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const refresh = useCallback(async () => {
+    if (item.disposition !== "suggest") return
+    try {
+      const r = await fetch(`/api/agent/front-desk/plans/${encodeURIComponent(item.planID)}`)
+      const body = await r.json()
+      if (!r.ok) throw new Error(body.message || "Could not load the plan decision.")
+      setStatus((current) => (body.status === "accept" ? "Started" : body.status === "decline" ? "Declined" : current))
+      setLoaded(true)
+      setError("")
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [item.planID, item.disposition])
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+  useEvent<{ plan: string }>("agent.plan.decision", (ev) => {
+    if (ev.data.plan === item.planID) void refresh()
+  })
   const answer = async (action: "accept" | "decline") => {
     setBusy(true)
     setError("")
@@ -160,7 +181,7 @@ function DeskPlan({ item }: { item: Of<"plan"> }) {
         {status || (item.disposition === "dispatch" ? "Background plan started" : "Suggested background plan")}
       </MessageNotice>
       <Markdown>{item.text}</Markdown>
-      {item.disposition === "suggest" && !status && (
+      {item.disposition === "suggest" && loaded && !status && (
         <div className="flex gap-2">
           <Button size="sm" disabled={busy} onClick={() => void answer("accept")}>
             Start plan

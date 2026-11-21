@@ -43,8 +43,9 @@ type mod struct {
 	life context.Context
 	work sync.WaitGroup
 
-	mu    sync.Mutex
-	state string // "" connected, or why not
+	showMu sync.Mutex // serialize approval lookup/publication/identity persistence
+	mu     sync.Mutex
+	state  string // "" connected, or why not
 	// cancelStream ends the open connection (a settings change reconnects at once).
 	cancelStream context.CancelFunc
 }
@@ -223,15 +224,16 @@ func (m *mod) byCard(ctx context.Context, card string) (shownRow, bool) {
 	return m.scanShown(m.db.QueryRowContext(ctx, `SELECT `+shownCols+` FROM shown WHERE card_id=?`, card))
 }
 
-func (m *mod) remember(ctx context.Context, r shownRow) {
+func (m *mod) remember(ctx context.Context, r shownRow) error {
 	scopes, _ := json.Marshal(r.scopes)
 	if r.scopes == nil {
 		scopes = []byte("[]")
 	}
-	_, _ = m.db.ExecContext(ctx, `INSERT INTO shown(`+shownCols+`, updated_at) VALUES(?,?,?,?,?,?,?,?,?)
+	_, err := m.db.ExecContext(ctx, `INSERT INTO shown(`+shownCols+`, updated_at) VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(approval_id) DO UPDATE SET card_id=excluded.card_id, type=excluded.type, status=excluded.status, title=excluded.title,
 		scopes=excluded.scopes, post_url=excluded.post_url, field=excluded.field, updated_at=excluded.updated_at`,
 		r.id, r.card, r.typ, r.status, r.title, string(scopes), r.post, r.field, time.Now().UTC().Format(time.RFC3339))
+	return err
 }
 
 func (m *mod) pendingCount(ctx context.Context) int {

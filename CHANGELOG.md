@@ -5,6 +5,20 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.10.1] - 2026-11-21
+
+- **Browser: real search results and a readable view.** A DuckDuckGo search shows a results list (titles, snippets,
+  links) parsed server-side; a page that cannot be framed opens in a reader that keeps headings, links and images,
+  rendered as structured blocks (no page HTML in the app).
+- **Browser: every agent fetch is public-only.** One guarded fetcher for agent fetches and agent-opened windows:
+  HTTP(S) on 80/443, resolved once and pinned, every redirect re-checked, loopback, private, link-local, tailnet
+  and reserved targets refused, credentials stripped, size/time/concurrency limits. The owner's own browsing keeps
+  reaching internal services, with a separate cache and no credentials.
+- **Fixed: an approval card could be shown twice, or lose track of its answer, after a reconnect** (the card's
+  record was lost when the reconnect cancelled it right after showing).
+- **Old agent-folder snapshots are pruned** at start and after a rebind: kept when bound, among the newest 10, or
+  used in the last 7 days.
+
 - Prune old module-agent snapshots at boot and after rebinding, retaining current bindings,
   the newest 10 snapshots and seven days of use. Recovery reports a missing snapshot explicitly.
 

@@ -89,6 +89,16 @@ func (m *mod) tools() []module.Tool {
 				}
 				return m.fleet(ctx, a.Host)
 			}},
+		{Name: "ops_usage", Level: module.LevelRead,
+			Description: "Usage against limits for what we pay for or are rate-limited on: one card per source with status, usage, limit and reset time. With source=llm-gateway, include its details: request and token totals for today, 7 and 30 days, the biggest providers and models, budgets and recent budget alerts. Subscriptions not yet collected are gaps, not zero. Read-only; cached for a minute.",
+			Input:       schema(`"source":{"type":"string","description":"A card id from the list (llm-gateway, claude, codex, agy, opencode); omitted lists cards."}`),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				a, err := args[struct{ Source string }](in)
+				if err != nil {
+					return nil, err
+				}
+				return m.usage(ctx, a.Source)
+			}},
 		{Name: "ops_list", Level: module.LevelRead,
 			Description: "The Operations board: workstreams by lane (stage), the Queued band in launch order, and for each its owner, held reason, parent and children, Torque roll-up and last activity (from the cache). Top-level concepts by default; parent lists one concept's children; all lists every level. stage, owner and held narrow it.",
 			Input: schema(`"stage":{"type":"string",` + stageEnum + `},"owner":{"type":"string"},"held":{"type":"boolean"},` +

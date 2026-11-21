@@ -43,6 +43,7 @@ const (
 // launches, dispatches, claims or forms a team (forbidden, checked by a test).
 var allowed = tetherlink.Allowed{
 	"cerberus_fleet_snapshot": true, "cerberus_host_list": true, "cerberus_host_samples": true,
+	"tether_ai_usage": true, "tether_ai_budgets": true, "tether_ai_budget_alerts": true,
 	"caster_get": true, "caster_ls": true, "caster_put": true, "caster_log": true,
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
@@ -76,6 +77,7 @@ type mod struct {
 	// tasks is the Torque reads shared by every roll-up.
 	liveSessions    sessionCache
 	liveFleet       fleetCache
+	liveUsage       usageCache
 	tasks           *taskCache
 	activityMu      sync.Mutex
 	activityPending []string
@@ -127,7 +129,7 @@ func (m *mod) Manifest() module.Manifest {
 			Name:  "ops",
 			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
-			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_activity", "ops_agents", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
+			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_usage", "ops_activity", "ops_agents", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",
 			Instructions: "The board is the owner's. Read before you write (ops_get gives rev, the base_rev for ops_update). Propose moves; make them on the owner's word, with why. " +
 				"Moves are explicit: a suggested stage is a hint to put to the owner, never a move you make on your own. " +
@@ -293,6 +295,10 @@ func (m *mod) describeBoard(_ context.Context, _ module.Host, w module.Window) (
 		return wc, nil
 	}
 	if w.Args["layout"] == "agents" {
+		return wc, nil
+	}
+	if w.Args["layout"] == "usage" {
+		wc.Extra["source"] = w.Args["source"]
 		return wc, nil
 	}
 	if w.Args["layout"] == "activity" {

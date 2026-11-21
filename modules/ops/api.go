@@ -91,6 +91,14 @@ func (m *mod) routes(h module.Host) {
 		}
 		reply(w, http.StatusOK, result)
 	})
+	handle("GET /usage", func(w http.ResponseWriter, r *http.Request) {
+		result, err := m.usage(r.Context(), r.URL.Query().Get("source"))
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		reply(w, http.StatusOK, result)
+	})
 	handle("GET /board", m.apiBoard)
 	handle("GET /activity", m.apiGlobalActivity)
 	handle("GET /agents", m.apiAgents)

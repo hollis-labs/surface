@@ -34,7 +34,7 @@ const (
 	viewWS     = "ops.workstream"
 	viewSeed   = "ops.seed"
 	readBack   = 15 * time.Second
-	rollEvery  = 4  // read-backs between roll-ups of what is in flight (a minute)
+	rollEvery  = 4  // read-backs between activity refresh batches (a minute)
 	rollAtOnce = 12 // workstreams rolled up per round at most
 )
 
@@ -70,7 +70,10 @@ type mod struct {
 	rolling bool
 	bg      sync.WaitGroup
 	// tasks is the Torque reads shared by every roll-up.
-	tasks *taskCache
+	tasks           *taskCache
+	activityMu      sync.Mutex
+	activityPending []string
+	activityNext    time.Time
 }
 
 func (m *mod) Manifest() module.Manifest {
@@ -148,7 +151,7 @@ func (m *mod) Stop(context.Context) error {
 	return nil
 }
 
-// kickRoll rolls up what is in flight in the background, once at a time, so the board's
+// kickRoll refreshes activity in the background, once at a time, so the board's
 // cards get their task line soon after it opens rather than at the next minute.
 func (m *mod) kickRoll() {
 	m.mu.Lock()
@@ -168,7 +171,7 @@ func (m *mod) kickRoll() {
 		}()
 		ctx, cancel := context.WithTimeout(m.run, time.Minute)
 		defer cancel()
-		m.rollInFlight(ctx)
+		m.rollActivity(ctx)
 	}()
 }
 
@@ -200,7 +203,7 @@ func (m *mod) changed(id, what string) {
 }
 
 // watch reads the copy back from Caster every 15 s while an Operations window is open, and
-// every minute rolls up the activity of what is in flight (cached; the views draw it).
+// every minute refreshes a bounded activity batch (cached; the views draw it).
 func (m *mod) watch(ctx context.Context) {
 	defer close(m.done)
 	t := time.NewTicker(readBack)
@@ -238,25 +241,9 @@ func (m *mod) windowOpen(ctx context.Context) bool {
 	return false
 }
 
-// rollInFlight refreshes the cached roll-ups of in-flight workstreams that are stale.
-func (m *mod) rollInFlight(ctx context.Context) {
-	b, err := m.st.All(ctx)
-	if err != nil {
-		return
-	}
-	n := 0
-	for _, w := range b.Workstreams {
-		if ctx.Err() != nil || w.Stage != StageInFlight || n >= rollAtOnce {
-			continue
-		}
-		if _, at, ok := m.st.cachedRollup(ctx, w.ID); ok && time.Since(at) < activityFresh {
-			continue
-		}
-		n++
-		if _, err := m.rollup(ctx, w.ID, true); err == nil {
-			m.h.Events().Publish("ops.activity", map[string]any{"id": w.ID})
-		}
-	}
+// rollActivity advances the shared refresh cycle, starting with in-flight workstreams.
+func (m *mod) rollActivity(ctx context.Context) {
+	_, _ = m.globalActivity(ctx, activityFilter{}, false)
 }
 
 // sync brings the copy up to date (at most every 15 s unless forced). The error is a
@@ -289,7 +276,13 @@ func (m *mod) rollup(ctx context.Context, id string, force bool) (Rollup, error)
 // ---- What the agent is told ----
 
 func (m *mod) describeBoard(_ context.Context, _ module.Host, w module.Window) (module.WindowContext, error) {
-	wc := module.WindowContext{Kind: "data", Ref: "ops", Extra: map[string]any{}}
+	wc := module.WindowContext{Kind: "data", Ref: "ops", Extra: map[string]any{"layout": w.Args["layout"]}}
+	if w.Args["layout"] == "activity" {
+		for _, k := range []string{"workstream", "stage", "source", "since"} {
+			wc.Extra[k] = w.Args[k]
+		}
+		return wc, nil
+	}
 	if p, _ := w.Args["parent"].(string); ValidID(p) {
 		wc.Ref = Ref(p)
 		wc.Extra["inside"] = p
@@ -365,7 +358,7 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 		}
 	}
 	j, _ := json.Marshal(out)
-	return "Operations (from the working copy):\n" + string(j), nil
+	return "Operations (from the working copy):\n" + string(j) + "\n" + latestActivityLine(b, cached), nil
 }
 
 // actor is who a write is recorded as.

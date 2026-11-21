@@ -106,7 +106,7 @@ being moved. `parent: ""` makes one top level.
 
 ## Activity
 
-Read when a drill-in opens, on its refresh button, and every minute for in-flight workstreams while an
+Read when a drill-in or the board's **Activity** layout opens, on its refresh button, and every minute while an
 Operations window is open (`ops.activity`); cached per workstream in the module database for a minute. One
 feed, newest first, each row `{at, source, state, summary, task, workstream, verified}`:
 
@@ -128,6 +128,21 @@ as direct and epic links. A task linked several ways counts once. Plans and thei
 a minute, including across parent/child workstream roll-ups. Child pages are followed up to the 80-task
 bound; incomplete reads are shown as problems, not as an empty plan. At most 80 distinct plans are expanded
 per roll-up. `ops_get` includes plans, and the focused workstream's slot context includes cached plans and task counts.
+
+The board's Activity layout merges the same per-workstream caches across every level, newest first,
+with a Cite chip (`ops:<id>`) on each row. Workstream, current stage, source and since (UTC) filters
+are kept in the window args and applied before the global 300-row limit. Rows repeated in parent and
+child roll-ups appear once; a task explicitly linked to different workstreams keeps each association.
+`GET /activity` accepts `workstream`, `stage`, `source`, `since` and `refresh=1`.
+
+A shared refresh cycle starts with in-flight workstreams, then visits all other lanes. Each batch
+reads at most 12 workstreams, 240 Torque/status calls (including plan and epic expansion), and takes
+at most a minute; the existing six-call concurrency limit applies. Automatic batches run at most once a minute, even with multiple viewers. Remaining workstreams continue
+in the next batch, so later lanes cannot starve. Fresh caches are reused; a manual refresh starts a
+new cycle when none is pending. Budget-interrupted reads preserve the previous complete cache and
+retry later. The response reports pending work, truncation and source errors; partial coverage is
+shown in the view. Background refresh uses the same cycle and publishes `ops.activity`; the page
+does not poll. Caster board synchronization keeps its existing separate read-back schedule.
 
 ## Seeding from the tracker
 
@@ -165,6 +180,7 @@ tests.
 
 | Route | |
 |---|---|
+| `GET /activity` | Global feed with workstream, stage, source and since filters; `refresh=1` refreshes a bounded batch |
 | `GET /board` (`?force=1`) | Every workstream with its cached roll-up line, the queue, the owner's follow-ups |
 | `POST /workstreams` | Create |
 | `GET /workstreams/{id}` | One, with its children and the path above it |
@@ -186,13 +202,13 @@ owner. Writes are recorded as the actor the core names. Every write publishes `o
 |---|---|---|
 | `ops_list` | read | The board by lane at one level (`parent`, or `all`), the queue, filters `stage`, `owner`, `held` |
 | `ops_get` | read | One workstream, its roll-up and last 10 activity rows |
-| `ops_activity` | read | The merged feed, filtered by `since`, `source`, `task` |
+| `ops_activity` | read | Without `id`, global activity; with `id`, a workstream roll-up. Filters: `workstream`, `stage` (global), `since`, `source`, `task`; bounded `limit` |
 | `ops_create`, `ops_update`, `ops_move`, `ops_queue_reorder`, `ops_link`, `ops_unlink` | write | Asked of the owner each time (an approval can stand) |
 | `ops_seed` | act | A seed preview from the tracker's JSON, opened for the owner; writes nothing |
 
 The `ops` slot (views `ops`, `ops.workstream`, `ops.seed`) gives lane counts, the queue head, what is in
 flight with held reasons, task counts and the age of its last activity, and the workstream in front, all from
-the working copy. Cite: `ops:<id>` is `ops.workstream`, resolved from the copy only; opening it runs `ops.open`.
+the working copy, plus a one-line latest activity across workstreams. Cite: `ops:<id>` is `ops.workstream`, resolved from the copy only; opening it runs `ops.open`.
 
 Settings: `ops.tether_command`, or `ops.tether_url` with `ops.tether_token_file`.
 

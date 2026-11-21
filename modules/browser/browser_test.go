@@ -11,7 +11,7 @@ func TestExtract(t *testing.T) {
 	base, _ := url.Parse("https://example.com/a/")
 	title, text, links := extract(`<html><head><title> Hi </title><script>evil()</script></head>
 <body><h1>Head</h1><p>One <b>two</b></p><ul><li>x</li></ul><a href="../b#frag">B link</a><a href="javascript:x">no</a></body></html>`, base)
-	if title != "Hi" || strings.Contains(text, "evil") || !strings.Contains(text, "# Head") || !strings.Contains(text, "One two") || !strings.Contains(text, "- x") {
+	if title != "Hi" || strings.Contains(text, "evil") || !strings.Contains(text, "# Head") || !strings.Contains(text, "One **two**") || !strings.Contains(text, "- x") {
 		t.Fatalf("%q %q", title, text)
 	}
 	if len(links) != 1 || links[0].URL != "https://example.com/b" {

@@ -6,11 +6,21 @@
 
 import { type ModuleWeb, useAnchor, useSetting, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { ArrowLeft, ArrowRight, BookOpenText, ExternalLink, Globe, House, RotateCw } from "lucide-react"
-import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react"
+import {
+  type ComponentProps,
+  type FormEvent,
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
+import { Markdown } from "@/components/ui/markdown"
 import { Spinner } from "@/components/ui/spinner"
 import { Toggle } from "@/components/ui/toggle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -22,6 +32,9 @@ interface Page {
   title: string
   text: string
   links?: { text: string; url: string }[]
+  search?: boolean
+  query?: string
+  results?: { title: string; url: string; snippet?: string }[]
   framable: boolean
 }
 
@@ -67,7 +80,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
     if (win.args.focus_address || !url) input.current?.focus()
   }, [win.args.focus_address, url])
 
-  const showReader = reader || (page !== null && !page.framable)
+  const showReader = !page?.search && (reader || (page !== null && !page.framable))
 
   // Read the page on the server: its title, whether it may be framed, and the reader text.
   // Only a new address or a reload (tick) reads it again.
@@ -75,6 +88,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
   useEffect(() => {
     if (!url) return
     let live = true
+    setPage(null)
     setLoading(true)
     setErr("")
     api
@@ -96,16 +110,19 @@ function BrowserView({ win, desk, api }: ViewProps) {
     if (page) desk.report(win.id, { title: page.title, reader: showReader })
   }, [page, showReader, desk, win.id])
 
-  const go = async (to: string) => {
-    if (!to.trim()) return
-    const r = await api.get<{ url: string }>(`resolve?q=${encodeURIComponent(to)}`).catch((e: Error) => {
-      setErr(e.message)
-      return null
-    })
-    if (!r) return
-    const hist = [...history.slice(0, at + 1), r.url].slice(-100)
-    void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1 })
-  }
+  const go = useCallback(
+    async (to: string) => {
+      if (!to.trim()) return
+      const r = await api.get<{ url: string }>(`resolve?q=${encodeURIComponent(to)}`).catch((e: Error) => {
+        setErr(e.message)
+        return null
+      })
+      if (!r) return
+      const hist = [...history.slice(0, at + 1), r.url].slice(-100)
+      void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1 })
+    },
+    [api, desk, win.id, history, at],
+  )
   const step = (d: number) => {
     const i = at + d
     if (i < 0 || i >= history.length) return
@@ -120,6 +137,27 @@ function BrowserView({ win, desk, api }: ViewProps) {
     desk.report(win.id, { title: page?.title, reader: true, selection: s.slice(0, 2000) })
   }
   const unframable = page !== null && !page.framable
+  const readerComponents = useMemo<ComponentProps<typeof Markdown>["components"]>(
+    () => ({
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          onClick={(e) => {
+            if (href) {
+              e.preventDefault()
+              void go(href)
+            }
+          }}
+        >
+          {children}
+        </a>
+      ),
+      img: ({ src, alt }) => (
+        <img src={src} alt={alt ?? ""} className="max-w-full" loading="lazy" referrerPolicy="no-referrer" />
+      ),
+    }),
+    [go],
+  )
 
   return (
     <div className="@container flex h-full min-h-0 flex-col">
@@ -169,12 +207,20 @@ function BrowserView({ win, desk, api }: ViewProps) {
           onChange={(e) => setAddress(e.target.value)}
           onFocus={(e) => e.target.select()}
         />
-        <Tip label={unframable ? "This site cannot be shown in a frame: reader mode" : "Reader mode"}>
+        <Tip
+          label={
+            page?.search
+              ? "Search results"
+              : unframable
+                ? "This site cannot be shown in a frame: reader mode"
+                : "Reader mode"
+          }
+        >
           <Toggle
             size="sm"
             aria-label="Reader mode"
             pressed={showReader}
-            disabled={unframable}
+            disabled={unframable || page?.search}
             onPressedChange={setReader}
           >
             <BookOpenText />
@@ -207,7 +253,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
             </EmptyHeader>
           </Empty>
         )}
-        {url && !showReader && (
+        {url && page && !page.search && !showReader && (
           <iframe
             key={`${url}#${tick}`}
             className="browser-frame block size-full border-0"
@@ -217,21 +263,54 @@ function BrowserView({ win, desk, api }: ViewProps) {
             referrerPolicy="no-referrer"
           />
         )}
+        {loading && (
+          <p role="status" className="p-4 text-sm text-muted-foreground">
+            Loading…
+          </p>
+        )}
+        {page?.search && (
+          <section className="h-full overflow-auto p-4" aria-label="Search results">
+            <h1>{page.query ? `Results for “${page.query}”` : "Search DuckDuckGo"}</h1>
+            {!page.query && (
+              <p className="mt-3 text-sm text-muted-foreground">Type words in the address bar to search.</p>
+            )}
+            {page.query && !page.results?.length && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No results returned. Try another search or open DuckDuckGo in the system browser.
+              </p>
+            )}
+            <ol className="mt-4 flex flex-col gap-5">
+              {page.results?.map((result) => (
+                <li key={result.url}>
+                  <Button
+                    variant="link"
+                    nativeButton={false}
+                    render={<a href={result.url} />}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      void go(result.url)
+                    }}
+                  >
+                    {result.title}
+                  </Button>
+                  <div className="truncate text-xs text-muted-foreground">{result.url}</div>
+                  {result.snippet && <p className="mt-1 text-sm">{result.snippet}</p>}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         {url && showReader && page && (
-          <article
-            className="browser-reader h-full overflow-auto bg-background px-7 pt-4 pb-10 text-foreground @max-lg:px-3.5"
-            onMouseUp={onReaderSelect}
-          >
+          <article className="h-full overflow-auto px-7 pt-4 pb-10 @max-lg:px-3.5" onMouseUp={onReaderSelect}>
             <h1>{page.title}</h1>
             <div className="truncate text-xs text-muted-foreground">{page.final_url}</div>
-            {page.text.split("\n").map((l, i) => {
-              // Paragraphs of a fixed text, keyed by position.
-              const key = `p${i}`
-              const h = /^(#{1,6}) (.*)$/.exec(l)
-              if (h) return <h2 key={key}>{h[2]}</h2>
-              if (!l.trim()) return null
-              return <p key={key}>{l}</p>
-            })}
+            {page.text ? (
+              <Markdown size="document" images components={readerComponents}>
+                {page.text}
+              </Markdown>
+            ) : (
+              <p>This page has no readable article text. Open it in the system browser to view interactive content.</p>
+            )}
             {page.links && page.links.length > 0 && (
               <Collapsible className="mt-6 text-xs">
                 <CollapsibleTrigger render={<Button variant="link" size="xs" />}>

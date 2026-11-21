@@ -3,11 +3,66 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestBindingSnapshotsPrunedAtBootAndRebind(t *testing.T) {
+	ctx := context.Background()
+	data := t.TempDir()
+	root := filepath.Join(data, "agents", "bindings")
+	seed := func(offset int) {
+		t.Helper()
+		for i := range 12 {
+			dir := filepath.Join(root, fmt.Sprintf("%064x", offset+i))
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			stamp := time.Unix(int64(offset+i), 0)
+			if err := os.Chtimes(dir, stamp, stamp); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	count := func() int {
+		t.Helper()
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(entries)
+	}
+	seed(0)
+	app, err := New(ctx, Options{Name: "binding-prune", DataDir: data, Modules: []string{"scratch"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+	if got := count(); got != 10 {
+		t.Fatalf("boot retained %d snapshots, want 10", got)
+	}
+	if err = app.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(app.Handler())
+	defer srv.Close()
+	seed(100)
+	dir, err := filepath.Abs("testdata/profiletest/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"value": map[string]string{"scratch": dir}})
+	if code := do(t, srv, "PUT", "/api/settings/agent.bindings", string(body), nil); code != 200 {
+		t.Fatalf("bind: %d", code)
+	}
+	if got := count(); got != 10 {
+		t.Fatalf("rebind retained %d snapshots, want 10", got)
+	}
+}
 
 func TestAgentBindingsValidationPersistenceAndReset(t *testing.T) {
 	ctx := context.Background()

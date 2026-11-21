@@ -103,8 +103,14 @@ Approver also remain the app’s. A binding does not enable additional tool grou
 
 Surface stages validated authored files into content-addressed snapshots at
 `<data>/agents/bindings/<digest>/` and passes the selected snapshot through Nanite’s per-turn
-`TurnProfile`/`Input.AgentDir` interface. Snapshots remain available for running turns and
-interrupted-turn recovery. Conversation state and approvals remain under the app data directory;
+`TurnProfile`/`Input.AgentDir` interface. At boot and after a binding change, Surface prunes old
+snapshots, retaining current bindings, the newest 10 by last-use time, and everything used in
+the last seven days. Staging a turn or resuming an interrupted turn refreshes that timestamp.
+Future timestamps and snapshots whose metadata cannot be read are never pruned.
+This is age-based retention, not a runtime lease: an unbound snapshot last used more than
+seven days ago can be removed even if a turn is still running or interrupted. Resuming a
+turn whose snapshot was removed fails explicitly; it never substitutes another agent.
+Conversation state and approvals remain under the app data directory;
 Surface never writes runtime state into the owner’s source folder. Unbound built-in profiles
 continue using the existing seat-overlay staging behavior.
 

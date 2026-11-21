@@ -5,6 +5,9 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- Prune old module-agent snapshots at boot and after rebinding, retaining current bindings,
+  the newest 10 snapshots and seven days of use. Recovery reports a missing snapshot explicitly.
+
 ## [0.10.0] - 2026-11-21
 
 - **Choose a module’s agent.** Settings and the agent panel’s Profile picker can bind any module to a

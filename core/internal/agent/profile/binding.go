@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	gosync "sync"
+	"time"
 
 	"github.com/hollis-labs/libs/agent/agentdir"
 	"github.com/hollis-labs/nanite/agent/authored"
@@ -136,5 +137,31 @@ func (p *Profile) StageBinding(root string) (string, error) {
 	if err := sync(dir, want); err != nil {
 		return "", err
 	}
+	now := time.Now()
+	if err := os.Chtimes(dir, now, now); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+// TouchBinding records use of an existing snapshot during interrupted-turn
+// recovery. It never recreates a pruned snapshot or touches an authored folder.
+func TouchBinding(root, dir string) error {
+	if dir == "" || filepath.Dir(filepath.Clean(dir)) != filepath.Clean(root) {
+		return nil
+	}
+	bindingStageMu.Lock()
+	defer bindingStageMu.Unlock()
+	info, err := os.Lstat(filepath.Clean(dir))
+	if err != nil {
+		return fmt.Errorf("bound agent snapshot unavailable for recovery: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("bound agent snapshot unavailable for recovery: not a directory")
+	}
+	now := time.Now()
+	if err = os.Chtimes(filepath.Clean(dir), now, now); err != nil {
+		return fmt.Errorf("bound agent snapshot unavailable for recovery: %w", err)
+	}
+	return nil
 }

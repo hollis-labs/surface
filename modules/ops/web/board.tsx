@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WorkstreamActions } from "./actions"
 import { BoardActivity } from "./activity"
+import { BoardAgents } from "./agents"
 import { type BoardData, type Card, message, opsClient, STAGES, type Stage, stageLabel } from "./api"
 import { Fleet } from "./fleet"
 import { DRAG_TYPE, WorkstreamCard } from "./parts"
@@ -31,11 +32,13 @@ export function Board({ win, desk, api }: ViewProps) {
   const layout =
     win.args.layout === "fleet"
       ? "fleet"
-      : win.args.layout === "activity"
-        ? "activity"
-        : win.args.layout === "cards"
-          ? "cards"
-          : "kanban"
+      : win.args.layout === "agents"
+        ? "agents"
+        : win.args.layout === "activity"
+          ? "activity"
+          : win.args.layout === "cards"
+            ? "cards"
+            : "kanban"
   const showSettled = win.args.show_settled === true || layout === "activity"
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
@@ -70,7 +73,7 @@ export function Board({ win, desk, api }: ViewProps) {
   useEffect(() => {
     desk.report(win.id, {
       kind: "data",
-      ref: parent && layout !== "activity" && layout !== "fleet" ? `ops:${parent}` : "ops",
+      ref: parent && layout !== "activity" && layout !== "fleet" && layout !== "agents" ? `ops:${parent}` : "ops",
     })
   }, [desk, win.id, parent, layout])
 
@@ -284,8 +287,9 @@ export function Board({ win, desk, api }: ViewProps) {
           <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
           <ToggleGroupItem value="activity">Activity</ToggleGroupItem>
           <ToggleGroupItem value="fleet">Fleet</ToggleGroupItem>
+          <ToggleGroupItem value="agents">Agents</ToggleGroupItem>
         </ToggleGroup>
-        {layout !== "activity" && layout !== "fleet" && (
+        {layout !== "activity" && layout !== "fleet" && layout !== "agents" && (
           <>
             <Label className="flex items-center gap-1.5 text-xs">
               <Switch
@@ -320,11 +324,15 @@ export function Board({ win, desk, api }: ViewProps) {
           <Icon name="sprout" />
           Seed
         </Button>
-        <Button size="sm" variant="ghost" aria-label="Refresh" onClick={() => void load(true)} disabled={busy}>
-          {busy ? <Spinner /> : <Icon name="refresh-cw" />}
-        </Button>
+        {layout !== "agents" && (
+          <Button size="sm" variant="ghost" aria-label="Refresh" onClick={() => void load(true)} disabled={busy}>
+            {busy ? <Spinner /> : <Icon name="refresh-cw" />}
+          </Button>
+        )}
       </div>
-      {error && <p className="shrink-0 border-b px-3 py-1.5 text-destructive text-xs">{error}</p>}
+      {error && layout !== "agents" && (
+        <p className="shrink-0 border-b px-3 py-1.5 text-destructive text-xs">{error}</p>
+      )}
       {making && (
         <NewForm
           parent={parent}
@@ -346,6 +354,8 @@ export function Board({ win, desk, api }: ViewProps) {
       )}
       {layout === "fleet" ? (
         <Fleet win={win} desk={desk} api={api} />
+      ) : layout === "agents" ? (
+        <BoardAgents win={win} desk={desk} api={api} />
       ) : !data ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />

@@ -174,6 +174,11 @@ func evidence(e map[string]string) string {
 // show puts a pending approval in front of the owner, once. A permanent error means it can
 // never be shown as it is.
 func (m *mod) show(ctx context.Context, g *gate, id string) error {
+	m.showMu.Lock()
+	defer m.showMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if sh, ok := m.shown(ctx, id); ok {
 		if sh.card != "" {
 			if c, found, _ := m.h.Cards().Get(ctx, sh.card); found && c.Status == "" {
@@ -200,7 +205,14 @@ func (m *mod) show(ctx context.Context, g *gate, id string) error {
 	if err != nil {
 		return permanent{fmt.Errorf("the card was refused: %w", err)}
 	}
-	m.remember(ctx, shownRow{id: id, card: shown.ID, typ: c.Type, status: "pending", title: c.Title, scopes: sc.scopes, post: sc.post, field: sc.field})
+	// Show has committed: a reconnect may now cancel ctx, but must not erase the
+	// association needed to recognize this card and accept its answer on replay.
+	// Bound this local write independently; network reads still use the stream context.
+	keep, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := m.remember(keep, shownRow{id: id, card: shown.ID, typ: c.Type, status: "pending", title: c.Title, scopes: sc.scopes, post: sc.post, field: sc.field}); err != nil {
+		return fmt.Errorf("record shown approval: %w", err)
+	}
 	m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": "pending"})
 	return nil
 }
@@ -213,7 +225,7 @@ func (m *mod) unshowable(ctx context.Context, id string, err error) {
 	m.h.Log().Warn("approvals: an approval cannot be shown", "approval", id, "err", err)
 	body, _ := json.Marshal(map[string]string{"body": "Approval " + id + " is waiting in Gatecrasher but cannot be shown here: " + err.Error() + ". Decide it in another surface, or ask its producer."})
 	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval cannot be shown", Subject: "approval-error:" + id, Payload: body})
-	m.remember(ctx, shownRow{id: id, typ: "unknown", status: "unshowable", title: id})
+	_ = m.remember(ctx, shownRow{id: id, typ: "unknown", status: "unshowable", title: id})
 }
 
 // close takes an approval's card away when Gatecrasher closed it (decided here or elsewhere,
@@ -233,7 +245,7 @@ func (m *mod) close(ctx context.Context, id, status string) {
 		}
 	}
 	sh.status = status
-	m.remember(ctx, sh)
+	_ = m.remember(ctx, sh)
 	m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": status})
 }
 
@@ -260,7 +272,7 @@ func (m *mod) answered(ctx context.Context, c module.Card) {
 	switch err := g.decide(ctx, id, d); {
 	case err == nil:
 		sh.status = d.Outcome
-		m.remember(ctx, sh)
+		_ = m.remember(ctx, sh)
 		m.h.Events().Publish("approvals.changed", map[string]string{"approval_id": id, "status": d.Outcome})
 	case errors.Is(err, errTerminal):
 		// Closed elsewhere first: keep what Gatecrasher says, not what was answered here.
@@ -281,7 +293,7 @@ func (m *mod) notDelivered(ctx context.Context, sh shownRow, err error) {
 	body, _ := json.Marshal(map[string]string{"body": "Your answer on \"" + sh.title + "\" did not reach Gatecrasher (" + err.Error() + "). The approval is still waiting; it is shown again as soon as Gatecrasher answers."})
 	_, _ = m.h.Cards().Show(ctx, module.Card{Kind: "error", Title: "An approval answer did not go through", Subject: "approval-error:" + sh.id, Payload: body})
 	sh.card = ""
-	m.remember(ctx, sh)
+	_ = m.remember(ctx, sh)
 	if g, gerr := m.gate(); gerr == nil && m.show(ctx, g, sh.id) == nil {
 		return
 	}

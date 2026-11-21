@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.12.1] - 2026-11-21
+
+- **Ops: Settle.** A complete workstream can be settled: `settled_at`, `settled_by` and a final summary are recorded,
+  and it is hidden from the board by default (never deleted; "show settled" and History still show it).
+- **Ops: Send to orchestration.** Planned, parked and queued workstreams have an action that takes an optional note
+  and sends the Lead Orchestrator a `sequence_and_launch` request (workstream, Registry identity, links, note); the
+  document records `orchestration_request` and the feed shows it.
+- **Browser:** a snapshot request without a URL answers "url is required".
+
 ## [0.12.0] - 2026-11-21
 
 - **Ops: the owner's stage model.** Workstreams move planned → parked → queued → in flight → landing → complete

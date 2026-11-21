@@ -310,7 +310,7 @@ func (a *App) Start(ctx context.Context) error {
 		if err := h.mod.Start(ctx, h); err != nil {
 			return fmt.Errorf("surface: module %q did not start: %w", h.id, err)
 		}
-		h.started = true
+		h.started.Store(true)
 	}
 	a.mu.Lock()
 	a.started = true
@@ -323,7 +323,7 @@ func (a *App) Start(ctx context.Context) error {
 func (a *App) Stop(ctx context.Context) error {
 	var errs []error
 	for i := len(a.mods) - 1; i >= 0; i-- {
-		if h := a.mods[i]; h.started {
+		if h := a.mods[i]; h.started.Load() {
 			if err := h.mod.Stop(ctx); err != nil {
 				errs = append(errs, fmt.Errorf("module %q: %w", h.id, err))
 			}
@@ -336,7 +336,9 @@ func (a *App) Stop(ctx context.Context) error {
 // describe asks the module that owns a window's view what the window is showing.
 func (a *App) describe(ctx context.Context, w module.Window) (module.WindowContext, bool) {
 	h, ok := a.byModule[w.Module]
-	if !ok {
+	if !ok || !h.started.Load() {
+		// A module is asked about its windows only once it has started: the agent's
+		// worker can run before the app finishes starting its modules.
 		return module.WindowContext{}, false
 	}
 	for _, v := range h.man.Views {
@@ -532,7 +534,7 @@ type host struct {
 	log     *slog.Logger
 	db      *sql.DB
 	dir     string
-	started bool
+	started atomic.Bool // set after Start returns; read by describe from the agent's worker
 }
 
 func (h *host) ModuleID() string      { return h.id }

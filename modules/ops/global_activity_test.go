@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/surface/module"
+	"github.com/hollis-labs/surface/module/moduletest"
 )
 
 func TestGlobalActivityRoutesToolsFiltersAndSlot(t *testing.T) {
@@ -217,5 +218,42 @@ func TestGlobalActivityConcurrentViewersShareBatch(t *testing.T) {
 	wg.Wait()
 	if f.counts["torque_task_get"] != rollAtOnce || f.counts["torque_comment_list"] != rollAtOnce {
 		t.Fatalf("multiple batches: %v", f.counts)
+	}
+}
+
+func TestGlobalActivityIncludesPlanOnlyTasks(t *testing.T) {
+	f := newPlanTether()
+	const plan = "CW-20990101-0200"
+	const task = "CW-20990101-0201"
+	f.plans[plan] = planFixture(plan)
+	f.pages[plan+":"] = childrenFixture([]string{task}, "")
+	f.tasks[task] = [3]string{"Plan child", "doing", "2099-01-01T10:00:00Z"}
+	f.comments[task] = [][2]string{{"2099-01-01T11:00:00Z", "STATUS milestone: Plan task ready"}}
+	m := &mod{caller: f}
+	h := moduletest.Start(t, m)
+	call(t, h, "ops_create", `{"id":"garden","title":"Garden","stage":"in_flight"}`)
+	call(t, h, "ops_create", `{"id":"garden-build","title":"Build","parent":"garden","links":[{"kind":"torque.plan","id":"`+plan+`"}]}`)
+	code, body := h.Do("GET", "/activity?source=torque", "")
+	if code != 200 {
+		t.Fatalf("%d %s", code, body)
+	}
+	var feed globalFeed
+	_ = json.Unmarshal([]byte(body), &feed)
+	if len(feed.Entries) != 1 || feed.Entries[0].Task != task || feed.Entries[0].Workstream != "garden-build" {
+		t.Fatalf("plan feed=%+v", feed)
+	}
+	out := call(t, h, "ops_activity", `{"source":"comment"}`)
+	if strings.Count(js(out["entries"]), "Plan task ready") != 1 {
+		t.Fatalf("plan comment=%v", out)
+	}
+	if f.counts["torque_plan_get"] != 1 || f.counts["torque_plan_list_children"] != 1 || f.counts["torque_task_get"] != 1 {
+		t.Fatalf("plan reads not shared: %v", f.counts)
+	}
+	// A budget interruption during plan pagination must not cache incomplete membership.
+	m.tasks = newTaskCache()
+	ctx := context.WithValue(t.Context(), activityBudgetKey{}, &activityBudget{calls: globalCalls - 1})
+	_, _, err := (reader{link: m.tether, cache: m.tasks}).plan(ctx, plan)
+	if !errors.Is(err, errActivityBudget) || len(m.tasks.plans) != 0 {
+		t.Fatalf("plan budget: cache=%v err=%v", m.tasks.plans, err)
 	}
 }

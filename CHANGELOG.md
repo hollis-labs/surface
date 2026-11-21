@@ -5,6 +5,18 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.8.0] - 2026-11-21
+
+- **Nanite v0.12.1.** Fixed: the internal prompt that asks for a closing reply at the step limit no longer shows up
+  in the conversation's history as an owner message, and no longer acts as a turn boundary for compaction (since
+  v0.9.0). v0.12.0's tool registry is left off.
+- **A daily token cap per agent** (Nanite v0.11.0): host.yaml `runtime.daily_token_budget`, 0 or absent for none
+  (UTC day, survives restarts). At the cap a turn is refused with a readable 429 and its reset time; the 80% notice
+  shows in the panel.
+- **Stop everything** (owner only): `POST /api/agent/stop-all` and the agent panel's menu cancel the agent's running
+  turns, subtasks and background work. The agent then refuses new work until the app is restarted.
+- **Substrate BOM f70a163**: libs agentdir v0.5.0.
+
 ## [0.7.0] - 2026-11-20
 
 - **Nanite v0.10.0 and an opt-in auto mode.** `"auto_approve": true` in the agent config turns on Nanite's

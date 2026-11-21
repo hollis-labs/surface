@@ -99,6 +99,21 @@ func (m *mod) routes(h module.Host) {
 		}
 		reply(w, http.StatusOK, result)
 	})
+	handle("GET /brief", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		n, _ := strconv.Atoi(q.Get("max_items"))
+		result, err := m.brief(r.Context(), briefOptions{Since: q.Get("since"), Scope: q.Get("scope"), MaxItems: n})
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		if q.Get("format") == "markdown" {
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			_, _ = w.Write([]byte(result.Markdown))
+			return
+		}
+		reply(w, http.StatusOK, result)
+	})
 	handle("GET /board", m.apiBoard)
 	handle("GET /activity", m.apiGlobalActivity)
 	handle("GET /agents", m.apiAgents)

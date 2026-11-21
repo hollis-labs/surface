@@ -66,6 +66,26 @@ func TestSessionsObserveActivityWithoutInferringIdle(t *testing.T) {
 		t.Fatalf("unknown=%+v", c)
 	}
 }
+
+// The snapshot Tether serves now nests the identity and states liveness itself; every row
+// used to be dropped for a missing agent_urn.
+func TestSessionsReadTheCurrentSnapshotShape(t *testing.T) {
+	f := &sessionFake{calls: map[string]int{}, snapshot: `{"observed_at":"2026-11-21T14:52:00Z","count":2,"agents":[
+ {"id":"session:s1","kind":"tether_session","agent":{"urn":"msg://agent/test/w","name":"worker#1"},"host":"box","state":"awake","raw_state":"idle","last_activity_at":"2026-11-21T14:51:52Z","session_id":"s1","task_id":"CW-1","workstream_id":"workstream:01X","stale":false},
+ {"id":"session:s2","kind":"tether_session","agent":{"urn":"msg://agent/test/z","name":"z"},"host":"box","state":"sleeping","raw_state":"detached","session_id":"s2"}]}`}
+	out, err := (tetherSessionReader{link: func() (tetherlink.Caller, error) { return f, nil }}).Read(t.Context())
+	if err != nil || len(out.Sessions) != 2 {
+		t.Fatalf("%+v %v", out, err)
+	}
+	w := out.Sessions[0]
+	if w.AgentName != "worker#1" || w.AgentID != "msg://agent/test/w" || w.State != "awake" || w.RawState != "idle" || w.WorkstreamID != "workstream:01X" || w.TaskID != "CW-1" || w.Host != "box" {
+		t.Fatalf("current shape: %+v", w)
+	}
+	if z := out.Sessions[1]; z.State != "sleeping" || z.RawState != "detached" || z.Warning != "" {
+		t.Fatalf("sleeping: %+v", z)
+	}
+}
+
 func TestSessionReadsAreBoundedAndShared(t *testing.T) {
 	f := sessionFixture()
 	var rows []map[string]any

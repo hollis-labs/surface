@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { AgentBindings } from "../agent/AgentBindings"
 import { CardsWindow } from "../cards/views"
 import { CiteRecordView } from "../cite/record.tsx"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
@@ -31,7 +32,7 @@ function Settings(_: ViewProps) {
   const reset = (e: SettingEntry) =>
     void call("DELETE", `/api/settings/${encodeURIComponent(e.full_key)}`).then(refresh)
 
-  const scopes = [...new Set(entries.map((e) => e.scope))]
+  const scopes = [...new Set(entries.filter((e) => e.full_key !== "agent.bindings").map((e) => e.scope))]
   const title = (scope: string) =>
     scope === "surface" ? "Desk" : (app().modules.find((m) => m.id === scope)?.title ?? scope)
   return (
@@ -40,13 +41,15 @@ function Settings(_: ViewProps) {
         Settings are kept in the app's database and take effect as you change them. Nothing restarts.
       </p>
       {error && <p className="text-destructive">{error}</p>}
+      <h3 className="font-medium">Module agents</h3>
+      <AgentBindings />
       {scopes.map((scope) => (
         <section key={scope} className="flex flex-col">
           <h3 className="pt-2 pb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">
             {title(scope)}
           </h3>
           {entries
-            .filter((e) => e.scope === scope)
+            .filter((e) => e.scope === scope && e.full_key !== "agent.bindings")
             .map((e) => (
               <div key={e.full_key} className="flex items-center justify-between gap-4 border-t py-2.5">
                 <span className="flex min-w-0 flex-col gap-0.5">

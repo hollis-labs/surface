@@ -52,6 +52,15 @@ export interface ProfileInfo {
   active: boolean
 }
 
+export interface BindingInfo {
+  id: string
+  title: string
+  dir?: string
+  name?: string
+  error?: string
+  ignored_runtime?: string[]
+}
+
 /** The profiles and the one in play (agent.ProfileState). */
 export interface ProfileState {
   /** Turns run as profiles (the Nanite runner); off, every turn is the app's own agent. */
@@ -62,6 +71,7 @@ export interface ProfileState {
   /** A module id, "default", or absent. */
   pinned?: string
   profiles: ProfileInfo[]
+  bindings?: BindingInfo[]
 }
 
 export interface Setup {

@@ -33,7 +33,8 @@ const runLogSchema = `CREATE TABLE IF NOT EXISTS agent_runs (
 	output INTEGER NOT NULL DEFAULT 0,
 	tools TEXT NOT NULL DEFAULT '[]',
 	ms INTEGER NOT NULL DEFAULT 0,
-	profile TEXT NOT NULL DEFAULT ''
+	profile TEXT NOT NULL DEFAULT '',
+ agent_dir TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS agent_runs_started ON agent_runs(started_at);`
 
@@ -47,6 +48,7 @@ type RunRecord struct {
 	Origin    string `json:"origin,omitempty"`
 	Slot      string `json:"slot,omitempty"`
 	// Profile is the agent profile the run acted as: a module's id, or "default" (the seat).
+	AgentDir  string   `json:"agent_dir,omitempty"`
 	Profile   string   `json:"profile,omitempty"`
 	Provider  string   `json:"provider,omitempty"`
 	Model     string   `json:"model,omitempty"`
@@ -67,7 +69,7 @@ type runLog struct {
 
 // runTurn is what the hook knows of a turn: who started it, the slot it runs in and the
 // profile it runs as.
-type runTurn struct{ origin, slot, profile string }
+type runTurn struct{ origin, slot, profile, agentDir string }
 
 func openRunLog(ctx context.Context, db *sql.DB) (*runLog, error) {
 	if _, err := db.ExecContext(ctx, runLogSchema); err != nil {
@@ -83,11 +85,19 @@ func openRunLog(ctx context.Context, db *sql.DB) (*runLog, error) {
 			return nil, err
 		}
 	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('agent_runs') WHERE name = 'agent_dir'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE agent_runs ADD COLUMN agent_dir TEXT NOT NULL DEFAULT ''`); err != nil {
+			return nil, err
+		}
+	}
 	return &runLog{db: db, pending: map[string]runTurn{}}, nil
 }
 
 // turn is called by the hook before a run starts.
-func (l *runLog) turn(runID, origin, slot, profile string) {
+func (l *runLog) turn(runID, origin, slot, profile string, agentDir ...string) {
 	if l == nil || runID == "" {
 		return
 	}
@@ -96,7 +106,11 @@ func (l *runLog) turn(runID, origin, slot, profile string) {
 	if len(l.pending) > 256 { // turns the library dropped after the hook saw them
 		l.pending = map[string]runTurn{}
 	}
-	l.pending[runID] = runTurn{origin, slot, profile}
+	dir := ""
+	if len(agentDir) > 0 {
+		dir = agentDir[0]
+	}
+	l.pending[runID] = runTurn{origin, slot, profile, dir}
 }
 
 // collector follows one run's events.
@@ -117,10 +131,10 @@ func (l *runLog) begin(runID, model string) *collector {
 		t.origin = "owner"
 	}
 	// The model the app's config names; a run.start that names one wins.
-	c := &collector{start: time.Now(), rec: RunRecord{RunID: runID, Origin: t.origin, Slot: t.slot, Profile: t.profile, Model: model, Tools: []string{}}}
+	c := &collector{start: time.Now(), rec: RunRecord{RunID: runID, Origin: t.origin, Slot: t.slot, Profile: t.profile, AgentDir: t.agentDir, Model: model, Tools: []string{}}}
 	c.rec.StartedAt = c.start.UTC().Format(time.RFC3339)
-	_, _ = l.db.ExecContext(context.Background(), `INSERT OR IGNORE INTO agent_runs(run_id, started_at, origin, slot, profile) VALUES(?,?,?,?,?)`,
-		runID, c.rec.StartedAt, t.origin, t.slot, t.profile)
+	_, _ = l.db.ExecContext(context.Background(), `INSERT OR IGNORE INTO agent_runs(run_id, started_at, origin, slot, profile, agent_dir) VALUES(?,?,?,?,?,?)`,
+		runID, c.rec.StartedAt, t.origin, t.slot, t.profile, t.agentDir)
 	return c
 }
 
@@ -172,7 +186,7 @@ func (l *runLog) recent(ctx context.Context, limit int) ([]RunRecord, error) {
 		limit = 50
 	}
 	rows, err := l.db.QueryContext(ctx, `SELECT run_id, started_at, ended_at, status, reason, origin, slot, provider, model,
-		uncached_input, cache_read, cache_write, output, tools, ms, profile FROM agent_runs ORDER BY started_at DESC, rowid DESC LIMIT ?`, limit)
+		uncached_input, cache_read, cache_write, output, tools, ms, profile, agent_dir FROM agent_runs ORDER BY started_at DESC, rowid DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +196,7 @@ func (l *runLog) recent(ctx context.Context, limit int) ([]RunRecord, error) {
 		var r RunRecord
 		var tools string
 		if err := rows.Scan(&r.RunID, &r.StartedAt, &r.EndedAt, &r.Status, &r.Reason, &r.Origin, &r.Slot, &r.Provider, &r.Model,
-			&r.Uncached, &r.CacheRead, &r.CacheWrit, &r.Output, &tools, &r.Ms, &r.Profile); err != nil {
+			&r.Uncached, &r.CacheRead, &r.CacheWrit, &r.Output, &tools, &r.Ms, &r.Profile, &r.AgentDir); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(tools), &r.Tools)

@@ -15,6 +15,7 @@ import (
 	"github.com/hollis-labs/libs/agent/chat/chattest"
 	"github.com/hollis-labs/libs/agent/chat/sqlitestore"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
+	"github.com/hollis-labs/surface/core/internal/agent/profile"
 
 	"github.com/hollis-labs/nanite/chatrunner"
 
@@ -297,8 +298,30 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	// The profile this turn runs as, staged for the runner before the turn starts.
 	choice := s.chooseProfile(ctx, turn.ConversationID, sit)
 	if err := s.stageProfile(choice); err != nil {
-		s.log.Warn("the profile was not staged; the turn runs on the directory as it was", "profile", choice.ID, "err", err)
+		return chat.Reject("agent_profile", err.Error())
 	}
+	// Capture the selected directory on this turn so a concurrent focus or setting
+	// change cannot select a different agent between interception and dispatch.
+	var turnMeta map[string]any
+	_ = json.Unmarshal(turn.Meta, &turnMeta)
+	if turnMeta == nil {
+		turnMeta = map[string]any{}
+	}
+	delete(turnMeta, "surface_agent_dir")
+	if dir := choice.AgentDir; dir != "" {
+		bound, err := profile.LoadBinding(choice.ID, s.modules[choice.ID], dir)
+		if err != nil {
+			return chat.Reject("agent_binding", err.Error())
+		}
+		staged, err := bound.StageBinding(filepath.Join(s.k.DataDir(), "agents", "bindings"))
+		if err != nil {
+			return chat.Reject("agent_binding", err.Error())
+		}
+		dir, _ = profile.BindingPath(dir)
+		turnMeta["surface_agent_dir"] = staged
+		s.log.Info("the turn uses a bound agent", "module", choice.ID, "agent_dir", dir, "run_id", turn.RunID)
+	}
+	turn.Meta, _ = json.Marshal(turnMeta)
 	extra.Profile, extra.ProfileID = s.profileLine(choice), choice.ID
 
 	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
@@ -333,7 +356,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	} else if auto {
 		origin = "auto"
 	}
-	s.runs.turn(turn.RunID, origin, asm.Slot, profileName(choice.ID))
+	s.runs.turn(turn.RunID, origin, asm.Slot, profileName(choice.ID), choice.AgentDir)
 	s.k.Events().Publish("agent.turn", map[string]any{"run_id": turn.RunID, "slot": asm.Slot, "slots": sel.Names(),
 		"top_of_mind": asm.TopOfMind, "fired": out.Fired, "routed": routed, "profile": profileName(choice.ID)})
 	return chat.Continue()

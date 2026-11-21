@@ -114,7 +114,8 @@ func (s *Service) profileBuiltins(groups []nanite.BuiltinGroup) []nanite.Builtin
 // ProfileChoice is the profile a turn runs as, and why.
 type ProfileChoice struct {
 	// ID is the module whose profile it is; "" is the app's own seat.
-	ID string `json:"id"`
+	ID       string `json:"id"`
+	AgentDir string `json:"agent_dir,omitempty"`
 	// Why is "pinned", "focus", "default" or "off" (the runner does not run profiles).
 	Why string `json:"why"`
 }
@@ -124,16 +125,27 @@ func (s *Service) chooseProfile(ctx context.Context, conversation string, sit mo
 	if !s.profilesOn() {
 		return ProfileChoice{Why: "off"}
 	}
+	bindings := map[string]string{}
+	if s.bindings != nil {
+		bindings = s.bindings()
+	}
+	choice := func(id, why string) (ProfileChoice, bool) {
+		dir := bindings[id]
+		if id != "" && (dir != "" || s.prof.all[id] != nil) {
+			return ProfileChoice{ID: id, Why: why, AgentDir: dir}, true
+		}
+		return ProfileChoice{}, false
+	}
 	if pin, err := readProfilePin(ctx, s.k.DB(), conversation); err != nil {
 		s.log.Warn("the profile pin was not read", "err", err)
 	} else if pin == ProfileDefault {
 		return ProfileChoice{Why: "pinned"}
-	} else if _, ok := s.prof.all[pin]; ok {
-		return ProfileChoice{ID: pin, Why: "pinned"}
+	} else if c, ok := choice(pin, "pinned"); ok {
+		return c
 	}
 	if sit.Focused != nil {
-		if _, ok := s.prof.all[sit.Focused.Module]; ok {
-			return ProfileChoice{ID: sit.Focused.Module, Why: "focus"}
+		if c, ok := choice(sit.Focused.Module, "focus"); ok {
+			return c
 		}
 	}
 	return ProfileChoice{Why: "default"}
@@ -143,6 +155,9 @@ func (s *Service) chooseProfile(ctx context.Context, conversation string, sit mo
 // read again each time, so the owner's edits to it (standing.md) reach the next turn.
 func (s *Service) stageProfile(c ProfileChoice) error {
 	if !s.profilesOn() {
+		return nil
+	}
+	if c.AgentDir != "" {
 		return nil
 	}
 	pr := s.prof
@@ -167,12 +182,15 @@ func profileName(id string) string {
 
 // profileLine is the context block's line on the profile in play, for the agent.
 func (s *Service) profileLine(c ProfileChoice) string {
-	if !s.profilesOn() || len(s.prof.order) == 0 {
+	if !s.profilesOn() {
 		return ""
 	}
 	how := map[string]string{"pinned": "pinned", "focus": "from the window in front", "default": "no module profile in front"}[c.Why]
 	if c.ID == "" {
 		return fmt.Sprintf("Profile: the app's own (%s). profile_switch lists the others.", how)
+	}
+	if dir := c.AgentDir; dir != "" {
+		return fmt.Sprintf("Agent: %s (module %s, %s). profile_switch changes the module.", dir, c.ID, how)
 	}
 	return fmt.Sprintf("Profile: %s (%s, %s). Its instructions are in your system prompt under \"Profile\". profile_switch changes it.", c.ID, s.prof.all[c.ID].Title, how)
 }
@@ -205,6 +223,7 @@ type ProfileState struct {
 	// Pinned is the conversation's pin: a module id, "default", or "".
 	Pinned   string        `json:"pinned,omitempty"`
 	Profiles []ProfileInfo `json:"profiles"`
+	Bindings []BindingInfo `json:"bindings"`
 }
 
 func (s *Service) profileState(ctx context.Context) ProfileState {
@@ -213,13 +232,26 @@ func (s *Service) profileState(ctx context.Context) ProfileState {
 	if s.wire != nil {
 		st.Runner = s.wire.runner
 	}
+	st.Bindings = s.bindingState()
 	st.Active = s.chooseProfile(ctx, conv, s.k.Situation(ctx))
 	if st.On {
 		st.Pinned, _ = readProfilePin(ctx, s.k.DB(), conv)
 	}
 	if s.prof != nil {
 		for _, id := range s.prof.order {
-			st.Profiles = append(st.Profiles, ProfileInfo{Profile: s.prof.all[id], Active: st.Active.ID == id})
+			p := s.prof.all[id]
+			if dir := s.binding(id); dir != "" {
+				if bound, err := profile.LoadBinding(id, p.Title, dir); err == nil {
+					p = bound
+				}
+			}
+			st.Profiles = append(st.Profiles, ProfileInfo{Profile: p, Active: st.Active.ID == id})
+		}
+	}
+	for _, b := range st.Bindings {
+		if b.Dir != "" && s.prof.all[b.ID] == nil {
+			p := &profile.Profile{ID: b.ID, Title: b.Title, Name: b.Name}
+			st.Profiles = append(st.Profiles, ProfileInfo{Profile: p, Active: st.Active.ID == b.ID})
 		}
 	}
 	return st
@@ -238,7 +270,7 @@ func (s *Service) pinProfile(ctx context.Context, choice string, actor module.Ac
 		choice = ""
 	case ProfileDefault:
 	default:
-		if _, ok := s.prof.all[choice]; !ok {
+		if !s.hasProfile(choice) {
 			return ProfileState{}, fmt.Errorf("no profile %q (known: %s, %s, %s)", choice, strings.Join(s.prof.order, ", "), ProfileDefault, ProfileAuto)
 		}
 	}

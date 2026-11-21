@@ -70,6 +70,44 @@ Surface reserves 2,000 tokens for its per-turn context block, plus room for the 
 The file is read at start. With no file the app runs normally: the panel shows a setup card with the path and the
 example above, and a message is refused with `503` and the same path.
 
+## Choose a module’s agent
+
+**Settings → Module agents** and the agent panel’s **Profile → Choose agents** let the owner
+enter an absolute agent folder path (or one beginning with `~/`) for any installed module.
+The live, owner-only setting `agent.bindings` maps module IDs to paths:
+
+```json
+{"scratch": "~/.config/my-app/agents/writing"}
+```
+
+A binding replaces that module’s built-in profile. A pinned module wins over focus; otherwise
+the module in front selects the agent. **Reset** restores the built-in profile, or the app’s
+agent when the module has none. Pinning **default** always selects the app’s agent.
+The picker shows the bound agent’s name; `/api/agent/profiles` includes the source folders,
+validation errors and ignored runtime keys. `/api/agent/runs` records the module in `profile`
+and the selected source folder in `agent_dir`.
+
+Folders contain `agent.md`, optional `context/`, `skills/`, `variants/`, `tools/` and
+`steering.json`, plus an optional `host.yaml`. Surface checks them with `agentdir` and Nanite’s
+authored validators on binding, at boot and before each turn. Invalid writes retain the old
+binding; invalid saved folders refuse startup with the reason. Files changed after startup
+are checked before dispatch, and a bad folder refuses the turn rather than silently switching
+agents. `.mcp.json`, provider, identity and permission files are refused: the app supplies them.
+Tool packages cannot request environment passthrough or Warden tokens.
+
+**In this first version, all bound agents use the app’s runtime.** A folder’s `host.yaml` is
+validated, then omitted from the staged turn profile. Its `runtime` keys (model, compaction,
+token budget, and so on) do not override the app; ignored keys are listed beside the binding
+and logged on binding and at boot. Tools, enabled builtin groups, levels, grants and the
+Approver also remain the app’s. A binding does not enable additional tool groups.
+
+Surface stages validated authored files into content-addressed snapshots at
+`<data>/agents/bindings/<digest>/` and passes the selected snapshot through Nanite’s per-turn
+`TurnProfile`/`Input.AgentDir` interface. Snapshots remain available for running turns and
+interrupted-turn recovery. Conversation state and approvals remain under the app data directory;
+Surface never writes runtime state into the owner’s source folder. Unbound built-in profiles
+continue using the existing seat-overlay staging behavior.
+
 ## Context slots
 
 A slot is what the agent brings to one kind of work. A module declares slots in its manifest:

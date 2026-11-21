@@ -122,6 +122,15 @@ kept for a minute and shared by every roll-up (a task under a concept and under 
 finished task's comments are not read. A `STATUS` comment that mirrors a status-stream entry for the same task
 is shown once, as the status entry. Rows sort by their parsed time.
 
+Directly linked tasks also reveal their immediate parent when it is a Torque `kind=plan`, and
+reveal epics through `epic_id` (or an EP parent). Discovered containers expand through the same
+reader as explicit links: their children count and feed Activity, `ops_get`, and the focused slot.
+Discovery is one level only, seeded by the first 80 distinct direct task links; it never recursively
+walks child tasks or parent cycles. Parent metadata is cached for a minute; failed reads stay retryable.
+Explicit links take precedence over discovered provenance. A discovered plan is marked “via CW-…”;
+“Link this plan” uses the existing owner-only link route on its source workstream, then refreshes.
+Discovery itself never writes links. Epic-derived task rows show the epic and discovery task.
+
 Linked `torque.plan` entries expand into ordered phases and tasks in the Tasks tab. Plan and phase
 states come from `torque_plan_get`; child task states and STATUS comments use the same task cache and feed
 as direct and epic links. A task linked several ways counts once. Plans and their children are cached for

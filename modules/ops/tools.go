@@ -87,16 +87,24 @@ func (m *mod) tools() []module.Tool {
 				return m.toolGet(ctx, a.ID)
 			}},
 		{Name: "ops_activity", Level: module.LevelRead,
-			Description: "A workstream's merged activity, newest first, rolled up from its children: Torque task states and STATUS comments, status-stream entries where it names a status namespace, and its own stage moves. since (RFC 3339), source (torque, comment, status, ops) and task narrow it; refresh reads it again now.",
-			Input:       schema(idProp+`,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300}`, "id"),
+			Description: "Activity across all workstreams when id is omitted; with id, that workstream and its children. Newest first: Torque task states and STATUS comments, status-stream entries and Ops moves. since (RFC 3339), source (torque, comment, status, ops) and task narrow it; workstream and stage also filter the global feed. refresh reads another bounded batch now.",
+			Input:       schema(idProp + `,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300},"workstream":{"type":"string"},"stage":{"type":"string",` + stageEnum + `}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				a, err := args[struct {
-					ID, Since, Source, Task string
-					Refresh                 bool
-					Limit                   int
+					ID, Since, Source, Task, Workstream, Stage string
+					Refresh                                    bool
+					Limit                                      int
 				}](in)
 				if err != nil {
 					return nil, err
+				}
+				if a.ID == "" {
+					f := activityFilter{Workstream: a.Workstream, Stage: a.Stage, Source: a.Source, Since: a.Since, Task: a.Task, Limit: a.Limit}
+					if inputErr := f.validate(); inputErr != nil {
+						return nil, inputErr
+					}
+					_ = m.sync(ctx, false)
+					return m.globalActivity(ctx, f, a.Refresh)
 				}
 				_ = m.sync(ctx, false)
 				r, err := m.rollup(ctx, a.ID, a.Refresh)

@@ -152,7 +152,7 @@ func (r reader) read(ctx context.Context, id string) taskRead {
 	if got.err != nil {
 		got.task = Task{ID: id, Status: "unknown"}
 		// A read cut short by the caller (canceled, out of time) says nothing about the task.
-		if ctx.Err() == nil && !errors.Is(got.err, context.Canceled) && !errors.Is(got.err, context.DeadlineExceeded) {
+		if ctx.Err() == nil && !errors.Is(got.err, errActivityBudget) && !errors.Is(got.err, context.Canceled) && !errors.Is(got.err, context.DeadlineExceeded) {
 			r.cache.put(id, got)
 		}
 		return got
@@ -168,6 +168,9 @@ func (r reader) read(ctx context.Context, id string) taskRead {
 }
 
 func (r reader) call(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
+	if b, ok := ctx.Value(activityBudgetKey{}).(*activityBudget); ok && !b.take() {
+		return nil, errActivityBudget
+	}
 	c, err := r.link()
 	if err != nil {
 		return nil, err

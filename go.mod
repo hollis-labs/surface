@@ -13,7 +13,7 @@ require (
 	github.com/hollis-labs/libs/llm/core v0.5.0
 	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
-	github.com/hollis-labs/nanite v0.11.0
+	github.com/hollis-labs/nanite v0.12.1
 	github.com/hollis-labs/substrate v0.1.1-0.20261120230950-f70a16348138
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.62.0

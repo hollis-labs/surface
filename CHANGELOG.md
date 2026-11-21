@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.15.0] - 2026-11-21
+
+- **Ops: `ops_brief`**, the Lead Orchestrator's running brief built from Ops data: what needs the owner or the
+  orchestrator (holds, unsequenced orchestration requests, blocked tasks), stalled workstreams, what changed, in
+  flight, live agents, fleet and budgets, each source with its freshness and the known gaps listed. An MCP read tool
+  and `GET /api/m/ops/brief` (JSON or `?format=markdown`).
+- **Ops Usage:** cards for the paid media suites (design, audio, video) and Tripo, through per-source adapters.
+- **Fixed:** the Agents tab showed no rows after Tether's live-agents feed changed shape.
+
 ## [0.14.0] - 2026-11-21
 
 - **The agent's own Tether mailbox.** With `identity.tether` in the agent directory's `host.yaml` and a `mailbox`

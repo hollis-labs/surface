@@ -1,10 +1,20 @@
 import { CiteRef, CiteText } from "@hollis-labs/surface-page/sdk"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { age, type Rollup, type Task } from "./api"
+import { age, message, type Plan, type Rollup, type Task } from "./api"
 import { OpsChip } from "./parts"
 
-export function PlanTasks({ roll, id }: { roll: Rollup; id: string }) {
+export function PlanTasks({
+  roll,
+  id,
+  linkPlan,
+}: {
+  roll: Rollup
+  id: string
+  linkPlan: (plan: Plan) => Promise<void>
+}) {
   const plans = roll.plans ?? []
   const planIDs = new Set(plans.map((p) => p.id))
   const other = roll.tasks.filter((t) => !t.plan_id || !planIDs.has(t.plan_id))
@@ -20,6 +30,14 @@ export function PlanTasks({ roll, id }: { roll: Rollup; id: string }) {
               <CiteRef refId={{ kind: "torque.plan", canonical: plan.id }} label={plan.title || plan.id} />
               <Badge variant="secondary">{plan.status}</Badge>
               {plan.workstream !== id && <OpsChip id={plan.workstream} />}
+              {plan.via && (
+                <>
+                  <span className="text-muted-foreground text-xs">
+                    via <CiteRef refId={{ kind: "torque.task", canonical: plan.via }} />
+                  </span>
+                  <LinkPlan plan={plan} linkPlan={linkPlan} />
+                </>
+              )}
             </div>
             {plan.truncated && (
               <p className="text-warning text-xs">
@@ -65,6 +83,38 @@ export function PlanTasks({ roll, id }: { roll: Rollup; id: string }) {
   )
 }
 
+function LinkPlan({ plan, linkPlan }: { plan: Plan; linkPlan: (plan: Plan) => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  return (
+    <>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          setError("")
+          try {
+            await linkPlan(plan)
+          } catch (e) {
+            setError(message(e))
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        Link this plan
+      </Button>
+      {error && (
+        <span role="alert" className="text-destructive text-xs">
+          {error}
+        </span>
+      )}
+    </>
+  )
+}
+
 function TaskTable({ tasks, id }: { tasks: Task[]; id: string }) {
   return (
     <>
@@ -97,6 +147,12 @@ function TaskTable({ tasks, id }: { tasks: Task[]; id: string }) {
                     <CiteText text={t.via} />
                   ) : (
                     "linked"
+                  )}
+                  {t.discovered_via && (
+                    <span>
+                      {" "}
+                      via <CiteText text={t.discovered_via} />
+                    </span>
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground text-xs">{age(t.updated)}</TableCell>

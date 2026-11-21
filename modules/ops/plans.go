@@ -18,6 +18,7 @@ type Plan struct {
 	Status     string  `json:"status"`
 	Workstream string  `json:"workstream"`
 	Phases     []Phase `json:"phases"`
+	Via        string  `json:"via,omitempty"` // directly linked task that revealed this plan
 	Truncated  bool    `json:"truncated,omitempty"`
 }
 
@@ -110,6 +111,7 @@ func (r reader) planTasks(ctx context.Context, id string) ([]string, bool, error
 				} `json:"items"`
 				Meta struct {
 					HasMore    bool   `json:"has_more"`
+					Via        string `json:"via,omitempty"` // directly linked task that revealed this plan
 					Truncated  bool   `json:"truncated"`
 					NextCursor string `json:"next_cursor"`
 				} `json:"meta"`

@@ -21,6 +21,7 @@ export type ChatItem =
       result?: string
       status: "running" | "done" | "error"
     }
+  | { kind: "plan"; id: string; planID: string; text: string; disposition: string }
   | { kind: "notice"; id: string; text: string; tone: "error" | "quiet" }
 
 export interface Approval {
@@ -165,6 +166,16 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
         },
       }
     case "activity": {
+      if (ev.kind === "nanite.desk.plan" && typeof ev.value?.id === "string" && typeof ev.value.card === "string")
+        return append(s, {
+          kind: "plan",
+          id: key(`plan:${ev.value.id}`),
+          planID: ev.value.id,
+          text: ev.value.card,
+          disposition: String(ev.value.disposition ?? ""),
+        })
+      if (ev.kind === "nanite.notice" && ev.value?.kind === "desk" && typeof ev.value.body === "string")
+        return note(s, key(`delivery:${String(ev.value.id ?? ev.seq)}`), ev.value.body, "quiet")
       const what = (ev.kind ?? "").replace(/^[a-z]+\./, "")
       if (ev.kind === "nanite.notice" && ev.value?.kind === "budget" && typeof ev.value.body === "string")
         return note(s, key(`budget:${String(ev.value.id ?? "warning")}`), ev.value.body, "quiet")

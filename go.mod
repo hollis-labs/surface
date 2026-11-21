@@ -8,6 +8,7 @@ require (
 	github.com/hollis-labs/libs/agent/agentdir v0.5.0
 	github.com/hollis-labs/libs/agent/chat v0.1.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
+	github.com/hollis-labs/libs/agent/desk v0.1.0
 	github.com/hollis-labs/libs/agent/steer v0.1.0
 	github.com/hollis-labs/libs/core/util v0.11.1
 	github.com/hollis-labs/libs/llm/core v0.5.0
@@ -38,7 +39,6 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hollis-labs/libs/agent/desk v0.1.0 // indirect
 	github.com/hollis-labs/libs/agent/trace v0.2.0 // indirect
 	github.com/hollis-labs/libs/app/app-host v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect

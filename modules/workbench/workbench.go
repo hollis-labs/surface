@@ -61,6 +61,9 @@ func (m *mod) Manifest() module.Manifest {
 				if tab, _ := w.State["tab"].(string); tab != "" {
 					wc.Extra["tab"] = tab
 				}
+				if m.lib == nil {
+					return wc, nil
+				}
 				if a, err := m.lib.Get(id); err == nil {
 					wc.Extra["name"], wc.Extra["digest"], wc.Extra["version"], wc.Extra["valid"] = a.Name, a.Digest, a.Version, a.OK
 				}

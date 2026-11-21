@@ -1,6 +1,8 @@
 package scratch
 
 import (
+	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +39,9 @@ func row(t *testing.T, m *mod, id string) (it Item, deleted bool, rev, conflict 
 	err := m.st.db.QueryRowContext(t.Context(), `SELECT text, kind, done, tags, caster_ref, deleted_at, caster_rev, conflict_rev, caster_tags, sync_error FROM items WHERE id=?`, id).
 		Scan(&it.Text, &it.Kind, &it.Done, &it.Tags, &it.CasterRef, &d, &rev, &conflict, &keep, &syncErr)
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("read item %s: %v", id, err)
+		}
 		return Item{}, false, 0, 0, "", ""
 	}
 	return it, d != nil, rev, conflict, keep, syncErr
@@ -87,9 +92,18 @@ func TestCasterIsReadBack(t *testing.T) {
 	_ = h.Settings.Set(t.Context(), "caster_sync", true)
 	h.Do("GET", "/items", "")
 	eventually(t, "Basalisk's items are read back", func() bool {
-		it, _, _, _, _, _ := row(t, m, "cst_scr_0001")
-		return it.Kind == "idea" && it.Tags == "ux"
+		// Imports commit each row separately. Seeing the first row does not
+		// mean the later command and archived rows exist yet.
+		for _, id := range []string{"cst_scr_0001", "cst_scr_0002", "cst_scr_0003"} {
+			if _, _, rev, _, _, _ := row(t, m, id); rev != 1 {
+				return false
+			}
+		}
+		return true
 	})
+	if it, _, _, _, _, _ := row(t, m, "cst_scr_0001"); it.Kind != "idea" || it.Tags != "ux" {
+		t.Fatalf("idea item: %+v", it)
+	}
 	if it, _, rev, _, keep, _ := row(t, m, "cst_scr_0002"); it.Text != "$ make desk" || keep != "kind:command task:CW-20261119-0064" || rev != 1 {
 		t.Fatalf("command item: %+v %d %q", it, rev, keep)
 	}

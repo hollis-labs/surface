@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.9.0] - 2026-11-21
+
+- **Ops: Activity across workstreams.** A board-level Activity view: one feed, newest first, over every workstream
+  (in-flight first in the refresh order), each row labelled with its workstream; filters for workstream, stage,
+  source and time. `GET /api/m/ops/activity`; `ops_activity` without an id reads it; the ops slot shows the latest
+  line. Bounded per refresh round (240 calls) with the per-workstream caches reused.
+- **Ops: linked Torque plans expand into their phases and tasks** in the drill-in's Tasks tab, with live states; a
+  plan's tasks count in the roll-up and feed Activity, within the same bounds.
+
 ## [0.8.0] - 2026-11-21
 
 - **Nanite v0.12.1.** Fixed: the internal prompt that asks for a closing reply at the step limit no longer shows up

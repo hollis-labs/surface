@@ -78,7 +78,7 @@ func (m *mod) refs() []module.RefKind {
 		kind("torque.epic", "Torque epic", torqueRe("EP"), torqueContainer("torque_epic_get", "Epic")),
 		kind("torque.project", "Torque project", torqueRe("PRJ"), torqueContainer("torque_project_get", "Project")),
 		kind("torque.sprint", "Torque sprint", torqueRe("SP"), torqueContainer("torque_sprint_get", "Sprint")),
-		kind("torque.plan", "Torque plan", torqueRe("PL"), torqueContainer("torque_plan_get", "Plan")),
+		kind("torque.plan", "Torque plan", regexp.MustCompile(`^(CW|PL)-\d{8}-\d{4}$`), torquePlan),
 		kind("tesseract.item", "Tesseract item", ulidRe, tesseractItem),
 		kind("tesseract.key", "Tesseract key", tessKeyRe, tesseractKey),
 		kind("tether.agent", "Tether agent", urnRe, tetherAgent),
@@ -274,6 +274,29 @@ func torqueTask(ctx context.Context, c tetherlink.Caller, id string, full bool) 
 		e.Body = b.String()
 	}
 	return e, nil
+}
+
+// Torque plans are tasks (CW IDs), with phases beside the task in the plan envelope.
+func torquePlan(ctx context.Context, c tetherlink.Caller, id string, full bool) (module.RefEntity, error) {
+	raw, err := c.Call(ctx, "torque_plan_get", map[string]any{"plan_id": id})
+	if err != nil {
+		return module.RefEntity{}, err
+	}
+	var out struct {
+		Data struct {
+			Task struct{ ID, Title, Status, Description, UpdatedAt string } `json:"task"`
+		} `json:"data"`
+	}
+	if json.Unmarshal([]byte(raw), &out) != nil || out.Data.Task.ID != id {
+		return module.RefEntity{}, errors.New("unreadable plan")
+	}
+	task := out.Data.Task
+	entity := module.RefEntity{Title: task.Title, Subtitle: "Torque plan", ChipLabel: "Plan: " + task.Title,
+		Description: excerpt(task.Description, 320), Status: status(task.Status), UpdatedAt: task.UpdatedAt}
+	if full {
+		entity.Body = task.Description
+	}
+	return entity, nil
 }
 
 func torqueContainer(tool, label string) func(context.Context, tetherlink.Caller, string, bool) (module.RefEntity, error) {

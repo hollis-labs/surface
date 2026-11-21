@@ -258,7 +258,7 @@ var linkKinds = map[string]*regexp.Regexp{
 	"work.item":       regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}/[a-z0-9]{8}$`),
 	"torque.task":     regexp.MustCompile(`^CW-\d{8}-\d{4}$`),
 	"torque.epic":     regexp.MustCompile(`^EP-\d{8}-\d{4}$`),
-	"torque.plan":     regexp.MustCompile(`^PL-\d{8}-\d{4}$`),
+	"torque.plan":     regexp.MustCompile(`^(CW|PL)-\d{8}-\d{4}$`),
 	"torque.project":  regexp.MustCompile(`^PRJ-\d{8}-\d{4}$`),
 	"torque.sprint":   regexp.MustCompile(`^SP-\d{8}-\d{4}$`),
 	"registry.record": regexp.MustCompile(`^[a-z][a-z0-9_]{0,40}:[A-Za-z0-9][A-Za-z0-9._/:@+-]{0,400}$`),

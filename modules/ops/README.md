@@ -112,7 +112,7 @@ feed, newest first, each row `{at, source, state, summary, task, workstream, ver
 
 | Source | Read |
 |---|---|
-| Torque (`torque`) | `torque_task_get` of each linked task and of the children of linked epics (`torque_task_list epic_id`) |
+| Torque (`torque`) | `torque_task_get` of each linked task and of the children of linked epics (`torque_task_list epic_id`) and plans (`torque_plan_list_children`) |
 | Status comments (`comment`) | `torque_comment_list` per task; lines starting `STATUS`, `REVIEW`, `VERDICT`, `INCIDENT` or `Independent review` |
 | Status stream (`status`) | `event_list` on the workstream's `status_ns`, filtered to its tasks. Shown as claimed: no writer is trusted yet |
 | Ops (`ops`) | its own transitions |
@@ -121,6 +121,13 @@ Bounded: 80 tasks and 6 calls at once per roll-up, 20 comments per task, 300 row
 kept for a minute and shared by every roll-up (a task under a concept and under its child is read once); a
 finished task's comments are not read. A `STATUS` comment that mirrors a status-stream entry for the same task
 is shown once, as the status entry. Rows sort by their parsed time.
+
+Linked `torque.plan` entries expand into ordered phases and tasks in the Tasks tab. Plan and phase
+states come from `torque_plan_get`; child task states and STATUS comments use the same task cache and feed
+as direct and epic links. A task linked several ways counts once. Plans and their children are cached for
+a minute, including across parent/child workstream roll-ups. Child pages are followed up to the 80-task
+bound; incomplete reads are shown as problems, not as an empty plan. At most 80 distinct plans are expanded
+per roll-up. `ops_get` includes plans, and the focused workstream's slot context includes cached plans and task counts.
 
 ## Seeding from the tracker
 
@@ -195,7 +202,6 @@ Settings: `ops.tether_command`, or `ops.tether_url` with `ops.tether_token_file`
   trusted writers are configured. It is near-empty today, so Torque is the main source.
 - **Registry identity**: the `identity` link is added by hand; there is no lookup by key until
   `workstream_ensure` is deployed, and no correlation records as activity.
-- **Plans**: linked `torque.plan` ids show as chips but their tasks are not expanded.
 - **Teams**: no `tether.team` Cite kind; team links show as text. No grouping of activity by team, no
   StateTimeline.
 - `ops_request_agent`, `ops_launch_request`, `ops_drop` (phase 1.5), and the Planner → Task Ops hook.

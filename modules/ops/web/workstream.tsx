@@ -5,14 +5,7 @@
  * History (moves and Caster revisions, with a revision's text against the one before).
  * Activity opens first when the workstream is in flight, History otherwise.
  */
-import {
-  CiteRef,
-  CiteText,
-  citeMarkdownExtensions,
-  Icon,
-  useEvent,
-  type ViewProps,
-} from "@hollis-labs/surface-page/sdk"
+import { CiteText, citeMarkdownExtensions, Icon, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,7 +14,6 @@ import { Input } from "@/components/ui/input"
 import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
@@ -38,6 +30,7 @@ import {
   time,
 } from "./api"
 import { LinkChip, OpsChip, StageBadge } from "./parts"
+import { PlanTasks } from "./plan-tasks"
 
 const SOURCE_ICON: Record<string, string> = {
   torque: "list-checks",
@@ -411,43 +404,7 @@ function Tasks({ roll, id, busy, refresh }: { roll: Rollup | null; id: string; b
         </Button>
       </div>
       <Problems roll={roll} />
-      {roll.tasks.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Task</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>From</TableHead>
-              <TableHead>Updated</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {roll.tasks.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="max-w-96 whitespace-normal">
-                  <CiteRef
-                    refId={{ kind: "torque.task", canonical: t.id }}
-                    label={t.title ? `${t.id} ${t.title}` : undefined}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Badge variant={t.status === "doing" ? "default" : "outline"}>{t.status}</Badge>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {t.workstream !== id ? (
-                    <OpsChip id={t.workstream} />
-                  ) : t.via && t.via !== "link" ? (
-                    <CiteText text={t.via} />
-                  ) : (
-                    "linked"
-                  )}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-xs">{age(t.updated)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <PlanTasks roll={roll} id={id} />
     </div>
   )
 }

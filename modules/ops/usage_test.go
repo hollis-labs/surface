@@ -51,6 +51,26 @@ func (f *usageFake) Call(_ context.Context, tool string, args map[string]any) (s
 			return "", errors.New("unbounded alerts")
 		}
 		return `{"ok":true,"alerts":[{"timestamp":"2026-11-20T01:00:00Z","provider":"jev","error":"old"},{"timestamp":"2026-11-21T01:00:00Z","provider":"jev","error":"new"}]}`, nil
+	case "design_budget", "audio_budget", "video_budget":
+		if args["days"] != suiteDays {
+			return "", errors.New("unbounded suite read")
+		}
+		if tool == "audio_budget" {
+			return `{"days":30,"total_usd":5,"daily_cap_usd":2,"spent_today_usd":1.7,"by_provider":{"a":{"calls":1,"cost_usd":1},"b":{"calls":3,"cost_usd":4}},` +
+				`"recent":[{"ts":"2026-11-20T01:00:00Z","provider":"b","cost_usd":0.5,"ok":true},{"ts":"2026-11-21T01:00:00Z","provider":"a","model":"m","cost_usd":0.2,"ok":true}],"note":"estimates"}`, nil
+		}
+		if tool == "video_budget" {
+			return `{"error":"nope"}`, nil
+		}
+		return `{"days":30,"total_usd":11.4,"daily_cap_usd":null,"spent_today_usd":0,"by_provider":{"x":{"calls":2,"cost_usd":11.4}},"recent":[]}`, nil
+	case "tripo_balance":
+		return `{"balance":100,"frozen":10}`, nil
+	case "tripo_usage":
+		if args["limit"] != tripoUsageMax {
+			return "", errors.New("unbounded tripo ledger")
+		}
+		return `{"total_credits":330,"returned_entries":3,"usage":[{"type":"text_to_model","status":"success","created_at":"2026-11-01T00:00:00Z","credits_consumed":110},` +
+			`{"type":"image_to_model","status":"success","created_at":"2026-11-07T00:00:00Z","credits_consumed":120},{"type":"x","status":"failed","created_at":"2026-11-02T00:00:00Z","credits_consumed":100}]}`, nil
 	}
 	return "", errors.New("unexpected tool " + tool)
 }
@@ -67,7 +87,7 @@ func TestUsageGatewayCardAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Cards) != 2+len(subscriptions) {
+	if len(r.Cards) != len(usageAdapters) {
 		t.Fatalf("cards: %+v", r.Cards)
 	}
 	if gw := r.Cards[0]; gw.ID != gatewaySource || gw.Status != usageGap || gw.Used != nil || gw.Gap == "" {
@@ -89,7 +109,10 @@ func TestUsageGatewayCardAndDetail(t *testing.T) {
 	if g.Status != usageWarning || g.Gap == "" {
 		t.Errorf("a budget error must warn: %+v", g)
 	}
-	for _, s := range r.Cards[2:] {
+	for _, s := range r.Cards {
+		if a, _ := adapterFor(s.ID); a.read != nil {
+			continue
+		}
 		if s.Status != usageGap || s.Used != nil || s.Gap == "" {
 			t.Errorf("subscription must be a labeled gap, not zero: %+v", s)
 		}
@@ -169,6 +192,71 @@ func TestUsageToolsAllowedReadOnly(t *testing.T) {
 	for _, tool := range m.tools() {
 		if tool.Name == "ops_usage" && tool.Level != module.LevelRead {
 			t.Errorf("ops_usage level %v", tool.Level)
+		}
+	}
+}
+
+func cardByID(t *testing.T, r UsageResult, id string) UsageCard {
+	t.Helper()
+	for _, c := range r.Cards {
+		if c.ID == id {
+			return c
+		}
+	}
+	t.Fatalf("no %s card", id)
+	return UsageCard{}
+}
+
+func TestUsageSuitesAndTripo(t *testing.T) {
+	now := time.Date(2026, 11, 21, 14, 30, 0, 0, time.UTC)
+	f := &usageFake{}
+	c := &usageCache{now: func() time.Time { return now }}
+	r, err := c.read(t.Context(), fixedLink(f), "audio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	design := cardByID(t, r, "design")
+	if design.Status != usageOK || design.Limit != nil || !strings.Contains(design.Gap, "No daily cap") || design.ResetAt != "" {
+		t.Errorf("uncapped suite: %+v", design)
+	}
+	audio := cardByID(t, r, "audio")
+	if audio.Status != usageWarning || *audio.Used != 1.7 || *audio.Limit != 2 || audio.ResetAt != "2026-11-22T00:00:00Z" {
+		t.Errorf("capped suite near its cap: %+v", audio)
+	}
+	if video := cardByID(t, r, "video"); video.Status != usageError {
+		t.Errorf("unreadable suite must be an error card, not zero: %+v", video)
+	}
+	d := r.Detail
+	if d == nil || d.Spend[0].Provider != "b" || d.Recent[0].What != "a · m" || len(d.Notes) != 2 || d.Windows != nil {
+		t.Fatalf("audio detail: %+v", d)
+	}
+	tripo := cardByID(t, r, "tripo")
+	if tripo.Status != usageWarning || *tripo.Remaining != 100 || tripo.Used != nil || tripo.ResetAt != "" {
+		t.Errorf("tripo below its largest recent charge: %+v", tripo)
+	}
+	r, _ = c.read(t.Context(), fixedLink(f), "tripo")
+	if r.Detail.Recent[0].Amount == nil || *r.Detail.Recent[0].Amount != 120 || r.Detail.Recent[1].OK {
+		t.Errorf("tripo ledger newest first: %+v", r.Detail.Recent)
+	}
+	for _, tool := range []string{"design_budget", "audio_budget", "video_budget", "tripo_balance", "tripo_usage"} {
+		if f.calls[tool] != 1 {
+			t.Errorf("%s read %d times; the cache must share one read", tool, f.calls[tool])
+		}
+		if !allowed[tool] {
+			t.Errorf("%s not allowed", tool)
+		}
+	}
+}
+
+func TestAgainst(t *testing.T) {
+	v := func(f float64) *float64 { return &f }
+	for _, c := range []struct {
+		used  *float64
+		limit float64
+		want  string
+	}{{nil, 1, usageUnknown}, {v(0), 1, usageOK}, {v(0.8), 1, usageWarning}, {v(1), 1, usageExhausted}, {v(0), 0, usageExhausted}} {
+		if got := against(c.used, c.limit); got != c.want {
+			t.Errorf("against(%v, %v) = %s, want %s", c.used, c.limit, got, c.want)
 		}
 	}
 }

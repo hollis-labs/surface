@@ -40,14 +40,16 @@ type UsageCard struct {
 	Kind   string `json:"kind"` // gateway or subscription
 	Status string `json:"status"`
 	// Used and Limit share Unit; either is nil when the source does not report it.
-	Used     *float64 `json:"used"`
-	Limit    *float64 `json:"limit"`
-	Unit     string   `json:"unit,omitempty"`
-	Window   string   `json:"window,omitempty"`
-	ResetAt  string   `json:"reset_at,omitempty"`
-	Summary  string   `json:"summary,omitempty"`
-	Gap      string   `json:"gap,omitempty"`
-	Observed string   `json:"observed_at,omitempty"`
+	Used  *float64 `json:"used"`
+	Limit *float64 `json:"limit"`
+	// Remaining is a balance (credits) where the source reports one instead of a limit.
+	Remaining *float64 `json:"remaining,omitempty"`
+	Unit      string   `json:"unit,omitempty"`
+	Window    string   `json:"window,omitempty"`
+	ResetAt   string   `json:"reset_at,omitempty"`
+	Summary   string   `json:"summary,omitempty"`
+	Gap       string   `json:"gap,omitempty"`
+	Observed  string   `json:"observed_at,omitempty"`
 }
 
 // UsageTotals is one aggregate row from the gateway: a provider, a model or a whole window.
@@ -92,12 +94,16 @@ type UsageAlert struct {
 }
 
 // UsageDetail is a card's details. Only the gateway has them so far.
+// Sections are omitted when a source has nothing of that kind.
 type UsageDetail struct {
-	Windows    []UsageWindow `json:"windows"`
-	ByProvider []UsageTotals `json:"by_provider"`
-	ByModel    []UsageTotals `json:"by_model"`
-	Budgets    []UsageBudget `json:"budgets"`
-	Alerts     []UsageAlert  `json:"alerts"`
+	Windows    []UsageWindow `json:"windows,omitempty"`
+	ByProvider []UsageTotals `json:"by_provider,omitempty"`
+	ByModel    []UsageTotals `json:"by_model,omitempty"`
+	Budgets    []UsageBudget `json:"budgets,omitempty"`
+	Alerts     []UsageAlert  `json:"alerts,omitempty"`
+	Spend      []UsageSpend  `json:"spend,omitempty"`
+	Recent     []UsageEvent  `json:"recent,omitempty"`
+	Notes      []string      `json:"notes,omitempty"`
 	Warnings   []string      `json:"warnings,omitempty"`
 }
 
@@ -108,33 +114,51 @@ type UsageResult struct {
 	FetchedAt string       `json:"fetched_at"`
 }
 
-// subscriptions are the seats we pay for per account. No collector reads them yet; they
-// stay visible as gaps so a missing number is never mistaken for zero use.
-var subscriptions = []struct{ id, title string }{
-	{"claude", "Claude (Claude Code)"},
-	{"codex", "Codex"},
-	{"agy", "agy"},
-	{"opencode", "opencode"},
-}
-
 const (
 	usageTTL       = time.Minute
 	usageTopN      = 10
 	usageAlertsMax = 20
 )
 
-type gatewayRead struct {
+type sourceRead struct {
 	card   UsageCard
 	detail UsageDetail
 	err    error
 	at     time.Time
 }
 
-// usageCache serializes and caches gateway reads, failures included, so open windows and
+// usageAdapter reads one source. A nil read is a source with no collector yet: its card is
+// the gap it describes.
+type usageAdapter struct {
+	id, title, kind string
+	gap             string
+	read            func(ctx context.Context, link tetherlink.Caller, now time.Time) (UsageCard, UsageDetail, error)
+}
+
+// usageAdapters is the card order.
+var usageAdapters = []usageAdapter{
+	{id: gatewaySource, title: "LLM gateway", kind: "gateway",
+		gap: "Not collected yet. Basalisk and Studio turns go through llm-gateway, whose own usage and spend are not wired in; the Tether AI router card does not include them."},
+	{id: routerSource, title: routerTitle, kind: "router", read: readRouter},
+	{id: "design", title: "Design suite", kind: "suite", read: suiteReader("design_budget")},
+	{id: "audio", title: "Audio suite", kind: "suite", read: suiteReader("audio_budget")},
+	{id: "video", title: "Video suite", kind: "suite", read: suiteReader("video_budget")},
+	{id: "tripo", title: "Tripo 3D", kind: "credits", read: readTripo},
+	{id: "openrouter", title: "OpenRouter", kind: "credits",
+		gap: "Not collected yet. OpenRouter reports usage and remaining credit for a key; reading it needs a credential decision that is pending."},
+	{id: "claude", title: "Claude (Claude Code)", kind: "subscription", gap: subscriptionGap},
+	{id: "codex", title: "Codex", kind: "subscription", gap: subscriptionGap},
+	{id: "agy", title: "agy", kind: "subscription", gap: subscriptionGap},
+	{id: "opencode", title: "opencode", kind: "subscription", gap: subscriptionGap},
+}
+
+const subscriptionGap = "Not collected yet. This subscription has no usage meter to read; its rate-limit events are not wired in."
+
+// usageCache serializes and caches source reads, failures included, so open windows and
 // the tool share one bounded refresh.
 type usageCache struct {
 	mu      sync.Mutex
-	gateway gatewayRead
+	sources map[string]sourceRead
 	now     func() time.Time
 }
 
@@ -145,54 +169,75 @@ func (c *usageCache) clock() time.Time {
 	return time.Now()
 }
 
+func adapterFor(id string) (usageAdapter, bool) {
+	for _, a := range usageAdapters {
+		if a.id == id {
+			return a, true
+		}
+	}
+	return usageAdapter{}, false
+}
+
 func (c *usageCache) read(ctx context.Context, link func() (tetherlink.Caller, error), source string) (UsageResult, error) {
-	if source != "" && source != routerSource && source != gatewaySource && !isSubscription(source) {
+	if _, ok := adapterFor(source); source != "" && !ok {
 		return UsageResult{}, fmt.Errorf("unknown usage source %q", source)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.clock()
-	if c.gateway.at.IsZero() || now.Sub(c.gateway.at) >= usageTTL {
-		var g gatewayRead
-		if l, err := link(); err != nil {
-			g.err = err
-		} else {
-			g.card, g.detail, g.err = readGateway(ctx, l, now)
+	if c.sources == nil {
+		c.sources = map[string]sourceRead{}
+	}
+	// Stale sources refresh together, in parallel, so one slow source does not hold up the rest.
+	var stale []usageAdapter
+	for _, a := range usageAdapters {
+		if r, ok := c.sources[a.id]; a.read != nil && (!ok || now.Sub(r.at) >= usageTTL) {
+			stale = append(stale, a)
 		}
-		g.at = now
-		c.gateway = g
 	}
-	g := c.gateway
-	card := g.card
-	if g.err != nil {
-		card = UsageCard{ID: routerSource, Title: routerTitle, Kind: "router", Status: usageError,
-			Gap: "Tether AI router usage unavailable: " + g.err.Error(), Observed: g.at.UTC().Format(time.RFC3339)}
+	if len(stale) > 0 {
+		l, linkErr := link()
+		fresh := make([]sourceRead, len(stale))
+		var wg sync.WaitGroup
+		for i, a := range stale {
+			if linkErr != nil {
+				fresh[i] = sourceRead{err: linkErr, at: now}
+				continue
+			}
+			wg.Go(func() {
+				card, detail, err := a.read(ctx, l, now)
+				fresh[i] = sourceRead{card: card, detail: detail, err: err, at: now}
+			})
+		}
+		wg.Wait()
+		for i, a := range stale {
+			c.sources[a.id] = fresh[i]
+		}
 	}
-	gateway := UsageCard{ID: gatewaySource, Title: "LLM gateway", Kind: "gateway", Status: usageGap,
-		Gap: "Not collected yet. Basalisk and Studio turns go through llm-gateway, whose own usage, budgets and spend are not wired in; the Tether AI router card does not include them."}
-	out := UsageResult{Cards: []UsageCard{gateway, card}, Source: source, FetchedAt: g.at.UTC().Format(time.RFC3339)}
-	for _, s := range subscriptions {
-		out.Cards = append(out.Cards, UsageCard{ID: s.id, Title: s.title, Kind: "subscription", Status: usageGap,
-			Gap: "Not collected yet. A read-only collector for this subscription's CLI is pending."})
-	}
-	if source == routerSource && g.err == nil {
-		d := g.detail
-		out.Detail = &d
+	out := UsageResult{Cards: []UsageCard{}, Source: source, FetchedAt: now.UTC().Format(time.RFC3339)}
+	for _, a := range usageAdapters {
+		if a.read == nil {
+			out.Cards = append(out.Cards, UsageCard{ID: a.id, Title: a.title, Kind: a.kind, Status: usageGap, Gap: a.gap})
+			continue
+		}
+		r := c.sources[a.id]
+		card := r.card
+		if r.err != nil {
+			card = UsageCard{ID: a.id, Title: a.title, Kind: a.kind, Status: usageError,
+				Gap: a.title + " usage unavailable: " + r.err.Error(), Observed: r.at.UTC().Format(time.RFC3339)}
+		}
+		card.ID, card.Title, card.Kind = a.id, a.title, a.kind
+		out.Cards = append(out.Cards, card)
+		if a.id == source && r.err == nil {
+			d := r.detail
+			out.Detail = &d
+		}
 	}
 	return out, nil
 }
 
-func isSubscription(id string) bool {
-	for _, s := range subscriptions {
-		if s.id == id {
-			return true
-		}
-	}
-	return false
-}
-
-// readGateway makes five bounded reads: budgets, usage for three windows, recent alerts.
-func readGateway(ctx context.Context, link tetherlink.Caller, now time.Time) (UsageCard, UsageDetail, error) {
+// readRouter makes five bounded reads: budgets, usage for three windows, recent alerts.
+func readRouter(ctx context.Context, link tetherlink.Caller, now time.Time) (UsageCard, UsageDetail, error) {
 	now = now.UTC()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	detail := UsageDetail{Windows: []UsageWindow{}, ByProvider: []UsageTotals{}, ByModel: []UsageTotals{}, Budgets: []UsageBudget{}, Alerts: []UsageAlert{}}

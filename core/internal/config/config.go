@@ -117,6 +117,12 @@ func (s *Store) Set(ctx context.Context, fullKey string, value any) error {
 		s.mu.Unlock()
 		return fmt.Errorf("config: %s: %w", fullKey, err)
 	}
+	if d.s.Validate != nil {
+		if err := d.s.Validate(v); err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("config: %s: %w", fullKey, err)
+		}
+	}
 	raw, _ := json.Marshal(v)
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`, fullKey, string(raw)); err != nil {
@@ -238,6 +244,16 @@ func (c scoped) Watch(key string, fn func(any)) func() { return c.s.Watch(c.scop
 // coerce checks v against the setting's type and returns it in the type's Go form.
 func coerce(st module.Setting, v any) (any, error) {
 	switch st.Type {
+	case module.SettingObject:
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var object map[string]any
+		if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+			return nil, errors.New("want an object")
+		}
+		return object, nil
 	case module.SettingBool:
 		if b, ok := v.(bool); ok {
 			return b, nil

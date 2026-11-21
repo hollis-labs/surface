@@ -26,6 +26,7 @@ import {
   ConversationScrollButton,
   ConversationViewport,
 } from "@/components/ui/conversation"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item"
 import { Label } from "@/components/ui/label"
@@ -34,6 +35,7 @@ import { PromptInput, PromptInputFooter, PromptInputSubmit, PromptInputTextarea 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CardDock } from "../cards/views"
 import { type Desk, type SurfaceEvent, useEvent } from "../sdk"
+import { AgentBindings } from "./AgentBindings"
 import { type Assembly, agentApi, type ProfileState, type Setup, type SlotInfo } from "./api"
 import { ItemView } from "./items"
 import { type AgentSession, createAgentSession } from "./session"
@@ -113,6 +115,7 @@ function ContextStrip({ store }: { store: ChatStore }) {
   useEvent("agent.note", refresh)
   useEvent("agent.turn", refresh)
   useEvent("agent.profile", refresh)
+  useEvent("config.changed", refresh)
   // A run's tools may have changed what is in front (a window opened, a note kept).
   useEffect(() => store.onRunEnd(() => refresh()), [store, refresh])
 
@@ -144,7 +147,7 @@ function ContextStrip({ store }: { store: ChatStore }) {
             ))}
           </SelectContent>
         </Select>
-        {profiles?.on && profiles.profiles.length > 0 && (
+        {profiles && (profiles.profiles.length > 0 || (profiles.bindings?.length ?? 0) > 0) && (
           <ProfilePicker state={profiles} onPick={(p) => void pinProfile(p)} />
         )}
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{why}</span>
@@ -193,13 +196,13 @@ function ProfilePicker({ state, onPick }: { state: ProfileState; onPick: (profil
   const items = [
     { value: "auto", label: `auto (${state.active.id || "default"})` },
     { value: "default", label: "default" },
-    ...state.profiles.map((p) => ({ value: p.id, label: p.id })),
+    ...state.profiles.map((p) => ({ value: p.id, label: `${p.id} — ${p.name}` })),
   ]
   const active = state.profiles.find((p) => p.id === state.active.id)
   return (
     <>
       <Label htmlFor="agent-profile">Profile</Label>
-      <Select value={value} onValueChange={(v) => onPick(String(v ?? "auto"))} items={items}>
+      <Select disabled={!state.on} value={value} onValueChange={(v) => onPick(String(v ?? "auto"))} items={items}>
         <SelectTrigger
           id="agent-profile"
           size="sm"
@@ -219,6 +222,15 @@ function ProfilePicker({ state, onPick }: { state: ProfileState; onPick: (profil
           ))}
         </SelectContent>
       </Select>
+      <Dialog>
+        <DialogTrigger render={<Button variant="ghost" size="xs" />}>Choose agents</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Module agents</DialogTitle>
+          </DialogHeader>
+          <AgentBindings />
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

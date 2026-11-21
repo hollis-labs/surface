@@ -102,6 +102,7 @@ func TestModuleProfilesOnTheNaniteRunner(t *testing.T) {
 			runs := a.runs()
 			return len(runs) == n && runs[0].Status == "finished"
 		})
+		a.waitIdle()
 		return model.sentWith(text)
 	}
 	profileOf := func() string {
@@ -177,6 +178,53 @@ func TestModuleProfilesOnTheNaniteRunner(t *testing.T) {
 	do(t, srv, "POST", "/api/agent/profiles/pin", `{"profile":"auto"}`, &st)
 	if st.Pinned != "" || st.Active.Why != "focus" {
 		t.Errorf("auto: %+v", st)
+	}
+
+	// A folder binding overrides the built-in profile but retains the app runtime.
+	bound := t.TempDir()
+	definition, err := os.ReadFile("testdata/profiletest/profile/agent.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition = []byte(strings.ReplaceAll(string(definition), "SAMPLE-PROFILE-MARKER", "BOUND-AGENT-MARKER"))
+	if err = os.WriteFile(filepath.Join(bound, "agent.md"), definition, 0600); err != nil { //nolint:gosec // fixed filename under the test-owned temporary folder
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(bound, "host.yaml"), []byte("kind: embedded\nlifetime: application\napplication_id: binding-test\nruntime:\n  model: bound-model\n  max_output_tokens: 1234\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binding, _ := json.Marshal(map[string]any{"value": map[string]string{"profiletest": bound}})
+	if code := do(t, srv, "PUT", "/api/settings/agent.bindings", string(binding), nil); code != 200 {
+		t.Fatalf("bind: %d", code)
+	}
+	body = turn("bound question", 4)
+	for _, want := range []string{"BOUND-AGENT-MARKER", "test-model", "card_ask"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("bound turn lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "bound-model") || strings.Contains(body, `"max_tokens":1234`) {
+		t.Error("bound host runtime overrode app runtime")
+	}
+	var logged []struct {
+		Profile  string `json:"profile"`
+		AgentDir string `json:"agent_dir"`
+	}
+	do(t, srv, "GET", "/api/agent/runs", "", &logged)
+	if len(logged) == 0 || logged[0].Profile != "profiletest" || logged[0].AgentDir != bound {
+		t.Fatalf("bound log: %+v", logged)
+	}
+	// Runtime files and approvals belong to the app, not the owner's authored folder.
+	files, err := os.ReadDir(bound)
+	if err != nil || len(files) != 2 {
+		t.Fatalf("authored folder changed: %v %v", files, err)
+	}
+	if code := do(t, srv, "DELETE", "/api/settings/agent.bindings", "", nil); code != 200 {
+		t.Fatalf("reset: %d", code)
+	}
+	body = turn("reset question", 5)
+	if !strings.Contains(body, "SAMPLE-PROFILE-MARKER") || strings.Contains(body, "BOUND-AGENT-MARKER") {
+		t.Error("reset did not restore built-in profile")
 	}
 
 	// The staged directory is under the data directory; the owner's seat is untouched.

@@ -112,3 +112,58 @@ func TestADefaultMustFitItsType(t *testing.T) {
 		t.Error("a default of the wrong type was accepted")
 	}
 }
+
+func TestObjectValidationRejectsBeforePersistenceOrPublication(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.Open(ctx, filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err = storage.MigrateCore(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recorder{}
+	s, err := Open(ctx, db, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Declare("agent", []module.Setting{{Key: "bindings", Type: module.SettingObject, Default: map[string]any{}, Validate: func(v any) error {
+		for _, path := range v.(map[string]any) {
+			if path != "/agents/example" {
+				return fmt.Errorf("invalid folder")
+			}
+		}
+		return nil
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	value := map[string]string{"example": "/agents/example"}
+	if err = s.Set(ctx, "agent.bindings", value); err != nil {
+		t.Fatal(err)
+	}
+	value["example"] = "mutated"
+	if err = s.Set(ctx, "agent.bindings", map[string]string{"example": "bad"}); err == nil {
+		t.Fatal("invalid accepted")
+	}
+	got, _ := s.Get("agent.bindings")
+	if got.(map[string]any)["example"] != "/agents/example" || len(rec.changed) != 1 {
+		t.Fatalf("%v %v", got, rec.changed)
+	}
+	got.(map[string]any)["example"] = "mutated"
+	again, _ := s.Get("agent.bindings")
+	if again.(map[string]any)["example"] != "/agents/example" {
+		t.Fatal("Get exposed stored map")
+	}
+	reopened, err := Open(ctx, db, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = reopened.Declare("agent", []module.Setting{{Key: "bindings", Type: module.SettingObject, Default: map[string]any{}}}); err != nil {
+		t.Fatal(err)
+	}
+	persisted, _ := reopened.Get("agent.bindings")
+	if persisted.(map[string]any)["example"] != "/agents/example" {
+		t.Fatal("invalid value persisted")
+	}
+}

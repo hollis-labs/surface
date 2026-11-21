@@ -415,6 +415,15 @@ func (m *Marks) Resolve(_ context.Context, id string) error {
 func checkDefault(st module.Setting) error {
 	v := st.Default
 	switch st.Type {
+	case module.SettingObject:
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		var object map[string]any
+		if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+			return fmt.Errorf("want an object, not %#v", v)
+		}
 	case module.SettingBool:
 		if _, ok := v.(bool); !ok {
 			return fmt.Errorf("want true or false, not %#v", v)

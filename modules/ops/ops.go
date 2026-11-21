@@ -49,7 +49,7 @@ var allowed = tetherlink.Allowed{
 	"tether_workstream_get": true, "tether_workstream_digest": true,
 	"tether_message_send":  true,
 	"registry_record_list": true, "registry_record_get": true,
-	"tether_session_list": true, "tether_session_health": true,
+	"tether_agents_live": true,
 }
 
 // forbidden are tools Ops must never reach, whatever is asked.
@@ -127,7 +127,7 @@ func (m *mod) Manifest() module.Manifest {
 			Name:  "ops",
 			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
-			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
+			Tools: []string{"ops_list", "ops_get", "ops_fleet", "ops_activity", "ops_agents", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",
 			Instructions: "The board is the owner's. Read before you write (ops_get gives rev, the base_rev for ops_update). Propose moves; make them on the owner's word, with why. " +
 				"Moves are explicit: a suggested stage is a hint to put to the owner, never a move you make on your own. " +
@@ -224,6 +224,10 @@ func (m *mod) watch(ctx context.Context) {
 		if !m.windowOpen(ctx) {
 			continue
 		}
+		if m.sessionViewOpen(ctx) {
+			_, _ = m.sessions(ctx)
+			m.h.Events().Publish("ops.agents", nil)
+		}
 		c, cancel := context.WithTimeout(ctx, readBack*2)
 		if n, err := m.st.Refresh(c, false); err == nil && n > 0 {
 			m.changed("", "read-back")
@@ -286,6 +290,9 @@ func (m *mod) describeBoard(_ context.Context, _ module.Host, w module.Window) (
 	wc := module.WindowContext{Kind: "data", Ref: "ops", Extra: map[string]any{"layout": w.Args["layout"]}}
 	if w.Args["layout"] == "fleet" {
 		wc.Extra["host"] = w.Args["host"]
+		return wc, nil
+	}
+	if w.Args["layout"] == "agents" {
 		return wc, nil
 	}
 	if w.Args["layout"] == "activity" {

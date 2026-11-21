@@ -3,6 +3,7 @@
  * (model.go, activity.go, seed.go).
  */
 import type { ModuleAPI } from "@hollis-labs/surface-page/sdk"
+import type { SessionsResult } from "./sessions"
 
 export type Stage = "planned" | "parked" | "queued" | "in_flight" | "landing" | "complete" | "dropped"
 
@@ -228,6 +229,7 @@ const q = encodeURIComponent
 
 export function opsClient(api: ModuleAPI) {
   return {
+    agents: () => api.get<SessionsResult>("agents"),
     board: (force = false, showSettled = false) =>
       api.get<BoardData>(`board?force=${force ? 1 : 0}&show_settled=${showSettled ? 1 : 0}`),
     settle: (id: string, base_rev: number) => api.post<Workstream>(`workstreams/${q(id)}/settle`, { base_rev }),

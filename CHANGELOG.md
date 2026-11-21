@@ -5,6 +5,10 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Ops: Agents view.** The board shows live Tether sessions and kit seats with agent identity, host,
+  awake/sleeping state, last activity and workstream links. A shared bounded refresh also serves the
+  read-only `ops_agents` tool; unavailable observations remain explicit.
+
 ## [0.12.1] - 2026-11-21
 
 - **Ops: Settle.** A complete workstream can be settled: `settled_at`, `settled_by` and a final summary are recorded,

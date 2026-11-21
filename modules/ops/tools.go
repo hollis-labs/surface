@@ -61,6 +61,10 @@ const (
 
 func (m *mod) tools() []module.Tool {
 	return []module.Tool{
+		{Name: "ops_agents", Level: module.LevelRead,
+			Description: "Live agents from Tether: awake, sleeping or unknown, host, raw state, observed last activity and workstream. Read-only; shares the Agents/Fleet refresh cache. Unknown or stale observations do not imply sleeping.",
+			Input:       schema(""),
+			Run:         func(ctx context.Context, _ module.Host, _ json.RawMessage) (any, error) { return m.sessions(ctx) }},
 		{Name: "ops_settle", Level: module.LevelWrite,
 			Description: "Settle a complete workstream: preserve its final tracking snapshot and hide it from the board by default. History and Cite references remain. The owner approves this action.",
 			Input:       schema(idProp+`,"base_rev":{"type":"integer","minimum":1}`, "id", "base_rev"),

@@ -65,104 +65,87 @@ func (m *mod) sessions(ctx context.Context) (SessionsResult, error) {
 	return result, err
 }
 
-// Interim adapter for Tether-launched sessions. A unified Tether live-agent read
-// can replace this adapter without changing the Agents/Fleet row contract.
+// Tether owns liveness and includes both launched sessions and kit seats. Keep
+// the source boundary here so Agents and Fleet consume the same observation.
 type tetherSessionReader struct {
 	link func() (tetherlink.Caller, error)
 }
 
-const sessionLimit = 50
+const sessionLimit = 500
 
 func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
-	out := SessionsResult{Sessions: []SessionRow{}, FetchedAt: now(), Warning: "Tether-launched sessions only; kit-booted seats are not included yet. Host information is unavailable from this source."}
+	out := SessionsResult{Sessions: []SessionRow{}}
 	c, err := r.link()
 	if err != nil {
 		return out, err
 	}
+	var snapshot struct {
+		Agents *[]struct {
+			AgentURN       string `json:"agent_urn"`
+			DisplayName    string `json:"display_name"`
+			Kind           string `json:"kind"`
+			Host           string `json:"host"`
+			State          string `json:"state"`
+			LastActivityAt string `json:"last_activity_at"`
+			Summary        string `json:"summary"`
+			SessionID      string `json:"session_id"`
+			RunID          string `json:"run_id"`
+			WorkstreamID   string `json:"workstream_id"`
+			Stale          bool   `json:"stale"`
+		} `json:"agents"`
+		ObservedAt string `json:"observed_at"`
+		Count      int    `json:"count"`
+	}
+	if err = sessionCall(ctx, c, "tether_agents_live", map[string]any{"include_stale": false}, &snapshot); err != nil {
+		return out, fmt.Errorf("live agent observations unavailable")
+	}
+	if snapshot.Agents == nil || snapshot.ObservedAt == "" {
+		return out, fmt.Errorf("live agent observation is incomplete")
+	}
+	out.FetchedAt = snapshot.ObservedAt
+	out.Truncated = snapshot.Count > len(*snapshot.Agents) || len(*snapshot.Agents) > sessionLimit
 	seen := map[string]bool{}
-	for _, state := range []string{"running", "detached"} {
-		var page struct {
-			Sessions []struct {
-				ID           string `json:"id"`
-				AgentID      string `json:"logical_agent_id"`
-				State        string `json:"state"`
-				WorkstreamID string `json:"workstream_id"`
-			} `json:"sessions"`
-			NextCursor string `json:"next_cursor"`
+	for i, s := range *snapshot.Agents {
+		if i >= sessionLimit {
+			break
 		}
-		if err = sessionCall(ctx, c, "tether_session_list", map[string]any{"state": state, "limit": sessionLimit / 2}, &page); err != nil {
-			return out, err
+		// The view promises live agents. Do not reintroduce stale registrations if
+		// a source accidentally includes them despite include_stale=false.
+		if s.Stale {
+			continue
 		}
-		out.Truncated = out.Truncated || page.NextCursor != "" || len(page.Sessions) > sessionLimit/2
-		for i, s := range page.Sessions {
-			if i >= sessionLimit/2 {
-				break
-			}
-			if s.ID == "" || seen[s.ID] || (s.State != "running" && s.State != "detached") {
-				continue
-			}
-			seen[s.ID] = true
-			row := SessionRow{ID: s.ID, Kind: "session", AgentID: s.AgentID, AgentName: s.AgentID, State: "unknown", RawState: s.State, WorkstreamID: s.WorkstreamID, Stale: true}
-			if row.AgentName == "" {
-				row.AgentName = s.ID
-			}
-			if strings.HasPrefix(s.AgentID, "msg://") {
-				row.AgentRef = s.AgentID
-			}
-			out.Sessions = append(out.Sessions, row)
+		id := s.SessionID
+		kind := "session"
+		if s.Kind == "kit_seat" {
+			kind = "seat"
+			id = s.RunID
 		}
-	}
-	// At most two list calls and 50 health reads, four at once. No output peeks,
-	// workspace paths or process metadata leave the adapter.
-	var wg sync.WaitGroup
-	jobs := make(chan int)
-	for range 4 {
-		wg.Go(func() {
-			for i := range jobs {
-				row := &out.Sessions[i]
-				var health struct {
-					Alive          *bool  `json:"alive"`
-					LiveState      string `json:"live_state"`
-					LastActivityAt string `json:"last_activity_at"`
-				}
-				callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-				healthErr := sessionCall(callCtx, c, "tether_session_health", map[string]any{"session_id": row.ID}, &health)
-				cancel()
-				if healthErr != nil {
-					row.Warning = "Live observation unavailable"
-					continue
-				}
-				if health.Alive != nil && !*health.Alive {
-					row.ID = ""
-					continue
-				}
-				if health.LiveState != "" {
-					row.RawState += " / " + health.LiveState
-				}
-				row.LastActivityAt = health.LastActivityAt
-				if health.Alive != nil && *health.Alive {
-					switch health.LiveState {
-					case "idle":
-						row.State, row.Stale = "sleeping", false
-					case "busy", "processing":
-						row.State, row.Stale = "awake", false
-					}
-				}
-			}
-		})
-	}
-	for i := range out.Sessions {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
-	rows := out.Sessions[:0]
-	for _, row := range out.Sessions {
-		if row.ID != "" {
-			rows = append(rows, row)
+		if id == "" {
+			id = s.AgentURN
 		}
+		id = kind + ":" + id
+		if s.AgentURN == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		row := SessionRow{ID: id, Kind: kind, AgentID: s.AgentURN, AgentName: s.DisplayName, Host: s.Host,
+			State: "unknown", RawState: s.State, LastActivityAt: s.LastActivityAt, LastActivity: s.Summary, WorkstreamID: s.WorkstreamID}
+		if row.AgentName == "" {
+			row.AgentName = s.AgentURN
+		}
+		if strings.HasPrefix(s.AgentURN, "msg://") {
+			row.AgentRef = s.AgentURN
+		}
+		switch s.State {
+		case "busy":
+			row.State = "awake"
+		case "idle":
+			row.State = "sleeping"
+		default:
+			row.Warning = "Live state unavailable"
+		}
+		out.Sessions = append(out.Sessions, row)
 	}
-	out.Sessions = rows
 	sort.Slice(out.Sessions, func(i, j int) bool {
 		if out.Sessions[i].AgentName == out.Sessions[j].AgentName {
 			return out.Sessions[i].ID < out.Sessions[j].ID

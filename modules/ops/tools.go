@@ -61,20 +61,35 @@ const (
 
 func (m *mod) tools() []module.Tool {
 	return []module.Tool{
+		{Name: "ops_settle", Level: module.LevelWrite,
+			Description: "Settle a complete workstream: preserve its final tracking snapshot and hide it from the board by default. History and Cite references remain. The owner approves this action.",
+			Input:       schema(idProp+`,"base_rev":{"type":"integer","minimum":1}`, "id", "base_rev"),
+			Describe:    describeWith(func(a map[string]any) string { return "Settle " + Ref(str(a, "id")) + " and preserve final tracking" }),
+			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
+				a, err := args[struct {
+					ID      string `json:"id"`
+					BaseRev int    `json:"base_rev"`
+				}](in)
+				if err != nil {
+					return nil, err
+				}
+				return m.settle(ctx, a.ID, a.BaseRev)
+			}},
 		{Name: "ops_list", Level: module.LevelRead,
 			Description: "The Operations board: workstreams by lane (stage), the Queued band in launch order, and for each its owner, held reason, parent and children, Torque roll-up and last activity (from the cache). Top-level concepts by default; parent lists one concept's children; all lists every level. stage, owner and held narrow it.",
 			Input: schema(`"stage":{"type":"string",` + stageEnum + `},"owner":{"type":"string"},"held":{"type":"boolean"},` +
-				`"parent":{"type":"string","description":"List the children of this workstream."},"all":{"type":"boolean","description":"Every level, not just the top."}`),
+				`"show_settled":{"type":"boolean"},"parent":{"type":"string","description":"List the children of this workstream."},"all":{"type":"boolean","description":"Every level, not just the top."}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				a, err := args[struct {
 					Stage, Owner, Parent string
 					Held                 *bool
 					All                  bool
+					ShowSettled          bool `json:"show_settled"`
 				}](in)
 				if err != nil {
 					return nil, err
 				}
-				return m.toolList(ctx, a.Stage, a.Owner, a.Parent, a.Held, a.All)
+				return m.toolList(ctx, a.Stage, a.Owner, a.Parent, a.Held, a.All, a.ShowSettled)
 			}},
 		{Name: "ops_get", Level: module.LevelRead,
 			Description: "One workstream: its document (title, owner, stage and since, held, parent, children, active-when list, links, notes, rev for ops_update's base_rev), its Torque roll-up and the last 10 activity rows (rolled up from its children).",
@@ -319,11 +334,14 @@ func (m *mod) tools() []module.Tool {
 	}
 }
 
-func (m *mod) toolList(ctx context.Context, stage, owner, parent string, held *bool, all bool) (any, error) {
+func (m *mod) toolList(ctx context.Context, stage, owner, parent string, held *bool, all bool, showSettled ...bool) (any, error) {
 	syncErr := m.sync(ctx, false)
 	b, err := m.st.All(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if len(showSettled) == 0 || !showSettled[0] {
+		b = b.unsettled()
 	}
 	cached := m.st.Cached(ctx)
 	lanes := map[string][]map[string]any{}

@@ -51,7 +51,7 @@ export function WorkstreamCard({
     <div
       data-ops-card={w.id}
       className="flex min-w-0 cursor-pointer flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-sm hover:bg-accent"
-      draggable={draggable}
+      draggable={draggable && !w.settled_at}
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG_TYPE, w.id)
         e.dataTransfer.effectAllowed = "move"
@@ -66,6 +66,12 @@ export function WorkstreamCard({
         {actions}
       </span>
       <span className="flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
+        {w.settled_at && <Badge variant="secondary">Settled</Badge>}
+        {w.orchestration_request && (
+          <Badge variant="outline">
+            {w.orchestration_request.message_id ? "Sent to orchestration" : "Send pending"}
+          </Badge>
+        )}
         {w.owner && <span className="truncate">{w.owner}</span>}
         {w.stage_since && (
           <span title={`In ${stageLabel(w.stage)} since ${w.stage_since}`}>{age(w.stage_since)} in stage</span>

@@ -42,9 +42,13 @@ type Task struct {
 	Updated    string `json:"updated,omitempty"`
 	Workstream string `json:"workstream"`
 	// Via is how the workstream reaches it: a link, epic or plan.
-	Via     string `json:"via,omitempty"`
-	PlanID  string `json:"plan_id,omitempty"`
-	PhaseID string `json:"phase_id,omitempty"`
+	Via           string `json:"via,omitempty"`
+	PlanID        string `json:"plan_id,omitempty"`
+	PhaseID       string `json:"phase_id,omitempty"`
+	ParentID      string `json:"parent_id,omitempty"`
+	EpicID        string `json:"epic_id,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	DiscoveredVia string `json:"discovered_via,omitempty"`
 }
 
 // Rollup is a workstream's tasks and activity, with its children's.
@@ -95,9 +99,10 @@ const taskTTL = 60 * time.Second
 
 // taskCache is the reads of Torque tasks, by id.
 type taskCache struct {
-	mu    sync.Mutex
-	m     map[string]taskRead
-	plans map[string]planRead
+	mu      sync.Mutex
+	m       map[string]taskRead
+	plans   map[string]planRead
+	parents map[string]parentRead
 }
 
 type taskRead struct {
@@ -215,7 +220,7 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 	}
 
 	// The tasks: linked ones, and the children of linked epics.
-	type want struct{ id, ws, via, plan string }
+	type want struct{ id, ws, via, plan, discovered string }
 	var wants []want
 	seen := map[string]bool{}
 	add := func(id, ws, via string) {
@@ -231,11 +236,36 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			}
 		}
 	}
-	for _, x := range all {
+	// Only directly linked tasks seed discovery: never recursively chase a graph.
+	// Keep these reads locally too, including failures, so final assembly reads each once.
+	initial := make(map[string]taskRead, len(wants))
+	semInitial := make(chan struct{}, readConcurrency)
+	var initialWG sync.WaitGroup
+	for _, t := range wants {
+		initialWG.Add(1)
+		go func() {
+			defer initialWG.Done()
+			semInitial <- struct{}{}
+			defer func() { <-semInitial }()
+			got := r.read(ctx, t.id)
+			mu.Lock()
+			initial[t.id] = got
+			mu.Unlock()
+		}()
+	}
+	initialWG.Wait()
+	containers := r.discover(ctx, all, initial, fail)
+	seenEpics := map[string]bool{}
+	for _, x := range containers {
 		for _, l := range x.Links {
-			if l.Kind != "torque.epic" {
+			if l.Kind != "torque.epic" || seenEpics[l.ID] {
 				continue
 			}
+			if len(seenEpics) == maxTasks {
+				fail(errors.New("epic limit reached; showing the first 80 epics"))
+				break
+			}
+			seenEpics[l.ID] = true
 			ids, err := r.epicTasks(ctx, l.ID)
 			if err != nil {
 				fail(fmt.Errorf("epic %s: %w", l.ID, err))
@@ -243,12 +273,21 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			}
 			for _, id := range ids {
 				add(id, x.ID, l.ID)
+				if !seen[id] {
+					fail(fmt.Errorf("epic %s: task limit reached", l.ID))
+					break
+				}
+				for i := range wants {
+					if wants[i].id == id && wants[i].via == l.ID {
+						wants[i].discovered = x.Via
+					}
+				}
 			}
 		}
 	}
-	// Plans add to the same task set before any details or comments are read.
+	// Plans add to the same task set; linked task reads above are reused below.
 	seenPlans := map[string]bool{}
-	for _, x := range all {
+	for _, x := range containers {
 		for _, l := range x.Links {
 			if l.Kind != "torque.plan" || seenPlans[l.ID] {
 				continue
@@ -260,6 +299,7 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			seenPlans[l.ID] = true
 			p, ids, err := r.plan(ctx, l.ID)
 			p.Workstream = x.ID
+			p.Via = x.Via
 			if err != nil {
 				fail(fmt.Errorf("plan %s: %w", l.ID, err))
 			}
@@ -290,7 +330,10 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			got := r.read(ctx, t.id)
+			got, ok := initial[t.id]
+			if !ok {
+				got = r.read(ctx, t.id)
+			}
 			if got.err != nil {
 				fail(fmt.Errorf("%s: %w", t.id, got.err))
 			}
@@ -299,6 +342,7 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			}
 			task := got.task
 			task.Workstream, task.Via, task.PlanID = t.ws, t.via, t.plan
+			task.DiscoveredVia = t.discovered
 			mu.Lock()
 			defer mu.Unlock()
 			out.Tasks = append(out.Tasks, task)
@@ -477,12 +521,15 @@ func (r reader) task(ctx context.Context, id string) (Task, error) {
 			Status    string `json:"status"`
 			UpdatedAt string `json:"updated_at"`
 			PhaseID   string `json:"phase_id"`
+			ParentID  string `json:"parent_id"`
+			EpicID    string `json:"epic_id"`
+			Kind      string `json:"kind"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil || out.Data.ID == "" {
+	if err := json.Unmarshal(raw, &out); err != nil || out.Data.ID != id {
 		return Task{}, errors.New("torque answered, but not with the task")
 	}
-	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt, PhaseID: out.Data.PhaseID}, nil
+	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt, PhaseID: out.Data.PhaseID, ParentID: out.Data.ParentID, EpicID: out.Data.EpicID, Kind: out.Data.Kind}, nil
 }
 
 func (r reader) epicTasks(ctx context.Context, epic string) ([]string, error) {

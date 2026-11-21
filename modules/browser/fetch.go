@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 // Page is a web page as the server read it: its words and its links, without its scripts.
 type Page struct {
+	Public   bool     `json:"public_only,omitempty"`
 	URL      string   `json:"url"`
 	FinalURL string   `json:"final_url"`
 	Title    string   `json:"title"`
@@ -36,9 +36,7 @@ type Link struct {
 }
 
 const (
-	maxPage   = 6 << 20
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 Surface/0.1"
-	cacheTTL  = 5 * time.Minute
 )
 
 // normalize makes what the owner typed into a URL: a bare host gets https, words become a search.
@@ -65,6 +63,7 @@ func normalize(in string) (string, error) {
 
 type fetcher struct {
 	client *http.Client
+	public bool
 	mu     sync.Mutex
 	cache  map[string]cached
 }
@@ -75,7 +74,17 @@ type cached struct {
 }
 
 func newFetcher() *fetcher {
-	return &fetcher{client: &http.Client{Timeout: 20 * time.Second}, cache: map[string]cached{}}
+	return &fetcher{client: browserClient(false), cache: map[string]cached{}}
+}
+
+func newGuardedFetcher() *fetcher {
+	return &fetcher{client: browserClient(true), public: true, cache: map[string]cached{}}
+}
+func (f *fetcher) limit() int64 {
+	if f.public {
+		return maxHTML
+	}
+	return maxPage
 }
 
 // cachedPage returns a page read in the last few minutes, without fetching.
@@ -90,13 +99,19 @@ func (f *fetcher) cachedPage(u string) (Page, bool) {
 }
 
 func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
-	if p, ok := f.cachedPage(u); ok {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return Page{}, errors.New("browser: invalid URL")
+	}
+	if err = validFetchURL(parsed, f.public); err != nil {
+		return Page{}, err
+	}
+	if p, ok := f.cachedPage(u); ok && !f.public {
 		return p, nil
 	}
 	if q, ok := searchQuery(u); ok {
 		rows := []Result{}
 		if q != "" {
-			var err error
 			rows, err = f.search(ctx, q)
 			if err != nil {
 				return Page{}, err
@@ -106,7 +121,7 @@ func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
 		if q != "" {
 			title = q + " — DuckDuckGo"
 		}
-		return Page{URL: u, FinalURL: u, Title: title, Search: true, Query: q, Results: rows, Fetched: time.Now().UTC().Format(time.RFC3339)}, nil
+		return Page{Public: f.public, URL: u, FinalURL: u, Title: title, Search: true, Query: q, Results: rows, Fetched: time.Now().UTC().Format(time.RFC3339)}, nil
 	}
 	// Fetching the address the owner or the agent gave is the module's purpose; the app is
 	// single-user and loopback-only.
@@ -119,17 +134,17 @@ func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
 	req.Header.Set("Accept-Language", "en")
 	resp, err := f.client.Do(req) //nolint:gosec // see above
 	if err != nil {
-		return Page{}, err
+		return Page{}, fetchError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return Page{}, fmt.Errorf("%s answered %s", req.URL.Host, resp.Status)
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxPage))
+	raw, err := responseBytes(resp, f.limit())
 	if err != nil {
 		return Page{}, err
 	}
-	p := Page{URL: u, FinalURL: resp.Request.URL.String(), Framable: framable(resp.Header), Fetched: time.Now().UTC().Format(time.RFC3339)}
+	p := Page{Public: f.public, URL: u, FinalURL: resp.Request.URL.String(), Framable: framable(resp.Header), Fetched: time.Now().UTC().Format(time.RFC3339)}
 	ct := resp.Header.Get("Content-Type")
 	if strings.Contains(ct, "html") || ct == "" {
 		p.Title, p.Text, p.Links = extract(string(raw), resp.Request.URL)
@@ -142,7 +157,7 @@ func (f *fetcher) get(ctx context.Context, u string) (Page, error) {
 		p.Title = resp.Request.URL.Host
 	}
 	f.mu.Lock()
-	if len(f.cache) > 200 {
+	if len(f.cache) >= maxCachedPages {
 		f.cache = map[string]cached{}
 	}
 	f.cache[u] = cached{p, time.Now()}
@@ -268,7 +283,7 @@ type Result struct {
 
 // search asks DuckDuckGo's HTML page and reads its results.
 func (f *fetcher) search(ctx context.Context, q string) ([]Result, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://html.duckduckgo.com/html/", strings.NewReader(url.Values{"q": {q}}.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://html.duckduckgo.com/html/?"+url.Values{"q": {q}}.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -276,13 +291,17 @@ func (f *fetcher) search(ctx context.Context, q string) ([]Result, error) {
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fetchError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("search answered %s; try again or open DuckDuckGo in the system browser", resp.Status)
 	}
-	root, err := html.Parse(io.LimitReader(resp.Body, maxPage))
+	raw, err := responseBytes(resp, f.limit())
+	if err != nil {
+		return nil, err
+	}
+	root, err := html.Parse(strings.NewReader(string(raw)))
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ import {
   initialState,
   type RunEnd,
 } from "@hollis-labs/surface-chat"
-import { agentApi } from "./api"
+import { agentApi, type RecoverAction } from "./api"
 
 const BASE = "/api/agent"
 
@@ -36,6 +36,8 @@ export interface AgentSession {
   role(): "controller" | "viewer"
   /** Take the input from whoever holds it. */
   takeover(): Promise<boolean>
+  /** Answer the interrupted turn on offer: resume, discard, or reset the conversation. */
+  recover(action: RecoverAction): Promise<void>
 }
 
 function mode(): { role: "controller" | "viewer"; stream: "deltas" | "committed" } {
@@ -122,5 +124,12 @@ export function createAgentSession(): AgentSession {
     attachment: () => conv?.attachment() ?? "",
     role: () => (conv ? conv.role() : "controller"),
     takeover: async () => (conv ? conv.takeover() : false),
+    recover: async (action) => {
+      await boot
+      const id = conv?.conversation()
+      if (!id) throw new Error("The conversation is not open yet.")
+      // The outcome arrives on the stream (a discard or reset notice, the resumed run).
+      await agentApi.recover(id, action)
+    },
   }
 }

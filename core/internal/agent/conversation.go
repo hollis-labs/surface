@@ -205,6 +205,7 @@ func (s *Service) mountWire(mux *http.ServeMux) {
 	s.mountFrontDesk(mux)
 	h := http.StripPrefix(Prefix, stopConversationStreams(refusalStatus(w.handler)))
 	mux.HandleFunc("POST "+Prefix+"/stop-all", s.stopAll)
+	s.mountInterrupted(mux)
 	mux.Handle(Prefix+"/agents/", h)
 	mux.Handle(Prefix+"/conversations/", h)
 	mux.HandleFunc("GET "+Prefix+"/grants", func(rw http.ResponseWriter, r *http.Request) {

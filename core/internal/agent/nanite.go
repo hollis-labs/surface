@@ -392,7 +392,7 @@ func (w *wire) naniteHistory(ctx context.Context, conversation string) []librefl
 	if err != nil {
 		return nil
 	}
-	c, err := w.nanite.Agent().EnsureConversation(ctx, chatrunner.ConversationID(id))
+	c, err := w.nanite.Agent().EnsureConversation(ctx, w.nanite.ConversationOf(id))
 	if err != nil {
 		return nil // history unavailable
 	}

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hollis-labs/surface/core/internal/agent/profile"
+
 	"github.com/hollis-labs/libs/agent/agentdir"
 	"github.com/hollis-labs/libs/agent/chat"
 	libreflex "github.com/hollis-labs/libs/agent/core/reflexes"
@@ -225,6 +227,19 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		Observe: func(ctx context.Context, id string, turn chat.Turn, run chat.Run) error {
 			if w.svc == nil {
 				return errors.New("agent: chat service is not ready")
+			}
+			// Resumed turns bypass TurnProfile and use their persisted snapshot.
+			// Refresh it before Observe starts consuming the resumed run.
+			if w.nanite != nil {
+				held, heldErr := w.nanite.Interrupted(ctx, id)
+				if heldErr != nil {
+					return heldErr
+				}
+				if held != nil {
+					if touchErr := profile.TouchBinding(filepath.Join(s.k.DataDir(), "agents", "bindings"), held.AgentDir); touchErr != nil {
+						return touchErr
+					}
+				}
 			}
 			id = originalChatID(id)
 			turn.ConversationID = id

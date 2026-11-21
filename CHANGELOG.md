@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.13.1] - 2026-11-21
+
+- **Ops: Usage tab, first source.** Cards per paid or rate-limited source with usage against limit, reset time and
+  a status colour; details show history and the biggest consumers. The llm-gateway card reads Tether's AI usage,
+  budgets and budget alerts. Subscription sources (Claude, Codex, agy, opencode) follow.
+
 ## [0.13.0] - 2026-11-21
 
 - **Ops: Agents view.** The live agents, awake or sleeping, with host, state and last activity. It reads Tether's

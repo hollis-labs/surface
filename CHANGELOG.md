@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.10.2] - 2026-11-21
+
+- **Fixed: Studio crashed on start in 0.10.1.** The agent's worker could ask a module to describe a desk window
+  before the app had started that module (Workbench, with a nil library). Windows are described only once their
+  module has started, and Workbench guards it too.
+
 ## [0.10.1] - 2026-11-21
 
 - **Browser: real search results and a readable view.** A DuckDuckGo search shows a results list (titles, snippets,

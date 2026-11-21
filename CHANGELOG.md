@@ -5,6 +5,16 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.13.0] - 2026-11-21
+
+- **Ops: Agents view.** The live agents, awake or sleeping, with host, state and last activity. It reads Tether's
+  unified live-agents feed when deployed; until then it falls back to Tether-launched sessions with a banner
+  (kit-booted agents appear once the feed is live).
+- **Ops: Fleet view.** The fleet's machines from Cerberus; a machine shows its agents and the last hour of CPU,
+  memory, disk and load (5-minute samples). Uses Cerberus's fleet snapshot when it exists, else bounded host reads.
+- **Nanite v0.15.0**, Substrate BOM b123217 (libs agentdir v0.6.0). Nanite's per-agent Tether identity and mailbox
+  are not wired.
+
 - **Ops: Agents view.** The board shows live Tether sessions and kit seats with agent identity, host,
   awake/sleeping state, last activity and workstream links. A shared bounded refresh also serves the
   read-only `ops_agents` tool; unavailable observations remain explicit.

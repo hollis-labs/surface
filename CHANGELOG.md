@@ -5,6 +5,10 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The agent's own Tether mailbox.** With `identity.tether` in the agent directory's `host.yaml` and a `mailbox`
+  section (`url`, `credential_file`, `poll_seconds`) in the agent config, Nanite reads the agent's own mail: each
+  unread message becomes a notice turn, shown in the conversation as *Tether mail* and marked read once handled.
+  Mail keeps its own Nanite history. No Surface module polls the agent's address alongside it (docs/agent.md).
 - **Nanite v0.16.0** (Substrate BOM unchanged, b123217). Conversation integrity: an interrupted-turn offer
   with `integrity: blocked` shows only the offered discard and reset actions, with the reason. **Reset
   conversation** (owner only, refused while a run is active) moves the chat to a new Nanite conversation

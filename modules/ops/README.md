@@ -193,22 +193,24 @@ never trigger this fallback and never appear as an empty healthy fleet.
 
 Gap G6 of the system-of-record brief (Torque CW-20261121-0152). Each roll-up checks its open tasks (linked,
 epic, plan or discovered) that are assigned or claimed against the live agents, using the same cached reader as
-the Agents tab. A task's holder is read from its typed Torque record (`liveness.go`, `taskAssignment`): an active
-`claim` (claim id, holder or actor urn, session id, team run id, state) wins, else `metadata.owner_urn` when it is
-an agent urn. A holder matches a live agent by urn, a claim's session by `session:<id>`, and a team run by
-`seat:<run>`.
+the Agents tab. A task's holder is read from its typed Torque record (`liveness.go`, `taskAssignment`): Torque's
+`assignment` object (CW-20261121-0148: `assignee_urn`, `tether_session_id`, `team_run_id`, `claim_id`, `source`
+owner|doing|claim|dispatch, `state` active|expired|released, `end_reason`), else `metadata.owner_urn` when it is
+an agent urn (until 0148 ships; Torque then projects it into `assignment`). A released assignment is no holder;
+an expired one is flagged whoever is live. A holder bound to a session is live only when that session is
+(`session:<id>`); otherwise its urn, or its team run (`seat:<run>`), must be live.
 
-- Each task carries `holder: {agent, session, run, source: claim|owner, live: live|none|unknown, why, unconfirmed}`.
+- Each task carries `holder: {agent, session, run, source, live: live|none|unknown, why, unconfirmed}`.
 - The roll-up and the board card list `no_live_agent` (task ids); `ops_list`, `ops_get` and the slot's in-flight
   rows carry it too.
 - Each flagged task adds a feed row with source `liveness` (state `no_live_agent`) to the workstream's and the
   global activity, filterable as `source=liveness`. It does not replace a card's latest activity.
 - The check never guesses: unreadable or truncated live agents mark holders `unknown` and flag nothing. The
-  fallback source (no kit seats) flags as `unconfirmed`. An expired claim is flagged whoever is live.
+  fallback source (no kit seats) flags as `unconfirmed`.
 - Roll-ups with no held task do not read the live agents.
 
-Torque's half (CW-20261121-0148: a claim expires when its session dies) will add the claim fields; their names
-are read in `taskAssignment` only.
+Torque's half (CW-20261121-0148) expires an assignment when its session ends or its lease lapses; Ops covers the
+window before that and owner assignments, which have no session.
 
 ## Seeding from the tracker
 

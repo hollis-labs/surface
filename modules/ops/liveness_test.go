@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -25,38 +26,35 @@ func rollupOf(tasks ...Task) Rollup {
 	return Rollup{Workstream: "ws", Tasks: tasks, Entries: []Entry{{At: "2026-11-21T13:00:00Z", Source: "torque", Summary: "older"}}}
 }
 
-func TestAssignmentReadsOwnerAndClaim(t *testing.T) {
-	var a taskAssignment
-	if a.assignment() != nil {
+func TestAssignmentReadsTorqueAssignmentThenOwner(t *testing.T) {
+	read := func(raw string) *Holder {
+		t.Helper()
+		var a taskAssignment
+		if err := json.Unmarshal([]byte(raw), &a); err != nil {
+			t.Fatal(err)
+		}
+		return a.assignment()
+	}
+	if read(`{"assignment":null,"metadata":{}}`) != nil {
 		t.Fatal("an unassigned task has a holder")
 	}
-	a.Metadata.OwnerURN = "Surface lead" // not an agent urn
-	if a.assignment() != nil {
+	if read(`{"metadata":{"owner_urn":"Surface lead"}}`) != nil {
 		t.Fatal("a free-text owner is a holder")
 	}
-	a.Metadata.OwnerURN = stoppedAgent
-	if h := a.assignment(); h == nil || h.Agent != stoppedAgent || h.Source != "owner" {
-		t.Fatalf("owner: %+v", h)
+	if h := read(`{"metadata":{"owner_urn":"` + stoppedAgent + `"}}`); h == nil || h.Agent != stoppedAgent || h.Source != "owner" {
+		t.Fatalf("owner fallback: %+v", h)
 	}
-	a.Claim = &struct {
-		ID             string `json:"claim_id"`
-		Actor          string `json:"actor"`
-		Holder         string `json:"holder_urn"`
-		Session        string `json:"session_id"`
-		TeamRunID      string `json:"team_run_id"`
-		State          string `json:"state"`
-		LeaseExpiresAt string `json:"lease_expires_at"`
-	}{ID: "clm_1", Actor: liveAgent, TeamRunID: "run-1"}
-	if h := a.assignment(); h == nil || h.Source != "claim" || h.Agent != liveAgent || h.Run != "run-1" || h.Live != "" {
-		t.Fatalf("claim wins: %+v", h)
+	// Torque's object (CW-20261121-0148) wins over the metadata.
+	active := `{"assignment":{"assignee_urn":"` + liveAgent + `","tether_session_id":"s-9","team_run_id":null,"claim_id":"clm_1","source":"claim","state":"active"},"metadata":{"owner_urn":"` + stoppedAgent + `"}}`
+	if h := read(active); h == nil || h.Source != "claim" || h.Agent != liveAgent || h.Session != "s-9" || h.Live != "" {
+		t.Fatalf("active assignment: %+v", h)
 	}
-	a.Claim.State = "expired"
-	if h := a.assignment(); h == nil || h.Live != HolderNone || !strings.Contains(h.Why, "expired") {
-		t.Fatalf("expired claim: %+v", h)
+	expired := `{"assignment":{"assignee_urn":"` + liveAgent + `","source":"doing","state":"expired","end_reason":"session_ended"}}`
+	if h := read(expired); h == nil || h.Live != HolderNone || h.Why != "the assignment expired (session ended)" {
+		t.Fatalf("expired: %+v", h)
 	}
-	a.Claim.State = "released"
-	if h := a.assignment(); h == nil || h.Source != "owner" {
-		t.Fatalf("a released claim falls back to the owner: %+v", h)
+	if h := read(`{"assignment":{"assignee_urn":"` + liveAgent + `","state":"released","end_reason":"done"}}`); h != nil {
+		t.Fatalf("released: %+v", h)
 	}
 }
 
@@ -66,16 +64,19 @@ func TestCheckHoldersFlagsOnlyOpenTasksNobodyLiveHolds(t *testing.T) {
 		Task{ID: "CW-2", Status: "doing", Workstream: "ws", Holder: &Holder{Agent: liveAgent, Source: "owner"}},
 		Task{ID: "CW-3", Status: "done", Workstream: "ws", Holder: &Holder{Agent: stoppedAgent, Source: "owner"}},
 		Task{ID: "CW-4", Status: "doing", Workstream: "child", Holder: &Holder{Run: "run-live", Source: "claim"}},
-		Task{ID: "CW-5", Status: "doing", Workstream: "ws", Holder: &Holder{Agent: liveAgent, Source: "claim", Live: HolderNone, Why: "the claim's lease expired"}},
+		Task{ID: "CW-5", Status: "doing", Workstream: "ws", Holder: &Holder{Agent: liveAgent, Source: "claim", Live: HolderNone, Why: "the assignment expired (lease lapsed)"}},
 		Task{ID: "CW-6", Status: "doing", Workstream: "ws"},
+		// The agent is live, but not in the session the task is bound to.
+		Task{ID: "CW-7", Status: "doing", Workstream: "ws", Holder: &Holder{Agent: liveAgent, Session: "s-dead", Source: "doing"}},
+		Task{ID: "CW-8", Status: "doing", Workstream: "ws", Holder: &Holder{Agent: stoppedAgent, Session: "s-live", Source: "doing"}},
 	)
 	last := r.Entries[0]
 	r.Last = &r.Entries[0]
 	checkHolders(t.Context(), &r, liveSnapshot("", false))
-	if strings.Join(r.NoLiveAgent, ",") != "CW-1,CW-5" {
+	if strings.Join(r.NoLiveAgent, ",") != "CW-1,CW-5,CW-7" {
 		t.Fatalf("flagged %v", r.NoLiveAgent)
 	}
-	want := map[string]string{"CW-1": HolderNone, "CW-2": HolderLive, "CW-3": "", "CW-4": HolderLive, "CW-5": HolderNone}
+	want := map[string]string{"CW-1": HolderNone, "CW-2": HolderLive, "CW-3": "", "CW-4": HolderLive, "CW-5": HolderNone, "CW-7": HolderNone, "CW-8": HolderLive}
 	for _, task := range r.Tasks {
 		if task.Holder == nil {
 			continue
@@ -90,8 +91,9 @@ func TestCheckHoldersFlagsOnlyOpenTasksNobodyLiveHolds(t *testing.T) {
 			rows = append(rows, e)
 		}
 	}
-	if len(rows) != 2 || r.Entries[0].Source != SourceLiveness || !strings.Contains(rows[0].Summary+rows[1].Summary, "assigned to "+stoppedAgent) ||
-		!strings.Contains(rows[0].Summary+rows[1].Summary, "lease expired") {
+	all := js(rows)
+	if len(rows) != 3 || r.Entries[0].Source != SourceLiveness || !strings.Contains(all, "assigned to "+stoppedAgent) ||
+		!strings.Contains(all, "lease lapsed") || !strings.Contains(all, "CW-7 is assigned to "+liveAgent) {
 		t.Fatalf("feed rows: %+v", r.Entries)
 	}
 	if r.Last == nil || js(*r.Last) != js(last) {
@@ -135,7 +137,7 @@ func TestAssignedNoLiveAgentReachesBoardToolsAndFeeds(t *testing.T) {
 	f.tasks["CW-20990101-0202"] = [3]string{"Held by a live worker", "doing", "2026-11-21T08:00:00Z"}
 	f.meta = map[string]map[string]any{
 		"CW-20990101-0201": {"metadata": map[string]any{"owner_urn": stoppedAgent, "owner_name": "Worker 4"}},
-		"CW-20990101-0202": {"metadata": map[string]any{"owner_urn": liveAgent}},
+		"CW-20990101-0202": {"assignment": map[string]any{"assignee_urn": liveAgent, "tether_session_id": "s1", "source": "doing", "state": "active"}},
 	}
 	f.live = js(map[string]any{"observed_at": "2026-11-21T14:00:00Z", "count": 1, "agents": []map[string]any{
 		{"agent_urn": liveAgent, "kind": "tether_session", "session_id": "s1", "state": "busy"}}})

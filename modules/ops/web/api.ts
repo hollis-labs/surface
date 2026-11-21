@@ -127,7 +127,8 @@ export interface Holder {
   agent?: string
   session?: string
   run?: string
-  source: "claim" | "owner"
+  /** How it was assigned (Torque): owner, doing, claim or dispatch. */
+  source: string
   /** live, none (nobody live holds it) or unknown (could not tell). */
   live: "live" | "none" | "unknown"
   why?: string

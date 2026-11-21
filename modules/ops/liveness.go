@@ -25,7 +25,7 @@ type Holder struct {
 	// Session and Run name a claim's holder when Torque records one.
 	Session string `json:"session,omitempty"`
 	Run     string `json:"run,omitempty"`
-	// Source is where the assignment was read: "claim" or "owner" (metadata.owner_urn).
+	// Source is how it was assigned: Torque's owner, doing, claim or dispatch.
 	Source string `json:"source"`
 	// Live is "live", "none" (nobody live holds it) or "unknown" (the check could not tell).
 	Live string `json:"live"`
@@ -46,31 +46,45 @@ const (
 const SourceLiveness = "liveness"
 
 // taskAssignment is what the typed task record says about who holds the task. The field names
-// are Torque's; they are read in this one place (assignment) so a change is one line.
+// are Torque's (CW-20261121-0148, from the Torque Architect) and are read only here.
 type taskAssignment struct {
+	// Assignment is Torque's first-class assignment, null when the task was never assigned.
+	// It stays after expiry (state expired, with an end reason).
+	Assignment *struct {
+		AssigneeURN     string `json:"assignee_urn"`
+		AssigneeName    string `json:"assignee_name"`
+		TetherSessionID string `json:"tether_session_id"`
+		TeamRunID       string `json:"team_run_id"`
+		ClaimID         string `json:"claim_id"`
+		Source          string `json:"source"` // owner | doing | claim | dispatch
+		State           string `json:"state"`  // active | expired | released
+		EndReason       string `json:"end_reason"`
+	} `json:"assignment"`
+	// Metadata.owner_urn is the plain assignment until 0148 ships; after it, Torque projects
+	// it into Assignment (source owner).
 	Metadata struct {
 		OwnerURN  string `json:"owner_urn"`
 		OwnerName string `json:"owner_name"`
 	} `json:"metadata"`
-	// Claim is a workstream claim (torque_workstream_claim_next) when the record carries one.
-	Claim *struct {
-		ID             string `json:"claim_id"`
-		Actor          string `json:"actor"`
-		Holder         string `json:"holder_urn"`
-		Session        string `json:"session_id"`
-		TeamRunID      string `json:"team_run_id"`
-		State          string `json:"state"`
-		LeaseExpiresAt string `json:"lease_expires_at"`
-	} `json:"claim"`
 }
 
-// assignment is a task's holder from its typed record, nil when it is not assigned or claimed.
-// An active claim wins over the owner named in the metadata.
+// assignment is a task's holder from its typed record, nil when it is not assigned (or the
+// assignment was released). An expired assignment is a holder nobody live holds.
 func (a taskAssignment) assignment() *Holder {
-	if c := a.Claim; c != nil && c.ID != "" && !strings.EqualFold(c.State, "released") {
-		h := &Holder{Agent: firstAgent(c.Holder, c.Actor), Session: c.Session, Run: c.TeamRunID, Source: "claim"}
-		if strings.EqualFold(c.State, "expired") {
-			h.Live, h.Why = HolderNone, "the claim's lease expired"
+	if x := a.Assignment; x != nil {
+		if strings.EqualFold(x.State, "released") {
+			return nil
+		}
+		source := x.Source
+		if source == "" {
+			source = "owner"
+		}
+		h := &Holder{Agent: firstAgent(x.AssigneeURN), Session: strings.TrimSpace(x.TetherSessionID), Run: strings.TrimSpace(x.TeamRunID), Source: source}
+		if strings.EqualFold(x.State, "expired") {
+			h.Live, h.Why = HolderNone, "the assignment expired"
+			if x.EndReason != "" {
+				h.Why += " (" + strings.ReplaceAll(x.EndReason, "_", " ") + ")"
+			}
 		}
 		if h.Agent != "" || h.Session != "" || h.Run != "" {
 			return h
@@ -131,9 +145,7 @@ func checkHolders(ctx context.Context, r *Rollup, live func(context.Context) (Se
 		h := *t.Holder
 		switch {
 		case h.Live == HolderNone: // the record already says so (an expired claim)
-		case h.Agent != "" && agents[h.Agent],
-			h.Session != "" && sessions["session:"+h.Session],
-			h.Run != "" && sessions["seat:"+h.Run]:
+		case holderLive(h, agents, sessions):
 			h.Live, h.Why = HolderLive, ""
 		case unknown != "":
 			h.Live, h.Why = HolderUnknown, unknown
@@ -153,10 +165,26 @@ func checkHolders(ctx context.Context, r *Rollup, live func(context.Context) (Se
 			who = firstNonEmpty(h.Session, h.Run)
 		}
 		r.Entries = append(r.Entries, Entry{At: at, Source: SourceLiveness, State: "no_live_agent", Task: t.ID, Workstream: t.Workstream,
-			Summary: fmt.Sprintf("%s is %s %s, but %s", t.ID, map[string]string{"claim": "claimed by", "owner": "assigned to"}[h.Source], who, h.Why),
+			Summary: fmt.Sprintf("%s is %s %s, but %s", t.ID, verb(h.Source), who, h.Why),
 			Refs:    []string{t.ID}, SubjectURN: h.Agent})
 	}
 	if len(r.NoLiveAgent) > 0 {
 		r.Entries = sortEntries(r.Entries)
 	}
+}
+
+// holderLive matches a holder against the live agents. A bound session must itself be live (the
+// agent may have another session); without one, the agent or its team run must be.
+func holderLive(h Holder, agents, sessions map[string]bool) bool {
+	if h.Session != "" {
+		return sessions["session:"+h.Session]
+	}
+	return h.Agent != "" && agents[h.Agent] || h.Run != "" && sessions["seat:"+h.Run]
+}
+
+func verb(source string) string {
+	if source == "claim" {
+		return "claimed by"
+	}
+	return "assigned to"
 }

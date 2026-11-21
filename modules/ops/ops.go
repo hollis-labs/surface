@@ -46,6 +46,7 @@ var allowed = tetherlink.Allowed{
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
 	"tether_workstream_get": true, "tether_workstream_digest": true,
+	"tether_message_send":  true,
 	"registry_record_list": true, "registry_record_get": true,
 }
 
@@ -62,6 +63,7 @@ type mod struct {
 	// caller replaces the configured link (tests).
 	caller tetherlink.Caller
 
+	sendMu  sync.Mutex
 	mu      sync.Mutex
 	run     context.Context
 	stop    context.CancelFunc
@@ -109,6 +111,7 @@ func (m *mod) Manifest() module.Manifest {
 				}},
 		},
 		Settings: []module.Setting{
+			{Key: "sender_address", Title: "Tether sender address", About: "Surface’s Tether identity for owner requests to orchestration.", Type: module.SettingString, Default: ""},
 			{Key: "tether_command", Title: "Tether command", About: "A command that speaks MCP over stdio to Tether: Caster, Torque and Tesseract are reached through it.", Type: module.SettingString, Default: ""},
 			{Key: "tether_url", Title: "Tether MCP URL", About: "Instead of a command: Tether's MCP endpoint over HTTP.", Type: module.SettingString, Default: ""},
 			{Key: "tether_token_file", Title: "Tether token file", About: "With the URL: a file holding the bearer token.", Type: module.SettingString, Default: ""},
@@ -120,7 +123,7 @@ func (m *mod) Manifest() module.Manifest {
 			Name:  "ops",
 			About: "the owner's operations board: workstreams (concepts of any size, nested) moving through planned, parked, queued, in flight, landing and complete",
 			Views: []string{viewBoard, viewWS, viewSeed},
-			Tools: []string{"ops_list", "ops_get", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
+			Tools: []string{"ops_list", "ops_get", "ops_activity", "ops_create", "ops_update", "ops_move", "ops_settle", "ops_queue_reorder", "ops_link", "ops_unlink", "ops_seed"},
 			Where: "Caster, namespace ops: caster://ops/ws.<id> per workstream (ops/v1), caster://ops/queue for the launch order; Torque for the tasks under them",
 			Instructions: "The board is the owner's. Read before you write (ops_get gives rev, the base_rev for ops_update). Propose moves; make them on the owner's word, with why. " +
 				"Moves are explicit: a suggested stage is a hint to put to the owner, never a move you make on your own. " +

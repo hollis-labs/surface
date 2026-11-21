@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { WorkstreamActions } from "./actions"
 import { BoardActivity } from "./activity"
 import { type BoardData, type Card, message, opsClient, STAGES, type Stage, stageLabel } from "./api"
 import { DRAG_TYPE, WorkstreamCard } from "./parts"
@@ -27,6 +28,7 @@ export function Board({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])
   const parent = typeof win.args.parent === "string" ? win.args.parent : ""
   const layout = win.args.layout === "activity" ? "activity" : win.args.layout === "cards" ? "cards" : "kanban"
+  const showSettled = win.args.show_settled === true || layout === "activity"
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
   const [error, setError] = useState("")
@@ -39,7 +41,7 @@ export function Board({ win, desk, api }: ViewProps) {
     async (force = false) => {
       try {
         if (force) setBusy(true)
-        const d = await ops.board(force)
+        const d = await ops.board(force, showSettled)
         setData(d)
         setError(d.error ?? "")
       } catch (e) {
@@ -48,7 +50,7 @@ export function Board({ win, desk, api }: ViewProps) {
         setBusy(false)
       }
     },
-    [ops],
+    [ops, showSettled],
   )
   useEffect(() => {
     void load()
@@ -125,7 +127,15 @@ export function Board({ win, desk, api }: ViewProps) {
 
   const unknown = level.filter((w) => !STAGES.some((s) => s === w.stage))
 
-  const card = (w: Card) => <WorkstreamCard key={w.id} w={w} open={open} enter={enter} />
+  const card = (w: Card) => (
+    <WorkstreamCard
+      key={w.id}
+      w={w}
+      open={open}
+      enter={enter}
+      actions={<WorkstreamActions w={w} ops={ops} refresh={() => void load()} />}
+    />
+  )
 
   const unknownLane = unknown.length > 0 && (
     <section aria-label="Unknown stage" className="flex min-w-72 flex-col gap-2 p-2">
@@ -166,6 +176,7 @@ export function Board({ win, desk, api }: ViewProps) {
                 enter={enter}
                 actions={
                   <span className="flex shrink-0">
+                    <WorkstreamActions w={w} ops={ops} refresh={() => void load()} />
                     <Button
                       size="icon-xs"
                       variant="ghost"
@@ -264,6 +275,14 @@ export function Board({ win, desk, api }: ViewProps) {
         </ToggleGroup>
         {layout !== "activity" && (
           <>
+            <Label className="flex items-center gap-1.5 text-xs">
+              <Switch
+                checked={showSettled}
+                onCheckedChange={(c) => go({ show_settled: c })}
+                aria-label="Show settled"
+              />
+              Show settled
+            </Label>
             <Label className="flex items-center gap-1.5 text-xs">
               <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
               Dropped

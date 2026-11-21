@@ -9,12 +9,14 @@ export const SOURCE_ICON: Record<string, string> = {
   comment: "message-square",
   status: "activity",
   ops: "radar",
+  liveness: "user-x",
 }
 export const SOURCE_LABEL: Record<string, string> = {
   torque: "Torque",
   comment: "Status comments",
   status: "Status stream",
   ops: "Ops moves",
+  liveness: "No live agent",
 }
 
 export function ActivityRow({ e, id, open, toggle }: { e: Entry; id: string; open: boolean; toggle: () => void }) {

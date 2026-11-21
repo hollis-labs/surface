@@ -283,9 +283,16 @@ func (m *mod) rollup(ctx context.Context, id string, force bool) (Rollup, error)
 	if !ok {
 		return Rollup{}, ErrNotFound
 	}
-	r := reader{link: m.tether, cache: m.tasks}.Roll(ctx, w, b.Descendants(id))
+	r := m.roll(ctx, w, b.Descendants(id))
 	m.st.keepRollup(ctx, r)
 	return r, nil
+}
+
+// roll reads a roll-up and checks who holds its tasks against the live agents.
+func (m *mod) roll(ctx context.Context, w Workstream, descendants []Workstream) Rollup {
+	r := reader{link: m.tether, cache: m.tasks}.Roll(ctx, w, descendants)
+	checkHolders(ctx, &r, m.sessions)
+	return r
 }
 
 // ---- What the agent is told ----
@@ -367,6 +374,9 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 			}
 			if c.Suggest != "" {
 				r["suggested_stage"] = c.Suggest
+			}
+			if len(c.NoLiveAgent) > 0 {
+				r["no_live_agent"] = c.NoLiveAgent
 			}
 		}
 		flying = append(flying, r)

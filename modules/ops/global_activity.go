@@ -49,7 +49,7 @@ func (f activityFilter) validate() error {
 			return &InputError{Msg: "invalid stage"}
 		}
 	}
-	if f.Source != "" && !slices.Contains([]string{"torque", "comment", "status", "ops"}, f.Source) {
+	if f.Source != "" && !slices.Contains([]string{"torque", "comment", "status", "ops", SourceLiveness}, f.Source) {
 		return &InputError{Msg: "invalid source"}
 	}
 	if f.Since != "" && When(f.Since).IsZero() {
@@ -118,7 +118,7 @@ func (m *mod) globalActivity(ctx context.Context, f activityFilter, force bool) 
 			m.activityPending = m.activityPending[1:]
 			continue
 		}
-		r := reader{link: m.tether, cache: m.tasks}.Roll(ctx, w, b.Descendants(id))
+		r := m.roll(ctx, w, b.Descendants(id))
 		if budget.denied || ctx.Err() != nil {
 			// Never replace a complete cache with a budget-truncated roll-up.
 			out.Errors = append(out.Errors, "Refresh incomplete; cached activity is retained.")

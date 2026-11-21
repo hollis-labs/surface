@@ -144,6 +144,8 @@ type Card struct {
 	Last       *Entry `json:"last,omitempty"`
 	Suggest    string `json:"suggest,omitempty"`
 	SuggestWhy string `json:"suggest_why,omitempty"`
+	// NoLiveAgent is the open tasks assigned or claimed that no live agent holds.
+	NoLiveAgent []string `json:"no_live_agent,omitempty"`
 }
 
 func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) (map[string]any, error) {
@@ -161,6 +163,7 @@ func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) 
 		c := Card{Workstream: w}
 		if r, ok := cached[w.ID]; ok {
 			c.Tasks, c.Last, c.Suggest, c.SuggestWhy = CountsText(r.Counts), r.Last, r.Suggest, r.SuggestWhy
+			c.NoLiveAgent = r.NoLiveAgent
 		}
 		cards = append(cards, c)
 	}

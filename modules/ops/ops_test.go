@@ -29,8 +29,12 @@ type tether struct {
 	epics    map[string][]string    // epic -> task ids
 	comments map[string][][2]string // task -> (created_at, excerpt)
 	events   []map[string]any
-	other    []string
-	counts   map[string]int // non-Caster tool calls
+	// meta adds fields to a task's typed record (metadata, claim); live, when set, is
+	// tether_agents_live's answer.
+	meta   map[string]map[string]any
+	live   string
+	other  []string
+	counts map[string]int // non-Caster tool calls
 	// beforeLatest, when set, runs before a read of a document's latest revision (a
 	// caster_get with no @rev), with its key: a test writes there as someone else would.
 	beforeLatest func(key string)
@@ -58,7 +62,15 @@ func (f *tether) Call(ctx context.Context, tool string, args map[string]any) (st
 		if !ok {
 			return "", fmt.Errorf("no task %s", id)
 		}
-		return js(map[string]any{"ok": true, "data": map[string]any{"id": id, "title": t[0], "status": t[1], "updated_at": t[2]}}), nil
+		data := map[string]any{"id": id, "title": t[0], "status": t[1], "updated_at": t[2]}
+		for k, v := range f.meta[id] {
+			data[k] = v
+		}
+		return js(map[string]any{"ok": true, "data": data}), nil
+	case "tether_agents_live":
+		if f.live != "" {
+			return f.live, nil
+		}
 	case "torque_task_list":
 		items := []map[string]any{}
 		for _, id := range f.epics[fmt.Sprint(args["epic_id"])] {

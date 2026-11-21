@@ -143,8 +143,8 @@ func (m *mod) tools() []module.Tool {
 				return m.toolGet(ctx, a.ID)
 			}},
 		{Name: "ops_activity", Level: module.LevelRead,
-			Description: "Activity across all workstreams when id is omitted; with id, that workstream and its children. Newest first: Torque task states and STATUS comments, status-stream entries and Ops moves. since (RFC 3339), source (torque, comment, status, ops) and task narrow it; workstream and stage also filter the global feed. refresh reads another bounded batch now.",
-			Input:       schema(idProp + `,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300},"workstream":{"type":"string"},"stage":{"type":"string",` + stageEnum + `}`),
+			Description: "Activity across all workstreams when id is omitted; with id, that workstream and its children. Newest first: Torque task states and STATUS comments, status-stream entries, Ops moves, and liveness rows for open tasks assigned to an agent that is not live. since (RFC 3339), source (torque, comment, status, ops, liveness) and task narrow it; workstream and stage also filter the global feed. refresh reads another bounded batch now.",
+			Input:       schema(idProp + `,"since":{"type":"string"},"source":{"type":"string","enum":["torque","comment","status","ops","liveness"]},"task":{"type":"string"},"refresh":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":300},"workstream":{"type":"string"},"stage":{"type":"string",` + stageEnum + `}`),
 			Run: func(ctx context.Context, _ module.Host, in json.RawMessage) (any, error) {
 				a, err := args[struct {
 					ID, Since, Source, Task, Workstream, Stage string
@@ -413,6 +413,9 @@ func (m *mod) toolList(ctx context.Context, stage, owner, parent string, held *b
 			if c.Suggest != "" {
 				r["suggested_stage"] = c.Suggest + ": " + c.SuggestWhy
 			}
+			if len(c.NoLiveAgent) > 0 {
+				r["no_live_agent"] = c.NoLiveAgent
+			}
 		}
 		lanes[w.Stage] = append(lanes[w.Stage], r)
 	}
@@ -456,6 +459,9 @@ func (m *mod) toolGet(ctx context.Context, id string) (any, error) {
 		out["activity"] = last
 		if r.Suggest != "" {
 			out["suggested_stage"] = r.Suggest + ": " + r.SuggestWhy
+		}
+		if len(r.NoLiveAgent) > 0 {
+			out["no_live_agent"] = r.NoLiveAgent
 		}
 		if len(r.Errors) > 0 {
 			out["problems"] = r.Errors

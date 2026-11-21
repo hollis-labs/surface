@@ -385,6 +385,7 @@ func (m *mod) toolGet(ctx context.Context, id string) (any, error) {
 			last = last[:10]
 		}
 		out["tasks"] = map[string]any{"counts": r.Counts, "text": CountsText(r.Counts), "list": r.Tasks}
+		out["plans"] = r.Plans
 		out["activity"] = last
 		if r.Suggest != "" {
 			out["suggested_stage"] = r.Suggest + ": " + r.SuggestWhy

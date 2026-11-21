@@ -111,12 +111,24 @@ export interface Task {
   updated?: string
   workstream: string
   via?: string
+  plan_id?: string
+  phase_id?: string
+}
+
+export interface Plan {
+  id: string
+  title: string
+  status: string
+  workstream: string
+  phases: { id: string; name: string; order: number; state: string }[]
+  truncated?: boolean
 }
 
 export interface Rollup {
   workstream: string
   counts: Record<string, number>
   tasks: Task[]
+  plans?: Plan[]
   entries: Entry[]
   last?: Entry
   suggest?: string

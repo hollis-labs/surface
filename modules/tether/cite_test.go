@@ -32,7 +32,7 @@ func (g *gateway) Call(_ context.Context, tool string, args map[string]any) (str
 		return "", errors.New("cite called a tool outside its read list: " + tool)
 	}
 	id := ""
-	for _, k := range []string{"id", "item_id", "urn", "message_id", "ref", "key"} {
+	for _, k := range []string{"id", "plan_id", "item_id", "urn", "message_id", "ref", "key"} {
 		if v, ok := args[k].(string); ok {
 			id = v
 			break
@@ -295,5 +295,14 @@ func TestCasterRefsOpenInTheirModule(t *testing.T) {
 	}
 	if o := casterOpen("caster://collab/diagram.system-map"); o.Args["id"] != "diagram.system-map" {
 		t.Fatalf("args %v", o.Args)
+	}
+}
+
+func TestPlanChipUsesTaskIDAndPlanEnvelope(t *testing.T) {
+	const id = "CW-20990101-0200"
+	g := &gateway{answers: map[string]string{"torque_plan_get " + id: `{"data":{"task":{"ID":"CW-20990101-0200","Title":"Garden plan","Status":"doing","Description":"Grow it.","UpdatedAt":"2099-01-01T00:00:00Z"},"plan":{"phases":[]}}}`}}
+	entity, err := torquePlan(t.Context(), g, id, true)
+	if err != nil || entity.Title != "Garden plan" || entity.Body != "Grow it." {
+		t.Fatalf("plan chip: %+v %v", entity, err)
 	}
 }

@@ -88,6 +88,9 @@ func (m *mod) routes(h module.Host) {
 	handle("POST /workstreams", gated("making a workstream", m.apiCreate))
 	handle("GET /workstreams/{id}", m.apiGet)
 	handle("PUT /workstreams/{id}", gated("changing a workstream", m.apiUpdate))
+	handle("POST /workstreams/{id}/unsettle", gated("unsettling a workstream", m.apiUnsettle))
+	handle("POST /workstreams/{id}/orchestration", gated("sending to orchestration", m.apiSendOrchestration))
+	handle("POST /workstreams/{id}/settle", gated("settling a workstream", m.apiSettle))
 	handle("POST /workstreams/{id}/move", gated("moving a workstream", m.apiMove))
 	handle("POST /workstreams/{id}/links", gated("linking", m.apiLink))
 	handle("DELETE /workstreams/{id}/links", gated("unlinking", m.apiUnlink))
@@ -111,11 +114,14 @@ type Card struct {
 	SuggestWhy string `json:"suggest_why,omitempty"`
 }
 
-func (m *mod) boardResult(ctx context.Context, force bool) (map[string]any, error) {
+func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) (map[string]any, error) {
 	syncErr := m.sync(ctx, force)
 	b, err := m.st.All(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if len(showSettled) == 0 || !showSettled[0] {
+		b = b.unsettled()
 	}
 	cached := m.st.Cached(ctx)
 	cards := make([]Card, 0, len(b.Workstreams))
@@ -134,7 +140,7 @@ func (m *mod) boardResult(ctx context.Context, force bool) (map[string]any, erro
 }
 
 func (m *mod) apiBoard(w http.ResponseWriter, r *http.Request) {
-	out, err := m.boardResult(r.Context(), r.URL.Query().Get("force") == "1")
+	out, err := m.boardResult(r.Context(), r.URL.Query().Get("force") == "1", r.URL.Query().Get("show_settled") == "1")
 	if err != nil {
 		failErr(w, err)
 		return
@@ -273,7 +279,7 @@ func (m *mod) apiHistory(w http.ResponseWriter, r *http.Request) {
 		failErr(w, errOr(err, ErrNotFound))
 		return
 	}
-	out := map[string]any{"transitions": got.Transitions, "revisions": []Revision{}, "ref": DocRef(WSName(id))}
+	out := map[string]any{"transitions": got.Transitions, "revisions": []Revision{}, "ref": DocRef(WSName(id)), "settled_at": got.SettledAt, "settled_by": got.SettledBy, "settled_summary": got.SettledSummary}
 	if revs, err := m.st.Log(r.Context(), id); err != nil {
 		out["error"] = err.Error()
 	} else {

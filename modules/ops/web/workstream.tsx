@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { WorkstreamActions } from "./actions"
 import { ActivityRow, SOURCE_ICON, SOURCE_LABEL } from "./activity-row"
 import {
   age,
@@ -123,6 +124,7 @@ export function WorkstreamView({ win, desk, api }: ViewProps) {
           )}
           {w.owner && <span className="text-xs">· {w.owner}</span>}
           <span className="ml-auto" />
+          <WorkstreamActions w={w} ops={ops} refresh={() => void load()} />
           <MoveControl stage={w.stage} move={(stage, why) => act(() => ops.move(id, stage, why))} />
         </div>
         {w.held && (
@@ -505,6 +507,14 @@ function HistoryTab({ id, ops, rev }: { id: string; ops: ReturnType<typeof opsCl
   if (!h) return error ? <p className="text-destructive text-xs">{error}</p> : <Spinner />
   return (
     <div className="flex flex-col gap-4 text-sm">
+      {h.settled_at && (
+        <section aria-label="Settlement">
+          <h3 className="font-medium">
+            Settled {time(h.settled_at)} by {h.settled_by}
+          </h3>
+          <p>{h.settled_summary}</p>
+        </section>
+      )}
       <section aria-label="Moves">
         <h3 className="mb-1 font-medium">Moves</h3>
         <ol className="flex flex-col gap-1">

@@ -54,6 +54,10 @@ export interface Transition {
 }
 
 export interface Workstream {
+  settled_at?: string
+  settled_by?: string
+  settled_summary?: string
+  orchestration_request?: { at: string; note: string; message_id: string; request_id: string }
   id: string
   title: string
   owner?: string
@@ -159,6 +163,9 @@ export interface Revision {
 }
 
 export interface History {
+  settled_at?: string
+  settled_by?: string
+  settled_summary?: string
   transitions: Transition[]
   revisions: Revision[]
   ref: string
@@ -221,7 +228,12 @@ const q = encodeURIComponent
 
 export function opsClient(api: ModuleAPI) {
   return {
-    board: (force = false) => api.get<BoardData>(`board${force ? "?force=1" : ""}`),
+    board: (force = false, showSettled = false) =>
+      api.get<BoardData>(`board?force=${force ? 1 : 0}&show_settled=${showSettled ? 1 : 0}`),
+    settle: (id: string, base_rev: number) => api.post<Workstream>(`workstreams/${q(id)}/settle`, { base_rev }),
+    unsettle: (id: string, base_rev: number) => api.post<Workstream>(`workstreams/${q(id)}/unsettle`, { base_rev }),
+    send: (id: string, base_rev: number, request_id: string, note: string) =>
+      api.post<Workstream>(`workstreams/${q(id)}/orchestration`, { base_rev, request_id, note }),
     create: (w: Partial<Workstream> & { id: string; title: string }) => api.post<Workstream>("workstreams", w),
     get: (id: string) => api.get<Detail>(`workstreams/${q(id)}`),
     update: (id: string, patch: Record<string, unknown>) => api.put<Workstream>(`workstreams/${q(id)}`, patch),

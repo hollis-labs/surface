@@ -665,7 +665,10 @@ desk recovers its saved background work after the conversation service is ready.
 
 The conversation panel shows plan events and paced delivery notices, including
 when history replays after reconnect. Suggested plans have owner-only Start and
-Decline actions; a closed or outdated suggestion is rejected by Nanite. The
+Decline actions. Successful answers are saved by conversation and plan ID; on
+reload the panel reads these records and shows Started or Declined without
+actions. Other open panels refresh on the decision event. A closed or outdated
+suggestion is rejected by Nanite. The
 read-only `GET /api/agent/front-desk` reports whether it is enabled and its topic
 ledger. Plan decisions use `POST /api/agent/front-desk/plans/{id}/accept` or
 `/decline` for the current conversation; outside clients cannot answer them.
@@ -674,3 +677,6 @@ A headless pilot's token budget may be too small for a full Surface app: the
 app supplies its module tools in addition to Nanite builtins. Measure usage on a
 disposable app before choosing a budget. Tests must use a separate data directory,
 a separate port and copied agent configuration, never an owner's conversation.
+
+Conversation and desk-event streams observe Substrate's stopping signal and close
+as HTTP shutdown begins; ordinary requests keep their normal drain period.

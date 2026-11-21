@@ -29,6 +29,7 @@ import { ConfirmHost } from "./Confirm"
 import { clientCommands, runClient } from "./commands"
 import { useComposing } from "./composing"
 import { GhostCursor } from "./GhostCursor"
+import { InboxBadge } from "./InboxBadge"
 import { matches, parseKeys, showKeys } from "./keys"
 import { moduleApi } from "./moduleApi"
 import { Palette } from "./Palette"
@@ -283,6 +284,7 @@ export function Desktop({ modules }: DesktopProps) {
           <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
           <span>{state.layout}</span>
         </Button>
+        {manifest.views.some((v) => v.id === "inbox" && v.module === "inbox") && <InboxBadge />}
         <AttentionBadge ui={ui} />
         <ThemePicker />
         <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>

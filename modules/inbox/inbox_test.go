@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/hollis-labs/surface/module"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/surface/module/moduletest"
 	"github.com/hollis-labs/surface/module/tetherlink"
@@ -24,6 +27,7 @@ type fake struct {
 	boxes map[string][]map[string]any
 	sent  []map[string]any
 	calls []string
+	fail  map[string]bool
 }
 
 func (f *fake) Call(_ context.Context, tool string, args map[string]any) (string, error) {
@@ -32,15 +36,39 @@ func (f *fake) Call(_ context.Context, tool string, args map[string]any) (string
 	f.calls = append(f.calls, tool)
 	switch tool {
 	case "tether_message_list":
+		if f.fail[fmt.Sprint(args["to"])] {
+			return "", errors.New("unavailable")
+		}
 		var out []map[string]any
 		for _, e := range f.boxes[args["to"].(string)] {
+			if args["include_archived"] != true && e["archived_at"] != nil {
+				continue
+			}
 			if args["unread_only"] == true && e["read_at"] != nil {
 				continue
 			}
 			out = append(out, e)
 		}
-		b, _ := json.Marshal(map[string]any{"messages": out})
+		total := len(out)
+		if limit, ok := args["limit"].(int); ok && len(out) > limit {
+			out = out[:limit]
+		}
+		b, _ := json.Marshal(map[string]any{"messages": out, "total": total})
 		return string(b), nil
+	case "tether_message_mark_read", "tether_message_archive", "tether_message_unarchive":
+		for _, e := range f.boxes[args["as"].(string)] {
+			if e["id"] == args["message_id"] {
+				switch tool {
+				case "tether_message_mark_read":
+					e["read_at"] = "now"
+				case "tether_message_archive":
+					e["archived_at"] = "now"
+				case "tether_message_unarchive":
+					delete(e, "archived_at")
+				}
+			}
+		}
+		return `{"ok":true}`, nil
 	case "tether_message_get":
 		for _, e := range f.boxes[args["as"].(string)] {
 			if e["id"] == args["message_id"] {
@@ -165,4 +193,132 @@ func TestMessageMustBeToTheAddress(t *testing.T) {
 	if _, err := m.get(ctx, "m3", agent); err != nil {
 		t.Fatalf("its own mailbox: %v", err)
 	}
+}
+
+func TestUnreadCountUsesTotalsAndPreservesCompleteSnapshot(t *testing.T) {
+	h, m, f := start(t)
+	_ = m.Stop(t.Context()) // drive snapshots explicitly; the wake test exercises the poll
+	f.mu.Lock()
+	for i := 0; i < 40; i++ {
+		f.boxes[me] = append(f.boxes[me], map[string]any{"id": fmt.Sprint(i), "to": me, "from": other})
+	}
+	f.mu.Unlock()
+	// Duplicate addresses must not multiply the badge count.
+	if err := h.Settings.Set(t.Context(), "addresses", me+", "+agent+", "+me+"/"); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := m.list(t.Context(), BoxUnread, 5)
+	if err != nil || len(msgs) != 5 {
+		t.Fatalf("list: %d %v", len(msgs), err)
+	}
+	count := func() int {
+		f.mu.Lock()
+		before := len(f.calls)
+		f.mu.Unlock()
+		code, body := h.Do("GET", "/unread", "")
+		var got struct {
+			Unread int
+			Ready  bool
+		}
+		_ = json.Unmarshal([]byte(body), &got)
+		if code != 200 || !got.Ready {
+			t.Fatalf("unread: %d %s", code, body)
+		}
+		f.mu.Lock()
+		after := len(f.calls)
+		f.mu.Unlock()
+		if after != before {
+			t.Fatal("cached unread route called Tether")
+		}
+		return got.Unread
+	}
+	if got := count(); got != 42 {
+		t.Fatalf("truncated count: %d", got)
+	}
+	changes := make(chan int, 10)
+	off := h.Events().Subscribe("inbox.unread", func(ev module.Event) {
+		var v struct{ Unread int }
+		_ = json.Unmarshal(ev.Data, &v)
+		changes <- v.Unread
+	})
+	defer off()
+	if _, err = m.list(t.Context(), BoxUnread, 50); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case n := <-changes:
+		t.Fatalf("unchanged event: %d", n)
+	default:
+	}
+	f.mu.Lock()
+	f.fail = map[string]bool{agent: true}
+	f.mu.Unlock()
+	if _, err = m.list(t.Context(), BoxUnread, 50); err != nil {
+		t.Fatal(err)
+	} // partial page still useful
+	if got := count(); got != 42 {
+		t.Fatalf("partial failure replaced complete count: %d", got)
+	}
+	f.mu.Lock()
+	f.fail = nil
+	f.boxes[me] = nil
+	f.boxes[agent] = nil
+	f.mu.Unlock()
+	if _, err = m.list(t.Context(), BoxAll, 50); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 42 {
+		t.Fatalf("all-mail list changed unread: %d", got)
+	}
+	if _, err = m.list(t.Context(), BoxUnread, 50); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != 0 {
+		t.Fatalf("zero unread: %d", got)
+	}
+	select {
+	case n := <-changes:
+		if n != 0 {
+			t.Fatalf("zero event: %d", n)
+		}
+	default:
+		t.Fatal("no zero event")
+	}
+}
+
+func TestUnreadChangesWakeExistingPoll(t *testing.T) {
+	h, m, _ := start(t)
+	if _, err := m.list(t.Context(), BoxUnread, 50); err != nil {
+		t.Fatal(err)
+	}
+	changes := make(chan int, 10)
+	off := h.Events().Subscribe("inbox.unread", func(ev module.Event) {
+		var v struct{ Unread int }
+		_ = json.Unmarshal(ev.Data, &v)
+		changes <- v.Unread
+	})
+	defer off()
+	wait := func(want int) {
+		t.Helper()
+		select {
+		case got := <-changes:
+			if got != want {
+				t.Fatalf("got %d want %d", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("mutation did not wake existing poll")
+		}
+	}
+	if err := m.markRead(t.Context(), "m1", me); err != nil {
+		t.Fatal(err)
+	}
+	wait(1)
+	if err := m.archive(t.Context(), "m3", agent, true); err != nil {
+		t.Fatal(err)
+	}
+	wait(0)
+	if err := m.archive(t.Context(), "m3", agent, false); err != nil {
+		t.Fatal(err)
+	}
+	wait(1)
 }

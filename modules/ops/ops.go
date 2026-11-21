@@ -47,6 +47,7 @@ var allowed = tetherlink.Allowed{
 	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
 	"tether_workstream_get": true, "tether_workstream_digest": true,
 	"registry_record_list": true, "registry_record_get": true,
+	"tether_session_list": true, "tether_session_health": true,
 }
 
 // forbidden are tools Ops must never reach, whatever is asked.
@@ -70,6 +71,7 @@ type mod struct {
 	rolling bool
 	bg      sync.WaitGroup
 	// tasks is the Torque reads shared by every roll-up.
+	liveSessions    sessionCache
 	tasks           *taskCache
 	activityMu      sync.Mutex
 	activityPending []string

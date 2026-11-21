@@ -113,6 +113,7 @@ export interface Task {
   via?: string
   plan_id?: string
   phase_id?: string
+  discovered_via?: string
 }
 
 export interface Plan {
@@ -120,6 +121,7 @@ export interface Plan {
   title: string
   status: string
   workstream: string
+  via?: string
   phases: { id: string; name: string; order: number; state: string }[]
   truncated?: boolean
 }

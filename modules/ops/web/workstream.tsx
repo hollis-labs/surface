@@ -24,6 +24,7 @@ import {
   type Link,
   message,
   opsClient,
+  type Plan,
   type Rollup,
   STAGES,
   stageLabel,
@@ -184,7 +185,17 @@ export function WorkstreamView({ win, desk, api }: ViewProps) {
             <Overview d={d} desk={desk} act={act} ops={ops} />
           </TabsContent>
           <TabsContent value="tasks">
-            <Tasks roll={roll} id={id} busy={rolling} refresh={() => void loadRoll(true)} />
+            <Tasks
+              roll={roll}
+              id={id}
+              busy={rolling}
+              refresh={() => void loadRoll(true)}
+              linkPlan={async (plan) => {
+                await ops.link(plan.workstream, { kind: "torque.plan", id: plan.id })
+                await load()
+                await loadRoll(true)
+              }}
+            />
           </TabsContent>
           <TabsContent value="activity">
             <Activity roll={roll} id={id} busy={rolling} refresh={() => void loadRoll(true)} />
@@ -373,7 +384,19 @@ function Overview({
   )
 }
 
-function Tasks({ roll, id, busy, refresh }: { roll: Rollup | null; id: string; busy: boolean; refresh: () => void }) {
+function Tasks({
+  roll,
+  id,
+  busy,
+  refresh,
+  linkPlan,
+}: {
+  roll: Rollup | null
+  id: string
+  busy: boolean
+  refresh: () => void
+  linkPlan: (plan: Plan) => Promise<void>
+}) {
   if (!roll) return <Spinner />
   const counts = Object.entries(roll.counts).sort((a, b) => b[1] - a[1])
   return (
@@ -391,7 +414,7 @@ function Tasks({ roll, id, busy, refresh }: { roll: Rollup | null; id: string; b
         </Button>
       </div>
       <Problems roll={roll} />
-      <PlanTasks roll={roll} id={id} />
+      <PlanTasks roll={roll} id={id} linkPlan={linkPlan} />
     </div>
   )
 }

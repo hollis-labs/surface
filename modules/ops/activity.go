@@ -41,8 +41,10 @@ type Task struct {
 	Status     string `json:"status"`
 	Updated    string `json:"updated,omitempty"`
 	Workstream string `json:"workstream"`
-	// Via is how the workstream reaches it: a link, or the epic it is under.
-	Via string `json:"via,omitempty"`
+	// Via is how the workstream reaches it: a link, epic or plan.
+	Via     string `json:"via,omitempty"`
+	PlanID  string `json:"plan_id,omitempty"`
+	PhaseID string `json:"phase_id,omitempty"`
 }
 
 // Rollup is a workstream's tasks and activity, with its children's.
@@ -50,6 +52,7 @@ type Rollup struct {
 	Workstream string         `json:"workstream"`
 	Counts     map[string]int `json:"counts"`
 	Tasks      []Task         `json:"tasks"`
+	Plans      []Plan         `json:"plans,omitempty"`
 	Entries    []Entry        `json:"entries"`
 	// Last is the newest entry, for a card's "last activity" line.
 	Last *Entry `json:"last,omitempty"`
@@ -92,8 +95,9 @@ const taskTTL = 60 * time.Second
 
 // taskCache is the reads of Torque tasks, by id.
 type taskCache struct {
-	mu sync.Mutex
-	m  map[string]taskRead
+	mu    sync.Mutex
+	m     map[string]taskRead
+	plans map[string]planRead
 }
 
 type taskRead struct {
@@ -208,13 +212,13 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 	}
 
 	// The tasks: linked ones, and the children of linked epics.
-	type want struct{ id, ws, via string }
+	type want struct{ id, ws, via, plan string }
 	var wants []want
 	seen := map[string]bool{}
 	add := func(id, ws, via string) {
 		if !seen[id] && len(wants) < maxTasks {
 			seen[id] = true
-			wants = append(wants, want{id, ws, via})
+			wants = append(wants, want{id: id, ws: ws, via: via})
 		}
 	}
 	for _, x := range all {
@@ -239,6 +243,42 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 			}
 		}
 	}
+	// Plans add to the same task set before any details or comments are read.
+	seenPlans := map[string]bool{}
+	for _, x := range all {
+		for _, l := range x.Links {
+			if l.Kind != "torque.plan" || seenPlans[l.ID] {
+				continue
+			}
+			if len(seenPlans) == maxTasks {
+				fail(errors.New("plan limit reached; showing the first 80 plans"))
+				break
+			}
+			seenPlans[l.ID] = true
+			p, ids, err := r.plan(ctx, l.ID)
+			p.Workstream = x.ID
+			if err != nil {
+				fail(fmt.Errorf("plan %s: %w", l.ID, err))
+			}
+			for _, id := range ids {
+				add(id, x.ID, l.ID)
+				if !seen[id] {
+					p.Truncated = true
+					continue
+				}
+				for i := range wants {
+					if wants[i].id == id {
+						wants[i].plan = l.ID
+						break
+					}
+				}
+			}
+			if p.Truncated {
+				fail(fmt.Errorf("plan %s: task limit reached or children incomplete", l.ID))
+			}
+			out.Plans = append(out.Plans, p)
+		}
+	}
 	sem := make(chan struct{}, readConcurrency)
 	var wg sync.WaitGroup
 	for _, t := range wants {
@@ -255,7 +295,7 @@ func (r reader) Roll(ctx context.Context, w Workstream, descendants []Workstream
 				fail(fmt.Errorf("%s comments: %w", t.id, got.cerr))
 			}
 			task := got.task
-			task.Workstream, task.Via = t.ws, t.via
+			task.Workstream, task.Via, task.PlanID = t.ws, t.via, t.plan
 			mu.Lock()
 			defer mu.Unlock()
 			out.Tasks = append(out.Tasks, task)
@@ -433,12 +473,13 @@ func (r reader) task(ctx context.Context, id string) (Task, error) {
 			Title     string `json:"title"`
 			Status    string `json:"status"`
 			UpdatedAt string `json:"updated_at"`
+			PhaseID   string `json:"phase_id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil || out.Data.ID == "" {
 		return Task{}, errors.New("torque answered, but not with the task")
 	}
-	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt}, nil
+	return Task{ID: out.Data.ID, Title: out.Data.Title, Status: out.Data.Status, Updated: out.Data.UpdatedAt, PhaseID: out.Data.PhaseID}, nil
 }
 
 func (r reader) epicTasks(ctx context.Context, epic string) ([]string, error) {

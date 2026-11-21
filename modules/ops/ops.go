@@ -44,7 +44,7 @@ const (
 var allowed = tetherlink.Allowed{
 	"caster_get": true, "caster_ls": true, "caster_put": true, "caster_log": true,
 	"torque_task_get": true, "torque_task_list": true, "torque_epic_get": true, "torque_plan_get": true,
-	"torque_comment_list": true, "event_list": true,
+	"torque_plan_list_children": true, "torque_comment_list": true, "event_list": true,
 	"tether_workstream_get": true, "tether_workstream_digest": true,
 	"registry_record_list": true, "registry_record_get": true,
 }
@@ -358,6 +358,10 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, s module.Situation) 
 		if w, ok := b.Find(strings.TrimPrefix(s.Focused.Ref, "ops:")); ok {
 			out["in_front"] = map[string]any{"id": w.ID, "title": w.Title, "stage": w.Stage, "rev": w.Rev, "parent": w.Parent,
 				"children": w.Children, "links": w.Links, "active_when": w.ActiveWhen}
+			if c, ok := cached[w.ID]; ok {
+				front := out["in_front"].(map[string]any)
+				front["task_counts"], front["plans"] = c.Counts, c.Plans
+			}
 		}
 	}
 	j, _ := json.Marshal(out)

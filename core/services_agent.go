@@ -63,6 +63,8 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		s.PruneBindingSnapshots()
+		a.k.Settings().Watch("agent.bindings", func(any) { s.PruneBindingSnapshots() })
 		// The agent's own tools (slots, reflexes, routing rules) are offered to outside
 		// agents too, at /api/tools and /mcp: the Interaction Builder's work, from anywhere.
 		if err := a.k.AddTools(s.Tools()...); err != nil {

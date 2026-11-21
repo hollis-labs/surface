@@ -54,21 +54,23 @@ type App struct {
 	marks *marks.Store
 	cards *cards.Store
 
-	mods     []*host
-	byModule map[string]*host
-	commands map[string]boundCommand
-	order    []string // command ids in declaration order
-	tools    []BoundTool
-	slots    []BoundSlot
-	arounds  []BoundAround
-	profiles []BoundProfile
-	refs     map[string]*boundRef
-	cite     citeCache
-	asker    atomic.Pointer[askerBox]
-	gateway  atomic.Pointer[func(context.Context) (module.Gateway, error)]
-	routes   *http.ServeMux
-	started  bool
-	mu       sync.RWMutex
+	mods         []*host
+	byModule     map[string]*host
+	commands     map[string]boundCommand
+	order        []string // command ids in declaration order
+	tools        []BoundTool
+	slots        []BoundSlot
+	arounds      []BoundAround
+	profiles     []BoundProfile
+	palette      map[string]boundPalette
+	paletteSlots chan struct{}
+	refs         map[string]*boundRef
+	cite         citeCache
+	asker        atomic.Pointer[askerBox]
+	gateway      atomic.Pointer[func(context.Context) (module.Gateway, error)]
+	routes       *http.ServeMux
+	started      bool
+	mu           sync.RWMutex
 }
 
 type boundCommand struct {
@@ -105,7 +107,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 	}
 	a := &App{name: o.Name, title: o.Title, dataDir: o.DataDir, db: o.DB, log: o.Log,
 		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux(),
-		refs: map[string]*boundRef{}, cite: citeCache{m: map[string]citeEntry{}}}
+		palette: map[string]boundPalette{}, paletteSlots: make(chan struct{}, 6), refs: map[string]*boundRef{}, cite: citeCache{m: map[string]citeEntry{}}}
 	if a.title == "" {
 		a.title = o.Name
 	}
@@ -238,6 +240,9 @@ func New(ctx context.Context, o Options) (*App, error) {
 				bs.Knowledge = func(ctx context.Context, sit module.Situation) (string, error) { return fn(ctx, hh, sit) }
 			}
 			a.slots = append(a.slots, bs)
+		}
+		if err := a.addPalette(h); err != nil {
+			return nil, a.fail(err)
 		}
 		if err := a.addRefs(h); err != nil {
 			return nil, a.fail(err)

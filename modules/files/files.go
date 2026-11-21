@@ -89,9 +89,10 @@ func (m *mod) Manifest() module.Manifest {
 					return map[string]string{"path": l.Abs}, nil
 				}},
 		},
-		Tools: m.tools(),
-		Refs:  m.refs(),
-		Store: &module.Store{Migrations: migrations, Dir: "migrations"},
+		Palette: []module.PaletteProvider{{ID: "search", Title: "Local files", Mode: "commands", Search: m.palette}},
+		Tools:   m.tools(),
+		Refs:    m.refs(),
+		Store:   &module.Store{Migrations: migrations, Dir: "migrations"},
 		Settings: []module.Setting{
 			{Key: "show_hidden", Title: "Show hidden files", About: "List files and folders whose name starts with a dot.", Type: module.SettingBool, Default: false},
 			{Key: "preview_limit_kb", Title: "Text preview limit (KB)", About: "How much of a text file is read for a preview or by the agent in one call.", Type: module.SettingInt, Default: 256},

@@ -56,6 +56,45 @@ A command shows in the palette, can have a shortcut, and can be run by a view (`
 	Run: func(ctx context.Context, h module.Host, args map[string]any) (any, error) { … }},
 ```
 
+### Palette search providers
+
+Modules add read-only searches to `Manifest.Palette`. Each runs independently of commands,
+layouts and other providers; failures stay in that provider's group.
+
+```go
+Palette: []module.PaletteProvider{{
+    ID: "search", Title: "Work items", Mode: "commands",
+    Search: func(ctx context.Context, h module.Host, q module.PaletteQuery) ([]module.PaletteResult, error) {
+        // Search your store using q.Text; honor ctx and q.Limit.
+        return []module.PaletteResult{{
+            ID: "item-1", Title: "Example item",
+            Ref: &module.PaletteRef{Kind: "work.item", Canonical: "team/1234abcd"},
+        }}, nil
+    },
+}},
+```
+
+Provider IDs are local to the module; the API exposes `<module>/<id>`. `Mode` defaults to
+`commands`; `tabs` providers also run with an empty query. Results need a stable ID, title,
+and exactly one action: `Ref` opens via Cite, `Command` runs a registered command, or `Window`
+focuses an existing desk window. Optional `Description` and `Icon` describe the result.
+`Close: true` offers the desk's normal close action for window results, including dirty checks.
+
+The core limits queries to 512 bytes, results to 20 per provider, searches to three seconds,
+and concurrent provider work to six calls. Honor context cancellation, bound source reads,
+and never mutate state from `Search`. The page debounces text searches and discards stale
+responses. `GET /api/palette/providers` lists providers; `/api/palette/search?provider=…&q=…&scope=all`
+queries one. `Scope` is `all` or `focused`; `FocusedWindow` comes from the server's desk.
+
+Files searches local place filenames/paths (at most 2,000 entries, eight levels, skipping
+links, credentials and dependency folders); it does not connect to remote folders. Notes
+searches titles and paths across at most 2,000 entries. Cited records searches currently cached,
+unexpired Cite previews by title or canonical ID, honoring resolver readiness. Modules can
+provide broader record searches returning `Ref` actions without duplicating Cite resolution.
+Browser's Tabs mode searches open Browser windows by title and URL. All includes every Browser
+window; Focused includes only the currently focused Browser window. Closing a result refreshes
+the list from desk events.
+
 ### Agent tools
 
 ```go

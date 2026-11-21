@@ -59,7 +59,8 @@ func (m *mod) Manifest() module.Manifest {
 					return m.open(ctx, q, true)
 				}},
 		},
-		Tools: m.tools(),
+		Palette: []module.PaletteProvider{{ID: "search", Title: "Browser tabs", Mode: "tabs", Search: m.palette}},
+		Tools:   m.tools(),
 		Settings: []module.Setting{
 			{Key: "home", Title: "Home page", Type: module.SettingString, Default: "https://duckduckgo.com/"},
 			{Key: "reader", Title: "Open pages in reader mode", About: "Show pages as text and links, not in a frame.", Type: module.SettingBool, Default: false},

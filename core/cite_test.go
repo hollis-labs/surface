@@ -95,6 +95,14 @@ func TestReferencesResolveThroughTheModuleThatOwnsThem(t *testing.T) {
 		t.Fatalf("batches: %v", first)
 	}
 
+	var palette []module.PaletteResult
+	if code := do(t, srv, "GET", "/api/palette/search?provider=surface/cites&q=First", "", &palette); code != 200 || len(palette) != 1 || palette[0].Ref.Canonical != "T-1" {
+		t.Fatalf("cited palette: %d %+v", code, palette)
+	}
+	if code := do(t, srv, "GET", "/api/palette/search?provider=missing&q=x", "", nil); code != 404 {
+		t.Fatalf("unknown provider: %d", code)
+	}
+
 	// Asked again: answered from the cache, the module is not asked, even when it is down.
 	theCiteMod.mu.Lock()
 	theCiteMod.down = true

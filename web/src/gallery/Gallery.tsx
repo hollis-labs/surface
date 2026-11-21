@@ -21,16 +21,18 @@ import { Overlays } from "./overlays"
 import { DraftFilter } from "./Specimen"
 import { InPalette, Theme, ThemeChoice } from "./theme"
 import { Windows } from "./windows"
+import { Workflows } from "./workflows"
 
 /** The sections, in order. Their ids name the screenshots. */
 export const SECTIONS = [
+  { id: "cards", title: "Cards", draw: Cards },
+  { id: "workflows", title: "Workflows", draw: Workflows },
   { id: "theme", title: "Theme", draw: Theme },
   { id: "controls", title: "Controls", draw: Controls },
   { id: "display", title: "Display", draw: Display },
   { id: "overlays", title: "Overlays", draw: Overlays },
   { id: "chat", title: "Chat", draw: Chat },
   { id: "cite", title: "Cite", draw: Cite },
-  { id: "cards", title: "Cards", draw: Cards },
   { id: "genui", title: "GenUI", draw: Genui },
   { id: "ade", title: "ADE", draw: Ade },
   { id: "windows", title: "Windows", draw: Windows },
@@ -97,7 +99,7 @@ export function GalleryTabs({
 }) {
   const tabs = draft ? [{ id: "draft", title: "Draft" }, ...SECTIONS] : SECTIONS
   const [section, setSection] = useState<string>(
-    first && tabs.some((s) => s.id === first) ? first : draft ? "draft" : "controls",
+    first && tabs.some((s) => s.id === first) ? first : draft ? "draft" : "cards",
   )
   // The palette and type style the gallery is drawn in: from the URL (?palette=, ?type=), else as last
   // chosen in this browser, else the default. The page around it keeps its own.

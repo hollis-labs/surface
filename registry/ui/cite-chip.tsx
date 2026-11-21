@@ -8,23 +8,23 @@ import { cn } from "cn"
  * web/src/cite); the chip only draws the state it is given. Pass it as a hover card's trigger.
  */
 const citeChipVariants = cva(
-  "mx-px inline-flex max-w-full translate-y-[-1px] cursor-pointer items-center gap-1 rounded-sm border px-1 py-px align-baseline text-[0.9em] leading-tight font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>svg]:size-3 [&>svg]:shrink-0",
+  "mx-px inline-flex max-w-full translate-y-[-0.5px] cursor-pointer items-center gap-1 rounded-sm border border-border bg-accent px-1.5 py-0 align-baseline font-mono text-[0.86em] leading-[1.5] font-normal whitespace-nowrap text-foreground transition-colors outline-none hover:border-primary focus-visible:border-primary [&>svg]:size-3 [&>svg]:shrink-0 [&>svg]:text-primary data-[kind=path]:bg-transparent data-[kind=path]:text-foreground/85 data-[kind=url]:border-transparent data-[kind=url]:bg-transparent data-[kind=url]:p-0 data-[kind=url]:font-sans data-[kind=url]:whitespace-normal data-[kind=url]:break-all data-[kind=url]:text-primary data-[kind=url]:hover:underline data-[kind=url]:[&>svg]:hidden",
   {
     variants: {
       state: {
-        idle: "border-border bg-muted/50 text-foreground hover:bg-muted",
-        loading: "border-border bg-muted/50 text-muted-foreground hover:bg-muted",
-        found: "border-primary/25 bg-primary/10 text-foreground hover:bg-primary/15",
-        "not-found": "border-dashed border-border bg-transparent text-muted-foreground line-through decoration-muted-foreground/50 hover:bg-muted/50",
-        error: "border-destructive/30 bg-destructive/5 text-foreground hover:bg-destructive/10",
-        unsupported: "border-border bg-transparent text-foreground hover:bg-muted/50",
+        idle: "border-border bg-accent text-foreground hover:border-primary",
+        loading: "border-border bg-accent/60 text-muted-foreground hover:border-primary",
+        found: "border-border bg-accent text-foreground hover:border-primary",
+        "not-found": "border-dashed border-border bg-transparent text-muted-foreground line-through decoration-muted-foreground/60 hover:border-muted-foreground",
+        error: "border-destructive/40 bg-destructive/10 text-foreground hover:border-destructive",
+        unsupported: "border-border bg-transparent text-foreground/85 hover:border-primary",
       },
       mono: {
-        true: "font-mono text-[0.85em] font-normal",
-        false: "",
+        true: "font-mono text-[0.86em]",
+        false: "font-mono text-[0.86em]",
       },
     },
-    defaultVariants: { state: "idle", mono: false },
+    defaultVariants: { state: "idle", mono: true },
   }
 )
 

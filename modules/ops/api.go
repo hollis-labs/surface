@@ -116,10 +116,12 @@ func (m *mod) routes(h module.Host) {
 // roll-up says (no network on the board).
 type Card struct {
 	Workstream
-	Tasks      string `json:"tasks,omitempty"`
-	Last       *Entry `json:"last,omitempty"`
-	Suggest    string `json:"suggest,omitempty"`
-	SuggestWhy string `json:"suggest_why,omitempty"`
+	Tasks      string         `json:"tasks,omitempty"`
+	TaskCounts map[string]int `json:"task_counts,omitempty"`
+	TaskList   []Task         `json:"task_list,omitempty"`
+	Last       *Entry         `json:"last,omitempty"`
+	Suggest    string         `json:"suggest,omitempty"`
+	SuggestWhy string         `json:"suggest_why,omitempty"`
 }
 
 func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) (map[string]any, error) {
@@ -136,7 +138,7 @@ func (m *mod) boardResult(ctx context.Context, force bool, showSettled ...bool) 
 	for _, w := range b.Workstreams {
 		c := Card{Workstream: w}
 		if r, ok := cached[w.ID]; ok {
-			c.Tasks, c.Last, c.Suggest, c.SuggestWhy = CountsText(r.Counts), r.Last, r.Suggest, r.SuggestWhy
+			c.Tasks, c.TaskCounts, c.TaskList, c.Last, c.Suggest, c.SuggestWhy = CountsText(r.Counts), r.Counts, r.Tasks, r.Last, r.Suggest, r.SuggestWhy
 		}
 		cards = append(cards, c)
 	}

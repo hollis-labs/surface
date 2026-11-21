@@ -88,7 +88,7 @@ export function CiteFloat() {
     <div
       role="dialog"
       aria-label="Reference"
-      className="fixed z-50 w-92 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
+      className="fixed z-50 w-92 rounded-lg border border-transparent bg-card p-3 text-[13px] text-card-foreground shadow-[0_18px_50px_rgb(0_0_0/0.6)] [background:linear-gradient(var(--card),var(--card))_padding-box,linear-gradient(135deg,var(--p-accent,var(--primary)),var(--p-accent-2,var(--chart-2)))_border-box]"
       style={below ? { left, top: f.y + 14 } : { left, bottom: window.innerHeight - f.y + 14 }}
       onMouseEnter={() => window.clearTimeout(hideTimer)}
       onMouseLeave={hideSoon}

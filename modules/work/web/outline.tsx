@@ -199,7 +199,10 @@ export function Outline({ w, ws, space, view, picked, pick, changed, setError }:
           >
             {node.kids.length > 0 && <Icon name={open ? "chevron-down" : "chevron-right"} />}
           </Button>
-          <span className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5" onClick={() => pick(c.id)}>
+          <span
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5"
+            onClick={(e) => pick(c.id, e.metaKey || e.ctrlKey || e.shiftKey)}
+          >
             <KindIcon kind={k} size={13} />
             <span className="truncate">{c.title || "Untitled"}</span>
           </span>

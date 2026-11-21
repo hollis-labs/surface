@@ -52,6 +52,7 @@ export interface ViewDef {
   height?: number
   menu?: boolean
   multi?: boolean
+  tiling?: "full" | "tile" | string
   bare?: boolean
   render: { kind: "component" | "frame"; entry: string }
   opens?: string[]

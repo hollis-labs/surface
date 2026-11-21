@@ -25,7 +25,7 @@ document.documentElement.classList.toggle("dark", theme === "dark")
 const fromHash = () => {
   const h = decodeURIComponent(window.location.hash.slice(1))
   if (draft && (h === "" || h === "draft")) return "draft"
-  return SECTIONS.some((s) => s.id === h) ? h : draft ? "draft" : "controls"
+  return SECTIONS.some((s) => s.id === h) ? h : draft ? "draft" : "workflows"
 }
 
 const tell = (section: string) => {

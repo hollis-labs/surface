@@ -76,9 +76,11 @@ func (m *mod) Manifest() module.Manifest {
 
 ## Docs
 
+- [`docs/taste.md`](docs/taste.md) — the Surface Taste & Design System: workflow-first philosophy, Evolved Blade Runner visual language, spatial window rules, Cite & Object Actions patterns, and golden workflow archetypes.
+- [`docs/ade-framework.md`](docs/ade-framework.md) — architecture in one page and the complete feature inventory across core, modules, agent, cards, and UI.
 - [`docs/architecture.md`](docs/architecture.md) — layout, the seam, the server-authoritative desk, data, config.
 - [`docs/writing-a-module.md`](docs/writing-a-module.md) — the contract, with the page's side.
-- [`docs/gui.md`](docs/gui.md) — how the interface is built, how to change a look or add a component so it reaches every app, and the open design decisions.
+- [`docs/gui.md`](docs/gui.md) — how the interface is built, how to change a look or add a component so it reaches every app, and the extension points.
 - [`docs/agent.md`](docs/agent.md) — the embedded agent, context slots, the router and reflexes.
 - [`docs/substrate.md`](docs/substrate.md) — what Substrate supplies and where Surface goes its own way.
 - [`docs/status.md`](docs/status.md) — what is done, how it is checked, and what is not there yet.

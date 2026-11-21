@@ -28,16 +28,17 @@ Surface is becoming the place every app's interface is built, on stock shadcn th
 
 | | State |
 |---|---|
-| Theme, registry (36 components), sync and drift check | done |
-| The page built from registry components | done: the desk's bar, menu, window frames and palette, the core windows, and all six modules' views. No hand-written control or old stylesheet remains; lint fails on a raw control anywhere in the page |
+| Theme, registry (61 items), sync and drift check | done |
+| The page built from registry components | done: the desk's bar, 3-level nav group menu, window frames, command palette (`Tabs \| Commands`), Cite slide-over drawer, `<ObjectActionsMenu />`, two-pane Settings workbench, Activity Timeline window, Workflow Golden Samples window, and all modules' views. No hand-written control or old stylesheet remains; lint fails on a raw control anywhere in the page |
+| Window & spatial behavior | done: modules open full-frame by default and replace the active module when switched; closing restores the previous module or trail; autotiling happens within modules that set `View.Tiling: "tile"` (such as `terminal`); clicking items inside a module navigates in-place within that module (modifier-click or pop-out icon opens a new window) |
 | A plain frame for apps that are not a desk | done: the registry's `app-frame` (bar, rail and a resizable side panel, each optional, around the content). Surface's own page is on it, the agent panel in the side region, its width a live setting |
 | The ADE overlays | done: `attention-layer` and `guide-bar` in the registry, `@hollis-labs/ade-core`'s hub in the page, and the agent's `ade_*` tools (point, spotlight, arrow, guide) on the server; views declare anchors with `useAnchor` |
-| Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Typing redraws only the composer, a token only its message, and the thread is read on one stated policy (`packages/chat/README.md`) |
-| Cards | done | server-held cards (`core/internal/cards`): show, update, answer once, lapse by the server's clock, a late answer to the agent's question its run stopped waiting for (sent to the agent as a message), drafts kept in the browser; modules through `Host.Cards()`, the agent through `card_show`, `card_ask` (waits for the answer) and `card_update`; `packages/cards` (engine, outcome contract, form subset, renderer table) and ten `card-*` registry components; the agent's cards dock in its panel, others pop up, a blocking one takes the middle, all in the Cards window |
+| Chat on shared behaviour and registry components | done: `packages/chat` (wire, reducer, store, scroll-follow; no styling) and the registry's `conversation`, `message`, `markdown`, `prompt-input` and `tool`. Framed assistant turns with `#slot` topic tags, folded tool activity line opening `surface.activity`, removable context attachment chips, and vertical-only scroll lock |
+| Cards | done | server-held cards (`core/internal/cards`): show, update, answer once, lapse by the server's clock, a late answer to the agent's question its run stopped waiting for (sent to the agent as a message), drafts kept in the browser; modules through `Host.Cards()`, the agent through `card_show`, `card_ask` (waits for the answer) and `card_update`; `packages/cards` (engine, outcome contract, form subset, renderer table) and ten `card-*` registry components; non-blocking `"Hold & open in Cards window"`, wizard pagination (`surface.wizard_page_size`), and universal `"Other: tell the agent…"` escape hatch |
 | Generated UI | done | Substrate's GenUI contract and gateway with Surface as the host (`core/internal/genui`): three reviewed patterns (approval, form, list with detail), surfaces kept as immutable snapshots, actions journaled and executed once, a second step for a high-risk choice; shown as cards; the agent's `genui_show`; `packages/genui` (contract, strict decoding, controller) and the registry's `genui-surface`; end-to-end test through the real gateway |
 | Apps outside this repository | done: one version line (`vX.Y.Z` tags the registry, the Go module and the npm packages). `@hollis-labs/surface-page` (the page core, its sdk, a Vite plugin), `-chat`, `-cards`, `-genui` and `-ui` (the `ui` tool) build and pack; `make pack-check` (CI) installs the tarballs in an empty directory and uses them. Setup in `registry/README.md` |
 | Live design review | slice 1 done: `make design-preview` serves the gallery on its own page with hot reload; the `design` module keeps design jobs, frames a job's branch preview beside its base, takes notes as marks, and hands rounds to the Design team (Tether message and manual Torque task behind one `Dispatcher` interface, or text to send by hand); progress is read from GitHub. The way back: while a job is open the module reads the Designer's replies on its thread (`design-<job id>`, only for jobs this instance holds, only from the configured Designer) and its Torque task on a timer and with `design_refresh`; labeled lines (`preview:`, `base:`, `pr:`, `head:`) set the job, the rest shows as text, and the first preview opens the review window with a notice. An approval names the commit it covers (`approved_head`, sent back as `approved-head:`); a head that changes while the card is open supersedes it; after approval the thread is read until `merged:` (of that commit) or `closed:`, for a week at most. Not yet: screenshot diffs, starting the preview from Surface |
-| A baseline palette | undecided; the theme holds shadcn's neutral defaults |
+| A baseline palette & taste guide | done: Evolved Blade Runner default theme in `registry/theme/surface.css` and full design & interaction guide in [`docs/taste.md`](taste.md) |
 
 ## Agent Workbench (MVP)
 
@@ -53,15 +54,17 @@ key, stub tools in evals (nanite/evals has no hook), a live provider from Nanite
 `modules/ops`, in Desk: the owner's workstream board (Torque CW-20261120-0117). Real today: workstreams as
 `ops/v1` documents in Caster (`caster://ops/ws.<id>`, the launch order in `caster://ops/queue`), a working copy
 read again every 15 s, nesting (a workstream is a concept of any size, with a parent and children), the board
-(Planning, Planned, the numbered Queued band ordered by drag or arrows among siblings, In Flight; Review, Adoption
-and Active behind Later; Kanban and Cards), the drill-in (Overview, Tasks, Activity, History), the agent's
-`ops_*` tools and slot, `ops:<id>` in Cite, and a seed from the owner's tracker that is always a preview the owner
-edits and applies. Activity is Torque (task state and `STATUS` comments), the status stream per `status_ns`, and
-Ops' own moves, rolled up from children. Stubbed until they land: Registry identity by key and correlation
-records (`workstream_ensure` not deployed; the identity link is by hand), trusted status writers (every status row
-is "claimed"), a cross-project status read, plan expansion, and a `tether.team` Cite kind. Its Tether link has no
-launch, dispatch, claim or team tool. Checked by `modules/ops` tests against collabtest's fake Caster and a fake
-Torque. See [modules/ops/README.md](../modules/ops/README.md).
+(Planning, Planned, the unnumbered Queued band ordered by drag or arrows among siblings, In Flight; Review, Adoption
+and Active behind Later; `Kanban | Cards | Timeline`), **`x of y` work progress** on every card (clicking a card
+expands the work units under it inline across child workstreams, `active_when` checklist items, and Torque tasks),
+inline comments/notes on any unit of work via Surface Marks, **Request status** and `<ObjectActionsMenu />`, the
+drill-in (Overview, Tasks, Activity, History), the agent's `ops_*` tools and slot, `ops:<id>` in Cite, and a seed
+from the owner's tracker that is always a preview the owner edits and applies. Activity is Torque (task state and
+`STATUS` comments), the status stream per `status_ns`, and Ops' own moves, rolled up from children. Stubbed until
+they land: Registry identity by key and correlation records (`workstream_ensure` not deployed; the identity link is
+by hand), trusted status writers (every status row is "claimed"), a cross-project status read, plan expansion, and a
+`tether.team` Cite kind. Its Tether link has no launch, dispatch, claim or team tool. Checked by `modules/ops` tests
+against collabtest's fake Caster and a fake Torque. See [modules/ops/README.md](../modules/ops/README.md).
 
 ## Not there yet
 

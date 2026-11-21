@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
+import { Markdown } from "@/components/ui/markdown"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -97,7 +98,7 @@ function iconOf(e: Entry) {
 function IconButton({ label, children, ...props }: { label: string } & ComponentProps<typeof Button>) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} {...props} />}>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} {...props} />}>
         {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -235,9 +236,15 @@ function Preview({ api, place, entry, limitKb }: { api: ModuleAPI; place: string
         </p>
       )}
       {part.text ? (
-        <pre className="m-0 p-3 font-mono text-xs leading-normal wrap-anywhere whitespace-pre-wrap tab-4">
-          {part.text}
-        </pre>
+        /\.md$/i.test(entry.name) ? (
+          <div className="p-3">
+            <Markdown>{part.text}</Markdown>
+          </div>
+        ) : (
+          <pre className="m-0 p-3 font-mono text-xs leading-normal wrap-anywhere whitespace-pre-wrap tab-4">
+            {part.text}
+          </pre>
+        )
       ) : (
         <p className={about}>This file is empty.</p>
       )}
@@ -363,6 +370,16 @@ function Files({ win, desk, api }: ViewProps) {
     })
     if (ok) api.post("delete", { place, path: entry.path }).catch(fail)
   }
+  const openInNewWindow = (entry: Entry) => {
+    const folder = entry.dir ? entry.path : path
+    const sel = entry.dir ? "" : entry.path
+    void desk.open("files", {
+      key: `${place}:${entry.path}:${Date.now()}`,
+      title: entry.name,
+      args: sel ? { place, path: folder, select: sel } : { place, path: folder },
+    })
+  }
+
   const openInNotes = (entry: Entry) => {
     setNote("")
     desk
@@ -390,13 +407,19 @@ function Files({ win, desk, api }: ViewProps) {
   const crumbs = path ? path.split("/") : []
 
   // The size and the time give way when the list is narrow: it is its own container.
-  const sizeCell = "hidden py-1 text-right text-muted-foreground @sm/list:table-cell"
-  const timeCell = "hidden truncate py-1 text-muted-foreground @xl/list:table-cell"
-  const iconFor = (e: Entry) => <Icon name={iconOf(e)} className="size-4 shrink-0 text-muted-foreground" />
+  const sizeCell = "hidden py-1 font-mono text-[11.5px] text-right text-muted-foreground @sm/list:table-cell"
+  const timeCell = "hidden truncate py-1 font-mono text-[11.5px] text-muted-foreground @xl/list:table-cell"
+  const iconColorFor = (e: Entry) => {
+    if (e.locked) return "text-warning"
+    if (e.dir) return "text-primary"
+    if (IMAGE.test(e.name)) return "text-chart-3"
+    return NOTE.test(e.name) ? "text-chart-2" : "text-muted-foreground"
+  }
+  const iconFor = (e: Entry) => <Icon name={iconOf(e)} className={`size-3.5 shrink-0 ${iconColorFor(e)}`} />
 
   return (
-    <div className="@container/files flex h-full min-h-0 flex-col bg-background text-sm text-foreground">
-      <header className="flex flex-wrap items-center gap-1.5 border-b border-border px-2.5 py-2">
+    <div className="@container/files flex h-full min-h-0 flex-col bg-background text-xs text-foreground">
+      <header className="flex flex-wrap items-center gap-1 border-b border-border bg-card/50 px-2 py-1">
         <Select
           items={(places ?? []).map((p) => ({ value: p.id, label: p.name }))}
           value={place || null}
@@ -404,13 +427,13 @@ function Files({ win, desk, api }: ViewProps) {
             if (typeof v === "string" && v !== place) go(v, "")
           }}
         >
-          <SelectTrigger size="sm" className="max-w-36 min-w-24" aria-label="Place">
+          <SelectTrigger size="sm" className="h-6 max-w-36 min-w-24 text-xs" aria-label="Place">
             <SelectValue placeholder="Place" />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
             {(places ?? []).map((p) => (
               <SelectItem key={p.id} value={p.id} title={p.remote ? `${p.host}:${p.path}` : p.path}>
-                {p.remote && <Icon name="server" className="size-3.5 text-muted-foreground" />}
+                {p.remote && <Icon name="server" className="size-3.5 text-chart-2" />}
                 {p.name}
               </SelectItem>
             ))}
@@ -429,7 +452,7 @@ function Files({ win, desk, api }: ViewProps) {
           <Icon name="minus" />
         </IconButton>
         <Breadcrumb
-          className="order-last min-w-0 basis-full px-1 @2xl/files:order-none @2xl/files:flex-1 @2xl/files:basis-0"
+          className="order-last min-w-0 basis-full px-1 font-mono text-xs @2xl/files:order-none @2xl/files:flex-1 @2xl/files:basis-0"
           aria-label="Folder"
         >
           <BreadcrumbList>
@@ -472,7 +495,7 @@ function Files({ win, desk, api }: ViewProps) {
           </BreadcrumbList>
         </Breadcrumb>
         <Input
-          className="ml-auto min-w-0 flex-1 @2xl/files:ml-0 @2xl/files:w-40 @2xl/files:flex-none"
+          className="ml-auto h-6 min-w-0 flex-1 text-xs @2xl/files:ml-0 @2xl/files:w-36 @2xl/files:flex-none"
           placeholder="Filter…"
           value={filter}
           aria-label="Filter"
@@ -480,12 +503,13 @@ function Files({ win, desk, api }: ViewProps) {
         />
         <Button
           variant="outline"
+          size="xs"
           aria-label="New folder"
           title="New folder"
           disabled={!place}
           onClick={() => setNaming({ kind: "folder" })}
         >
-          <Icon name="folder-plus" />
+          <Icon name="folder-plus" className="text-primary" />
           <span className="hidden @lg/files:inline">New folder</span>
         </Button>
       </header>
@@ -540,19 +564,29 @@ function Files({ win, desk, api }: ViewProps) {
                       </TableCell>
                     ) : (
                       <TableCell
-                        className="py-1 pl-1"
+                        className="py-0.5 pl-1"
                         title={e.locked ? "Files does not open things that look like credentials." : e.name}
                       >
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="max-w-full justify-start"
+                          size="xs"
+                          className="h-6 max-w-full justify-start gap-1.5 px-1.5 font-sans text-[12.5px] font-normal"
                           disabled={e.locked}
-                          onClick={() => (e.dir ? go(place, e.path) : setSelected(e.path))}
+                          onClick={(ev) => {
+                            if (ev.metaKey || ev.ctrlKey || ev.shiftKey) {
+                              openInNewWindow(e)
+                            } else if (e.dir) {
+                              go(place, e.path)
+                            } else {
+                              setSelected(e.path)
+                            }
+                          }}
                         >
                           {iconFor(e)}
-                          <span className="truncate">{e.name}</span>
-                          {e.symlink && <Icon name="link" className="size-3 text-muted-foreground" />}
+                          <span className={`truncate ${e.dir ? "font-medium text-foreground" : "text-foreground/90"}`}>
+                            {e.name}
+                          </span>
+                          {e.symlink && <Icon name="link" className="size-3 text-chart-2" />}
                         </Button>
                       </TableCell>
                     )}
@@ -561,6 +595,9 @@ function Files({ win, desk, api }: ViewProps) {
                     <TableCell className="py-1">
                       {!e.locked && !renaming && (
                         <div className="invisible flex justify-end [tr:focus-within_&]:visible [tr:hover_&]:visible">
+                          <IconButton label="Open in new window" onClick={() => openInNewWindow(e)}>
+                            <Icon name="square-arrow-out-up-right" />
+                          </IconButton>
                           <IconButton label="Rename" onClick={() => setNaming({ kind: "rename", entry: e })}>
                             <Icon name="pencil" />
                           </IconButton>

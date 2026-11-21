@@ -142,6 +142,9 @@ engine or a server.
 | To add | Do |
 |---|---|
 | A card kind of a module's own | Draw it with a new or existing registry component; register the renderer with `registerCard(kind, version, component)` (`web/src/cards/renderers.tsx`); show it from Go with `Host.Cards().Show`. An unregistered kind is drawn as a plain "no renderer" card, never as nothing |
+| An action on referenceable objects (`<ObjectActionsMenu />`) | Register a callback hook with `registerObjectAction(actionDef)` from `@hollis-labs/surface-page/sdk` (optionally scoped by `when: (obj) => boolean`), and render `<ObjectActionsMenu object={{ kind, id, title }} />` on any object header, row, or card |
+| A menu navigation group or item (up to 3 levels deep) | Call `registerNavGroup({ id, title, icon, parentId, order })` or `registerNavItem({ id, title, groupId, order, viewId })` from `@hollis-labs/surface-page/sdk`. Users can reorganize groups and items live in **Settings → Navigation & Menu** (`surface.nav_config`) |
+| Per-module autotiling vs full-frame window behavior | Set `Tiling: "tile"` on `module.View` (with `Multi: true`) when multiple windows of the module should autotile side-by-side within that module (e.g., `terminal`); leave `Tiling` unset (`"full"`) so the module opens full-frame by default and replaces the active module on switch |
 | A custom drawing for one of the agent's tools in the conversation | Add it to `toolCards` in `web/src/agent/items.tsx` |
 | A generated-UI pattern | Not in an app. The three patterns are a reviewed contract owned by Substrate (`genui/`); a new one is a contract change there, then a catalog entry in `core/internal/genui` and a branch in `genui-surface` |
 | Something the agent can point at inside a view | `useAnchor(win, name, label)` from `@hollis-labs/surface-page/sdk` |
@@ -190,41 +193,16 @@ Design work is reviewed while it is being done, in the app of the person who ask
 Registry versions are Surface tags. Screenshot comparison in CI and automatic sync pull requests are planned and not
 built.
 
-## Two design decisions that are open
+## Taste, theme and interaction standards
 
-Both are the owner's. Nothing in the wiring waits on them; they are what the design pass decides.
+The baseline visual and interaction standard is documented in **[`docs/taste.md`](taste.md)** (*Surface Taste & Design System*):
 
-### 1. The palette and the baseline theme
-
-**Now:** the theme holds shadcn's neutral defaults (greys, base-nova), in light and dark, and the system font.
-It was left that way deliberately so the plumbing could be finished first.
-
-**To decide:** the portfolio's own baseline: the values of every colour token in light and dark (including
-`--success`, `--warning`, `--info`), `--radius`, the sans and mono fonts, and how dense the default sizes are.
-Whether apps share one baseline and override a few tokens each, or each app carries a full theme of its own.
-
-**Where it lands:** `registry/theme/surface.css`, and nowhere else. No component changes for a palette. Per-app
-differences are overrides in the app's stylesheet. Check it in the Components window in both modes; contrast of
-`--muted-foreground` on `--card` and `--background`, and of `--ring` as the focus outline, are the two to look at
-first.
-
-### 2. Layouts, components, cards and flows
-
-**Now:** every component works and is unstyled beyond shadcn's defaults. Views use them with default
-variants. Cards and generated surfaces share one frame (`card-frame`).
-
-**To decide:** how each component and card should look and behave in detail, and the arrangements an app
-opens with. Known gaps and rough edges found while wiring, each of which is a registry change:
-
-- A selected state for list rows (`item`); truncation for a row's title and description.
-- A dense size for `table`; a small size for field labels.
-- A warning banner (views use a styled `div` today).
-- The window manager's button tooltips are the library's wording ("Maximize tabset"); a floating window has a
-  drag strip above its title bar; the bar's tile/float button does not reflect a mixed arrangement.
-- The agent's tool-permission prompt is a plain bar, not a card.
-- Where pop-up cards sit, and how a card that was put off ("Later") is found again.
-- The look of each card kind and each state (the gallery's Cards section lists them all).
-
-**Where it lands:** variants and markup in `registry/ui/`, by the steps above, each with its gallery specimen.
-Arrangements are saved layouts and flows (the Layouts window, the Builder), not code. A view's own
-composition is the only part done in the app.
+1. **Evolved Blade Runner Theme (`registry/theme/surface.css`):**
+   - Dark recessed slate surfaces (`--desk: #06090b`, `--background: #0c1215`), warm amber primary (`--primary: #e5a463`), cyan secondary accent (`--chart-2: #7ecfd4`), magenta decision accent (`--chart-3: #c984b2`), and semantic status tokens (`--success`, `--warning`, `--destructive`).
+   - Tight, deliberate radii: `6px` (`--radius-lg`) for windows/cards, `5px` (`--radius-md`) for buttons/inputs/composer, and `4px` (`--radius-sm`) for chips, badges, kbd, and icon buttons.
+2. **Spatial & Interaction Conventions:**
+   - **Full-frame module switching by default**, with autotiling scoped within modules that declare `Tiling: "tile"` (e.g., `terminal`).
+   - **Contained in-module navigation** when clicking items inside a module (modifier-click or pop-out icon opens a new window).
+   - **Slide-over `<CiteDrawer />`** opened via the `"View"` action on Cite hover cards (auto-closing the hover card, with boot-time `initCite()` prefetching to prevent layout shift).
+   - **Reusable `<ObjectActionsMenu />`** on every referenceable object.
+   - **Workflow Golden Samples (`surface.workflows`)** demonstrating "Show, Don't Tell" architecture exploration, guided repo/prior-art review sessions, and staged fleet operations pipelines.

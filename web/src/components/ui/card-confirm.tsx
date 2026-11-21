@@ -15,7 +15,7 @@ interface CardConfirmProps extends AnswerableCardProps {
   danger?: boolean
 }
 
-function CardConfirm({ title, body, confirmLabel = "Confirm", cancelLabel = "Cancel", danger, className, ...a }: CardConfirmProps) {
+function CardConfirm({ title, body, confirmLabel = "Confirm", cancelLabel = "Cancel", danger, allowOther = true, className, ...a }: CardConfirmProps) {
   const { disabled, working, respond } = useCardRespond(a)
   return (
     <CardFrame
@@ -26,7 +26,7 @@ function CardConfirm({ title, body, confirmLabel = "Confirm", cancelLabel = "Can
       meta={<CardStatus state={a.state} />}
       className={className}
       footer={
-        <CardFoot {...a} receipt={a.receipt ?? (a.state === "submitted" ? confirmLabel : undefined)}>
+        <CardFoot {...a} allowOther={allowOther} receipt={a.receipt ?? (a.state === "submitted" ? confirmLabel : undefined)}>
           <Button variant="outline" size="sm" disabled={disabled} onClick={() => void respond({ status: "canceled" })}>
             {cancelLabel}
           </Button>

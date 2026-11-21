@@ -99,12 +99,13 @@ function WorkWindow({ win, desk, api }: ViewProps) {
           w={w}
           desk={desk}
           winId={win.id}
+          viewId={win.view}
           appTitle={app.title}
           args={{ ...args, workspace }}
           go={go}
         />
       ) : (
-        <Workspaces w={w} desk={desk} winId={win.id} app={app} open={(ws) => go({ workspace: ws })} />
+        <Workspaces w={w} desk={desk} winId={win.id} viewId={win.view} app={app} open={(ws) => go({ workspace: ws })} />
       )}
     </div>
   )
@@ -116,12 +117,14 @@ function Workspaces({
   w,
   desk,
   winId,
+  viewId,
   app,
   open,
 }: {
   w: WorkClient
   desk: ViewProps["desk"]
   winId: string
+  viewId: string
   app: { app: string; title: string; icon: string }
   open: (ws: string) => void
 }) {
@@ -207,9 +210,19 @@ function Workspaces({
               key={s.slug}
               variant="outline"
               size="sm"
-              className="cursor-pointer"
-              onClick={() => open(s.slug)}
-              title={`caster://work/${s.slug}`}
+              className="group cursor-pointer"
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                  void desk.open(viewId, {
+                    key: `${viewId}:${s.slug}:${Date.now()}`,
+                    title: `${app.title}: ${s.title}`,
+                    args: { workspace: s.slug },
+                  })
+                } else {
+                  open(s.slug)
+                }
+              }}
+              title={`caster://work/${s.slug} (⌘-click to open in new window)`}
             >
               <ItemMedia>
                 <Icon name={app.icon} size={14} className="text-muted-foreground" />
@@ -225,6 +238,23 @@ function Workspaces({
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="opacity-0 transition-opacity group-hover:opacity-100"
+                  title="Open workspace in new window"
+                  aria-label={`Open ${s.title} in new window`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void desk.open(viewId, {
+                      key: `${viewId}:${s.slug}:${Date.now()}`,
+                      title: `${app.title}: ${s.title}`,
+                      args: { workspace: s.slug },
+                    })
+                  }}
+                >
+                  <Icon name="square-arrow-out-up-right" />
+                </Button>
                 <Icon name="chevron-right" size={14} className="text-muted-foreground" />
               </ItemActions>
             </Item>
@@ -320,6 +350,7 @@ function SpaceView({
   w,
   desk,
   winId,
+  viewId,
   appTitle,
   args,
   go,
@@ -327,6 +358,7 @@ function SpaceView({
   w: WorkClient
   desk: ViewProps["desk"]
   winId: string
+  viewId: string
   appTitle: string
   args: Args & { workspace: string }
   go: (a: Args) => void
@@ -371,7 +403,18 @@ function SpaceView({
   const view =
     sp?.views.find((v) => v.id === args.view) ?? sp?.views.find((v) => v.id === sp.default_view) ?? sp?.views[0] ?? null
   const picked = args.item ?? null
-  const pick = (id: string | null) => go({ workspace: ws, view: args.view, item: id ?? undefined })
+  const pick = (id: string | null, newWindow = false) => {
+    if (newWindow && id) {
+      const card = sp?.items.find((x) => x.id === id)
+      void desk.open(viewId, {
+        key: `${viewId}:${ws}:${id}:${Date.now()}`,
+        title: `${appTitle}: ${card?.title || id}`,
+        args: { workspace: ws, view: args.view, item: id },
+      })
+      return
+    }
+    go({ workspace: ws, view: args.view, item: id ?? undefined })
+  }
   const back = () => go({})
 
   const header = (body: React.ReactNode) => (
@@ -529,7 +572,8 @@ function SpaceView({
             items={sp.items}
             revOnBoard={sp.items.find((x) => x.id === picked)?.rev ?? 0}
             close={() => pick(null)}
-            open={(id) => pick(id)}
+            open={(id, newWin) => pick(id, newWin)}
+            popOut={() => pick(picked, true)}
             editing={(on) => {
               editing.current = on
             }}

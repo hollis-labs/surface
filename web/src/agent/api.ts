@@ -27,6 +27,10 @@ export interface Assembly {
   block: string
   /** The module whose agent profile the next turn runs as; absent: the app's own. */
   profile?: string
+  /** Slots/items trimmed by context budget. */
+  trimmed?: string[]
+  /** Module Around lines carried with the message. */
+  around?: { module: string; text: string }[]
 }
 
 /** One slot in the app (agent.SlotInfo). */
@@ -89,6 +93,101 @@ export interface Setup {
   wire_base?: string
   /** The agent's name on the conversation wire. */
   agent?: string
+  runner?: string
+  context_limit_bytes?: number
+}
+
+export interface RunRecord {
+  run_id: string
+  started_at: string
+  ended_at?: string
+  status?: string
+  reason?: string
+  origin?: string
+  slot?: string
+  profile?: string
+  provider?: string
+  model?: string
+  uncached_input: number
+  cache_read: number
+  cache_write: number
+  output: number
+  tools: string[]
+  ms: number
+}
+
+export interface StandingState {
+  path?: string
+  text: string
+  in_system_prompt?: boolean
+  chars: number
+  error?: string
+}
+
+export interface StandingGrant {
+  agent: string
+  tool: string
+  reason?: string
+  created: string
+}
+
+export interface ReflexInfo {
+  name: string
+  about?: string
+  trigger_kind: string
+  trigger: Record<string, unknown>
+  action_kind: string
+  action: Record<string, unknown>
+  cooldown_seconds?: number
+  enabled: boolean
+}
+
+export interface RuleInfo {
+  id: string
+  priority?: number
+  when: Record<string, unknown>[]
+  target: string
+  params?: Record<string, string>
+  disabled?: boolean
+}
+
+export interface TraceSignal {
+  at: string
+  kind: string
+  actor?: string
+  detail?: Record<string, unknown>
+}
+
+export interface TraceTurn {
+  id: number
+  at: string
+  run_id?: string
+  text: string
+  view?: string
+  module?: string
+  mode?: string
+  layout?: string
+  open_views: string[]
+  slot: string
+  slots: string[]
+  why?: string
+  top_of_mind: string[]
+  routed?: string
+  fired: string[]
+  halted?: boolean
+  block_chars: number
+  trimmed: string[]
+  signals?: TraceSignal[]
+}
+
+export interface ReplayReport {
+  turns: number
+  agreed?: number
+  answered?: number
+  corrected?: number
+  corrected_hits?: number
+  acts?: Record<string, number>
+  misses?: { id: number; text: string; chosen: string; top: string; p: number; corrected_to?: string }[]
 }
 
 const base = "/api/agent"
@@ -122,4 +221,13 @@ export const agentApi = {
   profiles: () => call<ProfileState>("GET", "/profiles"),
   /** Pin a profile: a module id, "default" (the app's own), or "auto" to let the window in front choose. */
   pinProfile: (profile: string) => call<ProfileState>("POST", "/profiles/pin", { profile }),
+  runs: (limit = 50) => call<RunRecord[]>("GET", `/runs?limit=${limit}`),
+  standing: () => call<StandingState>("GET", "/standing"),
+  grants: () => call<StandingGrant[]>("GET", "/grants"),
+  reflexes: () => call<ReflexInfo[]>("GET", "/reflexes"),
+  rules: () => call<{ owner: RuleInfo[]; builtin: RuleInfo[] }>("GET", "/rules"),
+  trace: (limit = 100) => call<{ on: boolean; turns: TraceTurn[] }>("GET", `/trace?limit=${limit}`),
+  replay: () => call<ReplayReport>("GET", "/classify/replay"),
+  classifyFeedback: (body: { text: string; facet: string; label: string; accepted: boolean }) =>
+    call<Assembly>("POST", "/classify/feedback", body),
 }

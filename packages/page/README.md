@@ -16,7 +16,7 @@ npx surface-ui add theme --for @hollis-labs/surface-page
 | Import | What |
 |---|---|
 | `@hollis-labs/surface-page` | `mountPage({ modules, core? })`, `Page`, `Desktop`, `CardHost`, `CardsWindow`, `coreWeb`, `registerCard` |
-| `@hollis-labs/surface-page/sdk` | What a module's views may import: `useEvent`, `useSetting`, `useMarks`, `useAnchor`, `Icon`, the types |
+| `@hollis-labs/surface-page/sdk` | What a module's views may import: `useEvent`, `useSetting`, `useMarks`, `useAnchor`, `Icon`, `CiteText`, `CiteRef`, `RecordBody`, `ObjectActionsMenu`, `registerObjectAction`, `useObjectActions`, `registerNavGroup`, `registerNavItem`, `useNavTree`, and the SDK types |
 | `@hollis-labs/surface-page/gallery` | `galleryViews`: the Components window, which needs every registry item installed |
 | `@hollis-labs/surface-page/vite` | `surfacePage()`: the Vite settings the package needs |
 

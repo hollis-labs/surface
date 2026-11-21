@@ -1,17 +1,30 @@
 /**
- * The record window (surface.cite): a cited record read whole, for a reference whose module has
- * no window of its own to show it in (a Torque task, a Tesseract item, a fragment). Args: {kind, id}.
+ * The record view (surface.cite) and the slide-over Cite Object Drawer (<CiteDrawer />):
+ * a cited record read whole, with a compact header and reusable <ObjectActionsMenu />.
  */
-import { Braces, ExternalLink, ListTree, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
+import { Braces, ExternalLink, ListTree, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { CiteRecordHeader, type CiteTone } from "@/components/ui/cite-card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Markdown } from "@/components/ui/markdown"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { ObjectActionsMenu } from "../desk/ObjectActionsMenu"
 import type { ViewProps } from "../sdk/types"
-import { type CiteRecord, kindLabel, loadRecord, openURL } from "./store.ts"
+import { buildPreviewCard } from "./core/index.ts"
+import {
+  type CiteRecord,
+  canResolve,
+  closeCiteDrawer,
+  kindLabel,
+  loadRecord,
+  openURL,
+  registry,
+  useCiteDrawer,
+  useRefState,
+} from "./store.ts"
 import { fenced, fitsLayout, parseJSONDocument, splitFrontMatter, toDocNode } from "./structured.ts"
 import { DocFields, DocValue } from "./structured-view.tsx"
 import { CiteText, iconFor, subtitleFor, updatedAgo } from "./ui.tsx"
@@ -117,7 +130,7 @@ export function CiteRecordView({ win, desk }: ViewProps) {
     )
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-border p-4">
+      <div className="border-b border-border bg-card/40 px-3.5 py-2.5">
         <CiteRecordHeader
           icon={<Icon />}
           kindLabel={kindLabel(kind)}
@@ -131,31 +144,31 @@ export function CiteRecordView({ win, desk }: ViewProps) {
           error={error || undefined}
           actions={
             <>
-              <Button variant="ghost" size="xs" onClick={load} disabled={busy}>
-                <RefreshCw />
+              <Button variant="ghost" size="xs" onClick={load} disabled={busy} title="Reload record">
+                <RefreshCw className="size-3.5" />
                 Reload
               </Button>
               {rec.url ? (
                 <Button variant="ghost" size="xs" onClick={() => openURL(rec.url as string)}>
-                  <ExternalLink />
-                  Open the source
+                  <ExternalLink className="size-3.5" />
+                  Source
                 </Button>
               ) : null}
-              {rec.open ? (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => void desk.run(rec.open?.command ?? "", rec.open?.args ?? {})}
-                >
-                  <SquareArrowOutUpRight />
-                  Open in its window
-                </Button>
-              ) : null}
+              <ObjectActionsMenu
+                obj={{
+                  kind,
+                  id,
+                  title: rec.title,
+                  subtitle: rec.description || rec.subtitle,
+                  url: rec.url,
+                  body: rec.body,
+                }}
+              />
             </>
           }
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-3.5">
         {rec.body ? (
           <RecordBody body={rec.body} />
         ) : (
@@ -163,5 +176,132 @@ export function CiteRecordView({ win, desk }: ViewProps) {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Slide-over Cite Object Drawer / Panel: opens whenever the user clicks a Cite chip or clicks
+ * "View" on a Cite hover card.
+ */
+export function CiteDrawer() {
+  const active = useCiteDrawer()
+  const kind = active?.kind ?? ""
+  const id = active?.canonical ?? ""
+  const resolvable = Boolean(kind && canResolve(kind))
+  const refState = useRefState(kind, id, resolvable)
+  const preview = useMemo(() => (active ? buildPreviewCard(registry, active, refState) : null), [active, refState])
+  const [rec, setRec] = useState<CiteRecord | null>(null)
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(() => {
+    if (!kind || !id || !resolvable) {
+      setRec(null)
+      setError("")
+      return
+    }
+    setBusy(true)
+    setError("")
+    loadRecord({ kind, canonical: id })
+      .then((r) => setRec(r))
+      .catch((err: Error) => {
+        // Some kinds only support preview resolution and not full record fetch; fall back to preview gracefully.
+        setRec(null)
+        setError(err.message)
+      })
+      .finally(() => setBusy(false))
+  }, [kind, id, resolvable])
+
+  useEffect(() => {
+    setRec(null)
+    setError("")
+    load()
+  }, [load])
+
+  const Icon = iconFor(kind)
+  const entity = refState.status === "found" ? refState.entity : undefined
+  const title = rec?.title ?? preview?.title ?? id
+  const subtitle = subtitleFor(kind, rec?.subtitle ?? preview?.subtitle)
+  const status = rec?.status ?? preview?.status
+  const fields = rec?.fields ?? preview?.fields ?? []
+  const updated = updatedAgo(rec?.updatedAt ?? preview?.updatedAt)
+  const description = rec?.description ?? preview?.description
+  const url = rec?.url ?? entity?.url ?? (kind === "url" ? id : undefined)
+
+  return (
+    <Sheet open={Boolean(active)} onOpenChange={(open) => !open && closeCiteDrawer()}>
+      <SheetContent
+        side="right"
+        showCloseButton={true}
+        className="w-[min(38rem,92vw)] gap-0 border-l border-border bg-background p-0 sm:max-w-xl"
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription>{`${kindLabel(kind)}: ${id}`}</SheetDescription>
+        </SheetHeader>
+        {active && (
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="border-b border-border bg-card/50 py-2.5 pr-11 pl-3.5">
+              <CiteRecordHeader
+                icon={<Icon />}
+                kindLabel={kindLabel(kind)}
+                canonical={id}
+                title={title}
+                subtitle={subtitle}
+                status={status ? { label: status.label, tone: status.tone as CiteTone } : undefined}
+                fields={fields}
+                renderValue={(f) => (f.mono ? <CiteText text={f.value} /> : f.value)}
+                updated={updated}
+                error={!rec && !entity && error ? error : undefined}
+                actions={
+                  <>
+                    {resolvable && (
+                      <Button variant="ghost" size="icon-xs" onClick={load} disabled={busy} title="Reload">
+                        <RefreshCw className="size-3.5" />
+                      </Button>
+                    )}
+                    {url ? (
+                      <Button variant="ghost" size="xs" onClick={() => openURL(url)} title="Open external URL">
+                        <ExternalLink className="size-3.5" />
+                        Source
+                      </Button>
+                    ) : null}
+                    <ObjectActionsMenu
+                      obj={{
+                        kind,
+                        id,
+                        title,
+                        subtitle: description || subtitle,
+                        url,
+                        body: rec?.body || description,
+                      }}
+                    />
+                  </>
+                }
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-3.5">
+              {busy && !rec && !entity ? (
+                <div className="grid h-40 place-items-center">
+                  <Spinner />
+                </div>
+              ) : rec?.body ? (
+                <RecordBody body={rec.body} />
+              ) : description ? (
+                <div className="flex flex-col gap-3">
+                  <Markdown>{description}</Markdown>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  {kind === "url"
+                    ? "External web address. Use Source or the actions menu above to share, bookmark, or add to context."
+                    : "No additional body content for this reference."}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }

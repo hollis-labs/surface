@@ -23,8 +23,9 @@ const socketUrl = (id: string) =>
   `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/m/terminal/sessions/${id}/ws`
 
 function Deck({ win, desk, api }: ViewProps) {
+  const initialSession = typeof win.args.session === "string" ? win.args.session : ""
   const [sessions, setSessions] = useState<Session[] | null>(null)
-  const [active, setActive] = useState("")
+  const [active, setActive] = useState(initialSession)
   const [error, setError] = useState("")
   const made = useRef(false)
 
@@ -106,10 +107,38 @@ function Deck({ win, desk, api }: ViewProps) {
             </Button>
           </div>
         ))}
-        <Button variant="ghost" size="icon-xs" aria-label="New shell" title="New shell" onClick={() => void create()}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="New shell"
+          title="New shell tab"
+          onClick={() => void create()}
+        >
           <Icon name="plus" />
         </Button>
-        {error && <span className="ml-auto px-2 text-xs text-destructive">{error}</span>}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="ml-auto"
+          aria-label="Tile new Terminal pane"
+          title="Open a tiled Terminal window in this module"
+          onClick={() => {
+            void api
+              .post<Session>("sessions", {})
+              .then((s) => {
+                void load()
+                void desk.open("terminal", {
+                  key: `pane:${s.id}`,
+                  title: `Terminal: ${s.title}`,
+                  args: { session: s.id },
+                })
+              })
+              .catch((e: Error) => setError(e.message))
+          }}
+        >
+          <Icon name="columns-2" />
+        </Button>
+        {error && <span className="px-2 text-xs text-destructive">{error}</span>}
       </div>
       <div className="relative min-h-0 flex-1">
         {sessions?.length === 0 ? (

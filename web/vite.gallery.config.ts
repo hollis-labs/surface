@@ -11,12 +11,28 @@ const root = import.meta.dirname
 export default defineConfig({
   root,
   base: "./",
-  plugins: [tailwindcss()],
+  plugins: [
+    tailwindcss(),
+    {
+      name: "root-to-gallery",
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === "/" || req.url?.startsWith("/?")) {
+            req.url = `/gallery.html${req.url.slice(1)}`
+          }
+          next()
+        })
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": resolve(root, "src"),
       "@hollis-labs/surface-page/sdk": resolve(root, "src/sdk/index.ts"),
       "@hollis-labs/surface-theme": resolve(root, "../packages/theme/src/index.ts"),
+      "@hollis-labs/surface-chat": resolve(root, "../packages/chat/src/index.ts"),
+      "@hollis-labs/surface-cards": resolve(root, "../packages/cards/src/index.ts"),
+      "@hollis-labs/surface-genui": resolve(root, "../packages/genui/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

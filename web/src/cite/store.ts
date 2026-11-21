@@ -74,6 +74,8 @@ export function initCite(): Promise<void> {
       unsubscribe()
       client.dispose()
       client = createRefResolverClient({
+        ttlMs: 300_000,
+        notFoundTtlMs: 30_000,
         resolvers: Object.fromEntries(state.kinds.map((k) => [k.kind, serverResolver(k.kind)])),
       })
       unsubscribe = client.subscribe(emit)
@@ -125,31 +127,46 @@ export function openURL(url: string) {
   else window.open(url, "_blank", "noopener")
 }
 
-/** The record window for a reference. */
+/** The record window for a reference (when explicitly popped out into a desk window). */
 export const openRecord = (ref: RefIdentity) =>
   desk.open("surface.cite", {
     key: `${ref.kind}:${ref.canonical}`,
     args: { kind: ref.kind, id: ref.canonical },
   })
 
+// ---------- Cite Object Drawer / Panel state ----------
+let drawerRef: RefIdentity | null = null
+const drawerListeners = new Set<() => void>()
+function emitDrawer() {
+  for (const fn of drawerListeners) fn()
+}
+
+export function openCiteDrawer(ref: RefIdentity) {
+  drawerRef = { kind: ref.kind, canonical: ref.canonical, meta: ref.meta }
+  if (canResolve(ref.kind)) requestRef(ref)
+  emitDrawer()
+}
+
+export function closeCiteDrawer() {
+  if (!drawerRef) return
+  drawerRef = null
+  emitDrawer()
+}
+
+export function useCiteDrawer(): RefIdentity | null {
+  return useSyncExternalStore(
+    (fn) => {
+      drawerListeners.add(fn)
+      return () => drawerListeners.delete(fn)
+    },
+    () => drawerRef,
+  )
+}
+
 /**
- * Open a reference: the window its module names (a Planner item in Work, a path in Files), a
- * URL in the Browser, else the record window; a reference nothing here resolves is copied.
+ * View a reference: opens the reference in the Cite Object Drawer / Panel so the user stays
+ * in context without spawning or switching windows.
  */
 export function openCite(ref: RefIdentity) {
-  const state = client.get(ref.kind, ref.canonical)
-  const entity = state.status === "found" ? state.entity : undefined
-  if (entity?.open && hasCommand(entity.open.command)) {
-    void desk.run(entity.open.command, entity.open.args ?? {}).catch(() => openRecord(ref))
-    return
-  }
-  if (ref.kind === "url") {
-    openURL(ref.canonical)
-    return
-  }
-  if (canResolve(ref.kind)) {
-    void openRecord(ref)
-    return
-  }
-  void navigator.clipboard?.writeText(ref.canonical).catch(() => undefined)
+  openCiteDrawer(ref)
 }

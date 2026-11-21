@@ -34,7 +34,7 @@ func (m *mod) Manifest() module.Manifest {
 		About: "Shells on this machine, in tabs. A shell keeps running when its window closes or the page reloads.",
 		Views: []module.View{{
 			ID: viewID, Title: "Terminal", Icon: "square-terminal", Width: 900, Height: 560,
-			Menu: true, Bare: true, DefaultKey: "main",
+			Menu: true, Multi: true, Bare: true, DefaultKey: "main", Tiling: "tile",
 			Render: module.Component("terminal/main"),
 			Describe: func(_ context.Context, _ module.Host, _ module.Window) (module.WindowContext, error) {
 				return module.WindowContext{Kind: "data", Ref: "terminal:sessions", Extra: map[string]any{"sessions": len(m.sh.List())}}, nil

@@ -3,7 +3,7 @@
  * place, tags, the Torque link, links both ways, material and the publication log, the review
  * (notes, rounds, sign-off), and the item's revisions with a word diff against any of them.
  */
-import { CiteText, type Desk, Icon } from "@hollis-labs/surface-page/sdk"
+import { CiteText, type Desk, Icon, ObjectActionsMenu } from "@hollis-labs/surface-page/sdk"
 import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,6 +50,7 @@ export function Detail({
   editing,
   changed,
   open,
+  popOut,
 }: {
   w: WorkClient
   desk: Desk
@@ -58,7 +59,9 @@ export function Detail({
   kinds: Map<string, WorkKind>
   items: WorkCard[]
   /** Open another item in the detail. */
-  open: (id: string) => void
+  open: (id: string, newWindow?: boolean) => void
+  /** Pop this item out into its own Work window. */
+  popOut?: () => void
   /** The item's revision in the view's copy: a newer one reloads the detail. */
   revOnBoard: number
   close: () => void
@@ -91,9 +94,32 @@ export function Detail({
   const head = (body: ReactNode) => (
     <header className="flex items-center gap-1.5 px-3 py-2">
       {body}
-      <Button variant="ghost" size="icon-xs" className="ml-auto" onClick={close} title="Close" aria-label="Close">
-        <Icon name="x" />
-      </Button>
+      <span className="ml-auto flex items-center gap-0.5">
+        {d && (
+          <ObjectActionsMenu
+            object={{
+              kind: "work.item",
+              id: d.id,
+              title: d.title,
+              subtitle: d.stage,
+            }}
+          />
+        )}
+        {popOut && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={popOut}
+            title="Open item in new window"
+            aria-label="Open item in new window"
+          >
+            <Icon name="square-arrow-out-up-right" />
+          </Button>
+        )}
+        <Button variant="ghost" size="icon-xs" onClick={close} title="Close" aria-label="Close">
+          <Icon name="x" />
+        </Button>
+      </span>
     </header>
   )
   if (!d)
@@ -709,7 +735,7 @@ function Links({
   d: WorkDetail
   items: WorkCard[]
   kinds: Map<string, WorkKind>
-  open: (id: string) => void
+  open: (id: string, newWindow?: boolean) => void
   set: (links: WorkLink[]) => void
 }) {
   const [rel, setRel] = useState(RELS[0])
@@ -718,7 +744,13 @@ function Links({
     id.includes("://") ? (
       <Ref text={id} />
     ) : (
-      <Button variant="link" size="xs" className="h-auto min-w-0 max-w-full px-0" onClick={() => open(id)} title={id}>
+      <Button
+        variant="link"
+        size="xs"
+        className="h-auto min-w-0 max-w-full px-0"
+        onClick={(e) => open(id, e.metaKey || e.ctrlKey || e.shiftKey)}
+        title={`${id} (⌘-click to open in new window)`}
+      >
         <span className="truncate">{byId.get(id)?.title ?? id}</span>
       </Button>
     )

@@ -1,15 +1,16 @@
 /**
  * The Operations board: Planned, Parked, the Queued band, In Flight, Landing and Complete.
- * The Queued band is its own frame, numbered in launch order, and is
+ * The Queued band is its own frame in launch order, and is
  * the only place that is ordered: drag a workstream within it, or use its arrows (siblings
  * only). Dragging a card to a lane moves it. The board shows one level at a time: the top
  * concepts by default; "N inside" steps into one. What it shows is in the window's args
  * (parent, layout), so the agent knows the level in front.
  */
-import { CiteText, Icon, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
+import { Icon, useEvent, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,21 +22,28 @@ import { WorkstreamActions } from "./actions"
 import { BoardActivity } from "./activity"
 import { type BoardData, type Card, message, opsClient, STAGES, type Stage, stageLabel } from "./api"
 import { Fleet } from "./fleet"
-import { DRAG_TYPE, WorkstreamCard } from "./parts"
+import { FollowupsView } from "./followups"
+import { DRAG_TYPE, EventBusHeaderMonitor, WorkstreamCard } from "./parts"
+import { SeedView } from "./seed"
+import { WorkstreamView } from "./workstream"
 
 const MAIN: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete"]
 
 export function Board({ win, desk, api }: ViewProps) {
   const ops = useMemo(() => opsClient(api), [api])
   const parent = typeof win.args.parent === "string" ? win.args.parent : ""
+  const activeWorkstream = typeof win.args.view_workstream === "string" ? win.args.view_workstream : ""
+  const activeSeed = win.args.seed === true
   const layout =
     win.args.layout === "fleet"
       ? "fleet"
-      : win.args.layout === "activity"
-        ? "activity"
-        : win.args.layout === "cards"
-          ? "cards"
-          : "kanban"
+      : win.args.layout === "followups"
+        ? "followups"
+        : win.args.layout === "activity" || win.args.layout === "timeline"
+          ? "activity"
+          : win.args.layout === "cards"
+            ? "cards"
+            : "kanban"
   const showSettled = win.args.show_settled === true || layout === "activity"
   const dropped = win.args.dropped === true
   const [data, setData] = useState<BoardData | null>(null)
@@ -43,7 +51,6 @@ export function Board({ win, desk, api }: ViewProps) {
   const [busy, setBusy] = useState(false)
   const [over, setOver] = useState<string | null>(null)
   const [making, setMaking] = useState(false)
-  const [showFollowups, setShowFollowups] = useState(false)
 
   const load = useCallback(
     async (force = false) => {
@@ -66,7 +73,11 @@ export function Board({ win, desk, api }: ViewProps) {
   useEvent("ops.changed", () => void load())
   useEvent("ops.activity", () => void load())
 
-  const go = (set: Record<string, unknown>) => void desk.setArgs(win.id, { ...win.args, ...set })
+  const go = (set: Record<string, unknown>) => {
+    const next = { ...win.args, ...set }
+    for (const [k, v] of Object.entries(next)) if (v === undefined) delete next[k]
+    void desk.setArgs(win.id, next)
+  }
   useEffect(() => {
     desk.report(win.id, {
       kind: "data",
@@ -75,6 +86,16 @@ export function Board({ win, desk, api }: ViewProps) {
   }, [desk, win.id, parent, layout])
 
   const byID = useMemo(() => new Map((data?.workstreams ?? []).map((w) => [w.id, w])), [data])
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string, Card[]>()
+    for (const w of data?.workstreams ?? []) {
+      const p = w.parent ?? ""
+      const list = m.get(p) ?? []
+      list.push(w)
+      m.set(p, list)
+    }
+    return m
+  }, [data])
   const level = (data?.workstreams ?? []).filter((w) => (w.parent ?? "") === parent)
   const queued = (data?.queue ?? [])
     .map((id) => byID.get(id))
@@ -82,8 +103,18 @@ export function Board({ win, desk, api }: ViewProps) {
   const path: Card[] = []
   for (let p = byID.get(parent); p && path.length < 8; p = p.parent ? byID.get(p.parent) : undefined) path.unshift(p)
 
-  const open = (id: string) => void desk.run("ops.open", { id })
-  const enter = (id: string) => go({ parent: id })
+  const open = (id: string, newWindow = false) => {
+    if (newWindow) {
+      void desk.run("ops.open", { id })
+      return
+    }
+    go({ view_workstream: id, seed: undefined })
+  }
+  const enter = (id: string) => go({ parent: id, view_workstream: undefined, seed: undefined })
+
+  if (activeSeed) {
+    return <SeedView win={win} desk={desk} api={api} onBack={() => go({ seed: undefined, plan: undefined })} />
+  }
 
   const act = async (fn: () => Promise<unknown>) => {
     try {
@@ -135,15 +166,16 @@ export function Board({ win, desk, api }: ViewProps) {
 
   const lanes: Stage[] = [...MAIN, ...(dropped ? (["dropped"] as Stage[]) : [])]
   const inLane = (s: Stage) => level.filter((w) => w.stage === s).sort((a, b) => a.title.localeCompare(b.title))
-
   const unknown = level.filter((w) => !STAGES.some((s) => s === w.stage))
 
   const card = (w: Card) => (
     <WorkstreamCard
       key={w.id}
       w={w}
+      childWorkstreams={childrenByParent.get(w.id) ?? []}
       open={open}
       enter={enter}
+      onRequestStatus={(id) => void ops.activity(id, true).then(() => load())}
       actions={<WorkstreamActions w={w} ops={ops} refresh={() => void load()} />}
     />
   )
@@ -163,13 +195,13 @@ export function Board({ win, desk, api }: ViewProps) {
       {...laneProps("queued", (e) => dropInBand(e))}
     >
       <h3 className="flex items-center gap-1.5 px-1 font-semibold text-sm">
-        <Icon name="list-ordered" size={14} />
+        <Icon name="list-ul" size={14} />
         Queued, in launch order
         <Badge variant="secondary">{queued.length}</Badge>
       </h3>
       <p className="px-1 text-muted-foreground text-xs">Advisory: the order does not drive dispatch.</p>
       {queued.length === 0 && <p className="px-1 text-muted-foreground text-xs">Drag a workstream here to queue it.</p>}
-      <ol className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-1.5">
         {queued.map((w, i) => (
           <li
             key={w.id}
@@ -177,14 +209,13 @@ export function Board({ win, desk, api }: ViewProps) {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => dropInBand(e, w.id)}
           >
-            <span className="w-5 shrink-0 pt-1.5 text-right font-mono font-semibold text-muted-foreground text-sm">
-              {i + 1}
-            </span>
             <div className="min-w-0 flex-1">
               <WorkstreamCard
                 w={w}
+                childWorkstreams={childrenByParent.get(w.id) ?? []}
                 open={open}
                 enter={enter}
+                onRequestStatus={(id) => void ops.activity(id, true).then(() => load())}
                 actions={
                   <span className="flex shrink-0">
                     <WorkstreamActions w={w} ops={ops} refresh={() => void load()} />
@@ -218,7 +249,7 @@ export function Board({ win, desk, api }: ViewProps) {
             </div>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   )
 
@@ -273,6 +304,7 @@ export function Board({ win, desk, api }: ViewProps) {
           )}
         </nav>
         <span className="ml-auto" />
+        <EventBusHeaderMonitor activeCount={(data?.workstreams ?? []).filter((w) => w.stage === "in_flight").length} />
         <ToggleGroup
           size="sm"
           spacing={0}
@@ -284,8 +316,11 @@ export function Board({ win, desk, api }: ViewProps) {
           <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
           <ToggleGroupItem value="activity">Activity</ToggleGroupItem>
           <ToggleGroupItem value="fleet">Fleet</ToggleGroupItem>
+          <ToggleGroupItem value="followups">
+            Follow-ups{(data?.followups.length ?? 0) > 0 ? ` (${data?.followups.length})` : ""}
+          </ToggleGroupItem>
         </ToggleGroup>
-        {layout !== "activity" && layout !== "fleet" && (
+        {layout !== "activity" && layout !== "fleet" && layout !== "followups" && (
           <>
             <Label className="flex items-center gap-1.5 text-xs">
               <Switch
@@ -301,12 +336,6 @@ export function Board({ win, desk, api }: ViewProps) {
             </Label>
           </>
         )}
-        {(data?.followups.length ?? 0) > 0 && (
-          <Button size="sm" variant={showFollowups ? "secondary" : "ghost"} onClick={() => setShowFollowups((v) => !v)}>
-            <Icon name="inbox" />
-            Follow-ups {data?.followups.length}
-          </Button>
-        )}
         <Button size="sm" variant="ghost" onClick={() => setMaking((v) => !v)}>
           <Icon name="plus" />
           New
@@ -314,8 +343,11 @@ export function Board({ win, desk, api }: ViewProps) {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => void desk.run("ops.seed")}
-          title="Seed Operations from the tracker (a preview first)"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) void desk.run("ops.seed")
+            else go({ seed: true })
+          }}
+          title="Seed Operations from the tracker (⌘-click for new window)"
         >
           <Icon name="sprout" />
           Seed
@@ -332,26 +364,22 @@ export function Board({ win, desk, api }: ViewProps) {
           create={(w) => act(() => ops.create(w)).then(() => setMaking(false))}
         />
       )}
-      {showFollowups && data && (
-        <section aria-label="Follow-ups" className="max-h-56 shrink-0 overflow-y-auto border-b px-3 py-2 text-xs">
-          <h3 className="mb-1 font-medium text-sm">Follow-ups the seed could not place (caster://ops/followups)</h3>
-          <ul className="flex list-disc flex-col gap-1 pl-4">
-            {data.followups.map((f) => (
-              <li key={f}>
-                <CiteText text={f} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
       {layout === "fleet" ? (
         <Fleet win={win} desk={desk} api={api} />
       ) : !data ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
+      ) : layout === "followups" ? (
+        <FollowupsView
+          followups={data.followups}
+          workstreams={data.workstreams}
+          ops={ops}
+          onOpenWorkstream={open}
+          onRefresh={() => void load()}
+        />
       ) : layout === "activity" ? (
-        <BoardActivity win={win} desk={desk} api={api} workstreams={data.workstreams} />
+        <BoardActivity win={win} desk={desk} api={api} workstreams={data.workstreams} onOpenWorkstream={open} />
       ) : level.length === 0 ? (
         <Empty className="flex-1">
           <EmptyHeader>
@@ -373,6 +401,32 @@ export function Board({ win, desk, api }: ViewProps) {
           {unknownLane}
         </div>
       )}
+
+      {/* Large Workstream Detail Modal */}
+      <Dialog
+        open={!!activeWorkstream}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) go({ view_workstream: undefined })
+        }}
+      >
+        <DialogContent className="flex h-[88vh] max-h-[88vh] w-[min(60rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden overscroll-x-none p-0 sm:max-w-4xl lg:max-w-[60rem]">
+          <DialogTitle className="sr-only">
+            {activeWorkstream ? `Workstream ops:${activeWorkstream}` : "Workstream Detail"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Full workstream overview, tasks, activity timeline, and revision history.
+          </DialogDescription>
+          {activeWorkstream && (
+            <WorkstreamView
+              win={{ ...win, args: { ...win.args, id: activeWorkstream } }}
+              desk={desk}
+              api={api}
+              onBack={() => go({ view_workstream: undefined })}
+              onOpenWorkstream={(nextId, newWin) => open(nextId, newWin)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

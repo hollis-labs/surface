@@ -62,7 +62,7 @@ func (s *Service) Mount(mux *http.ServeMux) {
 				model = s.cfg.Model
 			}
 			reply(w, 200, map[string]any{"ready": true, "model": model, "runner": s.wire.runner, "config_path": ConfigPath(s.k.AppName()),
-				"wire": "conversation", "stop_all": true, "agent": s.wire.agent, "auto_approve": s.wire.nanite != nil && s.cfg.AutoApprove})
+				"wire": "conversation", "stop_all": true, "agent": s.wire.agent, "auto_approve": s.wire.nanite != nil && s.cfg.AutoApprove, "context_limit_bytes": s.contextLimit()})
 			return
 		}
 		reason := s.SetupProblem()
@@ -206,6 +206,14 @@ func (s *Service) Mount(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("GET "+Prefix+"/profiles", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.profileState(r.Context())) })
+	mux.HandleFunc("GET "+Prefix+"/standing", func(w http.ResponseWriter, _ *http.Request) {
+		st, err := s.standingGet()
+		if err != nil {
+			reply(w, 200, map[string]any{"text": "", "chars": 0, "error": err.Error()})
+			return
+		}
+		reply(w, 200, st)
+	})
 	mux.HandleFunc("POST "+Prefix+"/profiles/pin", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Profile string `json:"profile"`

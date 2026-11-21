@@ -13,7 +13,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
@@ -21,6 +25,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { type WindowInfo, WindowManager, type WindowTree } from "@/components/ui/window-manager"
 import { AdeAttention, AdeGuide } from "../ade/Overlay"
 import { AgentPanel } from "../agent"
+import { setOpenedFromChat } from "../cards/store"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { call, getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
 import { AttentionBadge } from "./AttentionBadge"
@@ -32,12 +37,14 @@ import { GhostCursor } from "./GhostCursor"
 import { InboxBadge } from "./InboxBadge"
 import { matches, parseKeys, showKeys } from "./keys"
 import { moduleApi } from "./moduleApi"
+import { type NavItemDef, type NavTreeNode, useNavTree } from "./navGroups"
 import { Palette } from "./Palette"
 import {
   act,
   app,
   type CommandDef,
   closeWindow,
+  type DeskWin,
   desk,
   notYetKept,
   runCommand,
@@ -47,6 +54,133 @@ import {
   viewById,
 } from "./store"
 import { Clock, ThemePicker } from "./ThemePicker"
+
+/**
+ * Filter a WindowNode tree to only include window ids in `allowed`.
+ * Used so that the active module opens full-frame by default, while autotiling multiple
+ * windows within the active module (e.g. Terminal or popped-out module windows).
+ */
+function filterTreeToIds(node: WindowTree["root"], allowed: Set<string>): WindowTree["root"] | null {
+  if (node.type === "stack") {
+    const wins = (node.wins ?? []).filter((id) => allowed.has(id))
+    if (wins.length === 0) return null
+    return {
+      ...node,
+      wins,
+      selected: Math.min(node.selected ?? 0, wins.length - 1),
+    }
+  }
+  const children = (node.children ?? []).flatMap((c) => {
+    const f = filterTreeToIds(c, allowed)
+    return f ? [f] : []
+  })
+  if (children.length === 0) return null
+  if (children.length === 1 && children[0].type === "stack") {
+    return { type: "row", children: [{ ...children[0], weight: 100 }] }
+  }
+  return { ...node, children }
+}
+
+/**
+ * Project the server's WindowTree to the active module's workspace:
+ * - Modules open full by default, even when other modules are open in the background.
+ * - Selecting or opening a different module replaces the active module full-screen.
+ * - Within the active module, if multiple windows of that module are open (e.g. Terminal
+ *   autotiling or an explicit pop-out in-module window), they tile together within the module.
+ * - When the active module's window is closed, focus returns to the previous module (via
+ *   server Owned/Trail fallback), which immediately takes the full frame again.
+ */
+function projectActiveModuleTree(
+  tree: WindowTree,
+  wins: DeskWin[],
+  focus: string,
+  layoutMode: "tile" | "float",
+): { projectedTree: WindowTree; visibleIds: Set<string>; backgroundIds: string[] } {
+  if (layoutMode === "float" || wins.length <= 1) {
+    return {
+      projectedTree: tree,
+      visibleIds: new Set(wins.map((w) => w.id)),
+      backgroundIds: [],
+    }
+  }
+  const focusedWin = wins.find((w) => w.id === focus) ?? wins[wins.length - 1]
+  if (!focusedWin) {
+    return { projectedTree: tree, visibleIds: new Set(), backgroundIds: [] }
+  }
+
+  // Floating windows are always visible over the workspace.
+  const floatIds = new Set<string>()
+  const collectIds = (n: WindowTree["root"]) => {
+    if (n.type === "stack") {
+      for (const id of n.wins ?? []) floatIds.add(id)
+    } else {
+      for (const c of n.children ?? []) collectIds(c)
+    }
+  }
+  for (const f of tree.floats ?? []) collectIds(f.root)
+
+  // Determine which tiled windows belong to the active module.
+  // Core utility views ("surface.*") are treated individually by view id so Settings doesn't
+  // tile alongside Workflows or Activity unless floated.
+  const activeGroupKey = focusedWin.module === "surface" ? focusedWin.view : focusedWin.module
+  const groupKeyOf = (w: DeskWin) => (w.module === "surface" ? w.view : w.module)
+
+  const viewDef = viewById(focusedWin.view)
+  const moduleTiling = viewDef?.tiling ?? "full"
+
+  const sameModuleWins = wins.filter((w) => !floatIds.has(w.id) && groupKeyOf(w) === activeGroupKey)
+  // If the module's tiling behavior is "tile" (e.g. Terminal) or the user explicitly opened multiple
+  // windows within this same module, tile them together; otherwise show the focused window full-frame.
+  const allowedTiled =
+    moduleTiling === "tile" || sameModuleWins.length > 1
+      ? new Set(sameModuleWins.map((w) => w.id))
+      : new Set([focusedWin.id])
+
+  const filteredRoot = filterTreeToIds(tree.root, allowedTiled) ?? {
+    type: "row" as const,
+    children:
+      allowedTiled.size > 0
+        ? [{ type: "stack" as const, id: "stack-active", wins: [...allowedTiled], selected: 0 }]
+        : [],
+  }
+  const root: WindowTree["root"] =
+    filteredRoot.type === "row" ? filteredRoot : { type: "row", children: [filteredRoot] }
+
+  const visibleIds = new Set([...allowedTiled, ...floatIds])
+  const backgroundIds = wins.filter((w) => !visibleIds.has(w.id)).map((w) => w.id)
+
+  return {
+    projectedTree: tree.floats?.length ? { root, floats: tree.floats } : { root },
+    visibleIds,
+    backgroundIds,
+  }
+}
+
+/** Recursive 3-level navigation menu renderer. */
+function NavMenuBranch({ nodes, onSelectItem }: { nodes: NavTreeNode[]; onSelectItem: (item: NavItemDef) => void }) {
+  return (
+    <>
+      {nodes.map((group) => (
+        <DropdownMenuSub key={group.id}>
+          <DropdownMenuSubTrigger>
+            <Icon name={group.icon ?? "folder"} size={15} />
+            <span>{group.title}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="min-w-56">
+            {group.items.map((item) => (
+              <DropdownMenuItem key={item.id} onClick={() => onSelectItem(item)}>
+                <Icon name={item.icon ?? "app-window"} size={15} />
+                <span>{item.title}</span>
+              </DropdownMenuItem>
+            ))}
+            {group.items.length > 0 && group.subgroups.length > 0 && <DropdownMenuSeparator />}
+            {group.subgroups.length > 0 && <NavMenuBranch nodes={group.subgroups} onSelectItem={onSelectItem} />}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ))}
+    </>
+  )
+}
 
 export interface DesktopProps {
   /** The views compiled into this app's page, by module id. */
@@ -208,101 +342,214 @@ export function Desktop({ modules }: DesktopProps) {
       })),
     [state.wins],
   )
-  // The owner dragged, split, tabbed, floated or resized: the server keeps the result.
-  // The window the owner grabbed in a drag goes with the tree, so it becomes theirs (desk rule 4).
+  const { projectedTree, visibleIds, backgroundIds } = useMemo(
+    () => projectActiveModuleTree(state.tree, state.wins, state.focus, state.layout),
+    [state.tree, state.wins, state.focus, state.layout],
+  )
+  const visibleWindows = useMemo(() => windows.filter((w) => visibleIds.has(w.id)), [windows, visibleIds])
+
+  // The owner dragged, split, tabbed, floated or resized within the active module: re-attach
+  // background module windows so the server's state keeps them alive for module switching & trail return.
   const arrange = useCallback(
-    (tree: WindowTree, focus: string | undefined, grabbed?: string) => act({ type: "tree", tree, focus, id: grabbed }),
-    [],
+    (nextTree: WindowTree, focus: string | undefined, grabbed?: string) => {
+      if (backgroundIds.length === 0) {
+        return act({ type: "tree", tree: nextTree, focus, id: grabbed })
+      }
+      const bgStacks = backgroundIds.map((id) => ({
+        type: "stack" as const,
+        id: `stack-bg-${id}`,
+        weight: 20,
+        wins: [id],
+        selected: 0,
+      }))
+      const mergedRoot: WindowTree["root"] = {
+        type: "row",
+        children: [...(nextTree.root.children ?? []), ...bgStacks],
+      }
+      const fullTree: WindowTree = nextTree.floats?.length
+        ? { root: mergedRoot, floats: nextTree.floats }
+        : { root: mergedRoot }
+      return act({ type: "tree", tree: fullTree, focus, id: grabbed })
+    },
+    [backgroundIds],
   )
   const menuViews = manifest.views.filter((v) => v.menu)
+  const navTree = useNavTree(menuViews)
+  const handleNavSelect = useCallback((item: NavItemDef) => {
+    if (item.onSelect) {
+      item.onSelect()
+      return
+    }
+    if (item.viewId) {
+      if (item.viewId === "surface.cards") {
+        setOpenedFromChat(false)
+        void desk.open(item.viewId, { args: { manual: true } })
+        return
+      }
+      void desk.open(item.viewId)
+      return
+    }
+    if (item.commandId) {
+      void runCommand(item.commandId)
+    }
+  }, [])
+  const hasInbox = manifest.views.some((v) => v.id === "inbox" && v.module === "inbox")
+  const barBtn =
+    "h-5.5 gap-1.5 rounded-sm px-2 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
 
   const bar = (
     <>
-      <div className="flex h-full min-w-0 flex-1 items-center gap-1">
+      <div className="flex h-full min-w-0 flex-1 items-center gap-1.5">
         <DropdownMenu open={menu} onOpenChange={setMenu}>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" size="sm" title="Apps">
-                <Icon name="layout-grid" />
-                <span className="font-semibold">{manifest.title}</span>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-5.5 rounded-sm px-1.5 text-primary hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground"
+                title="Menu"
+                aria-label="Menu"
+              >
+                <Icon name="layout-grid" size={15} />
               </Button>
             }
           />
-          <DropdownMenuContent className="min-w-56">
-            {menuViews.map((v) => (
-              <DropdownMenuItem key={v.id} onClick={() => void desk.open(v.id)}>
-                <Icon name={v.icon} />
-                <span>{v.title}</span>
-                {v.module !== "surface" && <DropdownMenuShortcut>{v.module}</DropdownMenuShortcut>}
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent className="min-w-60" sideOffset={8}>
+            <NavMenuBranch nodes={navTree} onSelectItem={handleNavSelect} />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void desk.open("surface.gallery", { args: { section: "cards" } })}>
+              <Icon name="swatch-book" size={15} />
+              <span>Cards &amp; Components Preview</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("surface.workflows")}>
+              <Icon name="sparkles" size={15} />
+              <span>Workflow Golden Samples</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void desk.open("surface.settings", { args: { section: "navigation" } })}>
+              <Icon name="folder-tree" size={15} />
+              <span>Organize Menu…</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("surface.settings")}>
+              <Icon name="settings" size={15} />
+              <span>Settings</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("surface.layouts")}>
+              <Icon name="layout-dashboard" size={15} />
+              <span>Layouts</span>
+              {state.active && <DropdownMenuShortcut>{state.active}</DropdownMenuShortcut>}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void runCommand("layout.toggle")}>
+              <Icon name={state.layout === "tile" ? "app-window" : "columns-2"} size={15} />
+              <span>{state.layout === "tile" ? "Float windows" : "Tile windows"}</span>
+              <DropdownMenuShortcut>⌃⌥T</DropdownMenuShortcut>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="ml-1 flex min-w-0 gap-0.5 overflow-hidden">
-          {state.wins.map((w) => (
-            <Button
-              key={w.id}
-              variant={w.id === state.focus ? "secondary" : "ghost"}
-              size="sm"
-              className="min-w-0 max-w-44 shrink"
-              title={w.title}
-              aria-pressed={w.id === state.focus}
-              onClick={() => void act({ type: "focus", id: w.id })}
-              onAuxClick={(e) => {
-                if (e.button === 1) void closeWindow(w.id)
-              }}
-            >
-              <Icon name={viewById(w.view)?.icon} />
-              <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
-            </Button>
-          ))}
+
+        <div className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden">
+          {state.wins.map((w) => {
+            const active = w.id === state.focus
+            return (
+              <Button
+                key={w.id}
+                variant="ghost"
+                size="xs"
+                className={`relative h-5.5 min-w-0 max-w-44 shrink gap-1.5 rounded-sm px-2 font-mono text-xs ${
+                  active
+                    ? "text-foreground hover:bg-accent"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+                title={w.title}
+                aria-pressed={active}
+                data-task-active={active || undefined}
+                onClick={() => void act({ type: "focus", id: w.id })}
+                onAuxClick={(e) => {
+                  if (e.button === 1) void closeWindow(w.id)
+                }}
+              >
+                <Icon
+                  name={viewById(w.view)?.icon}
+                  size={13}
+                  className={active ? "text-primary" : "text-muted-foreground"}
+                />
+                <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
+              </Button>
+            )
+          })}
         </div>
       </div>
-      <div className="flex h-full shrink-0 items-center gap-1">
+
+      <div className="flex h-full shrink-0 items-center gap-1.5">
+        <Button
+          variant="ghost"
+          size="xs"
+          className={barBtn}
+          title={`Command palette (${showKeys("cmd+k")})`}
+          aria-label="Command palette"
+          onClick={() => setPalette(true)}
+        >
+          <Icon name="search" size={14} />
+        </Button>
+
+        <AttentionBadge ui={ui} />
+
+        {hasInbox && <InboxBadge />}
+
         {state.active && (
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
+            className={barBtn}
             title="The saved layout in use"
             onClick={() => void desk.open("surface.layouts")}
           >
-            <Icon name="layout-dashboard" />
+            <Icon name="layout-dashboard" size={14} />
             <span>{state.active}</span>
           </Button>
         )}
+
         {state.mode && (
           <Badge variant="secondary" title="Your mode">
             {state.mode}
           </Badge>
         )}
+
         <Button
           variant="ghost"
-          size="sm"
-          title="Tile every window, or float them all"
+          size="xs"
+          className={barBtn}
+          title={`${state.layout === "tile" ? "Tiling" : "Floating"} layout (⌃⌥T)`}
           onClick={() => void runCommand("layout.toggle")}
         >
-          <Icon name={state.layout === "tile" ? "columns-2" : "picture-in-picture-2"} />
+          <Icon name={state.layout === "tile" ? "columns-2" : "app-window"} size={14} />
           <span>{state.layout}</span>
         </Button>
-        {manifest.views.some((v) => v.id === "inbox" && v.module === "inbox") && <InboxBadge />}
-        <AttentionBadge ui={ui} />
+
         <ThemePicker />
-        <Button variant="ghost" size="sm" title="Command palette" onClick={() => setPalette(true)}>
-          <Icon name="search" />
-          <Kbd>{showKeys("cmd+k")}</Kbd>
-        </Button>
+
         <Button
-          variant={agentOpen ? "secondary" : "ghost"}
-          size="icon-sm"
-          title={`Agent ${showKeys("cmd+j")}`}
+          variant="ghost"
+          size="xs"
+          className={`h-5.5 rounded-sm px-1.5 ${
+            agentOpen
+              ? "bg-accent text-primary hover:bg-accent hover:text-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          }`}
+          title={`Agent (${showKeys("cmd+j")})`}
+          aria-label="Agent"
           aria-pressed={agentOpen}
+          data-bar-on={agentOpen || undefined}
           onClick={() => toggleAgent()}
         >
-          <Icon name="bot" />
+          <Icon name="bot" size={14} />
         </Button>
+
         <Clock />
+
         <span
-          className={`mx-1.5 size-2 rounded-full ${up ? "bg-success" : "bg-warning"}`}
+          className={`mx-1 size-1.5 rounded-full ${up ? "bg-success" : "bg-warning"}`}
           title={up ? "Connected" : "Reconnecting…"}
         />
       </div>
@@ -326,8 +573,8 @@ export function Desktop({ modules }: DesktopProps) {
           style={{ "--window-gap": `${gap}px` } as React.CSSProperties}
         >
           <WindowManager
-            tree={state.tree}
-            windows={windows}
+            tree={projectedTree}
+            windows={visibleWindows}
             focus={state.focus}
             onArrange={arrange}
             onClose={(id) => void closeWindow(id)}

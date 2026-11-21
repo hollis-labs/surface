@@ -7,7 +7,9 @@ import { cn } from "cn"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Markdown } from "@/components/ui/markdown"
+import { Spinner } from "@/components/ui/spinner"
 
 /**
  * The frame every card is drawn in, and the pieces the answerable ones share: the status
@@ -48,6 +50,8 @@ interface AnswerableCardProps {
   /** Called with what the person has entered so far, as they enter it, for the host to
    * keep (a reload, a server restart). Not called for what the card started with. */
   onDraft?: (draft: CardDraft) => void
+  /** Offer an "Other…" escape hatch in the footer to tell the agent something instead of choosing the card's options. */
+  allowOther?: boolean
   className?: string
 }
 
@@ -87,6 +91,20 @@ interface CardFrameProps extends Omit<React.ComponentProps<"div">, "title"> {
   footer?: React.ReactNode
 }
 
+const TONE_ICON_STYLES: Record<NonNullable<CardFrameProps["tone"]>, string> = {
+  default: "border-primary/30 bg-primary/12 text-primary",
+  warning: "border-warning/40 bg-warning/15 text-warning",
+  danger: "border-destructive/40 bg-destructive/15 text-destructive",
+  success: "border-success/40 bg-success/15 text-success",
+}
+
+const TONE_EDGE_STYLES: Record<NonNullable<CardFrameProps["tone"]>, string> = {
+  default: "before:bg-primary/80",
+  warning: "before:bg-warning",
+  danger: "before:bg-destructive",
+  success: "before:bg-success",
+}
+
 function CardFrame({ title, icon, meta, tone = "default", footer, className, children, ...props }: CardFrameProps) {
   return (
     <Card
@@ -94,22 +112,37 @@ function CardFrame({ title, icon, meta, tone = "default", footer, className, chi
       data-slot="card-frame"
       data-tone={tone}
       className={cn(
-        "w-full data-[tone=danger]:ring-destructive/40 data-[tone=success]:ring-success/40 data-[tone=warning]:ring-warning/50",
+        "relative w-full overflow-hidden border border-border/90 bg-card/95 shadow-xs before:absolute before:inset-y-0 before:left-0 before:w-1",
+        TONE_EDGE_STYLES[tone],
+        "data-[tone=danger]:border-destructive/45 data-[tone=success]:border-success/45 data-[tone=warning]:border-warning/50",
         className,
       )}
       {...props}
     >
       {(title || meta) && (
-        <CardHeader>
-          <CardTitle className="flex min-w-0 items-center gap-2 text-sm [&_svg]:size-4 [&_svg]:shrink-0">
-            {icon}
+        <CardHeader className="border-b border-border/65 bg-muted/35 px-3.5 py-2.5">
+          <CardTitle className="flex min-w-0 items-center gap-2.5 text-[13px] font-semibold tracking-tight text-foreground">
+            {icon && (
+              <span
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-full border [&_svg]:size-3.5 [&_svg]:shrink-0",
+                  TONE_ICON_STYLES[tone],
+                )}
+              >
+                {icon}
+              </span>
+            )}
             <span className="min-w-0 truncate">{title}</span>
           </CardTitle>
           {meta && <CardAction className="flex items-center gap-1.5">{meta}</CardAction>}
         </CardHeader>
       )}
-      {children && <CardContent className="flex flex-col gap-3">{children}</CardContent>}
-      {footer && <CardFooter className="flex-col items-stretch gap-2 border-t py-(--card-spacing)">{footer}</CardFooter>}
+      {children && <CardContent className="flex flex-col gap-3 px-3.5 py-3">{children}</CardContent>}
+      {footer && (
+        <CardFooter className="flex-col items-stretch gap-2 border-t border-border/65 bg-muted/20 px-3.5 py-2.5">
+          {footer}
+        </CardFooter>
+      )}
     </Card>
   )
 }
@@ -148,9 +181,39 @@ function CardFoot({
   onReload,
   receipt,
   expires,
+  allowOther,
+  busy,
+  onRespond,
+  draft,
+  onDraft,
   children,
-}: Pick<AnswerableCardProps, "state" | "stale" | "onReload" | "receipt" | "expires"> & { children: React.ReactNode }) {
+}: Pick<
+  AnswerableCardProps,
+  "state" | "stale" | "onReload" | "receipt" | "expires" | "allowOther" | "busy" | "onRespond" | "draft" | "onDraft"
+> & { children: React.ReactNode }) {
+  const [otherOpen, setOtherOpen] = React.useState(() => typeof draft?.__other === "string" && draft.__other !== "")
+  const [otherText, setOtherText] = React.useState(() => (typeof draft?.__other === "string" ? draft.__other : ""))
+  const [sendingOther, setSendingOther] = React.useState(false)
   if (state !== "open" && state !== "pending") return <CardReceipt state={state}>{receipt}</CardReceipt>
+  const working = sendingOther || busy === true || state === "pending"
+  const disabled = state !== "open" || working || stale === true
+  const sendOther = async () => {
+    const text = otherText.trim()
+    if (!text || disabled || !onRespond) return
+    setSendingOther(true)
+    try {
+      await onRespond({
+        status: "submitted",
+        answers: [{ questionId: "other", value: "other", note: text }],
+      })
+    } finally {
+      setSendingOther(false)
+    }
+  }
+  const updateOther = (val: string) => {
+    setOtherText(val)
+    if (onDraft) onDraft({ ...(draft ?? {}), __other: val })
+  }
   return (
     <>
       {stale && (
@@ -163,8 +226,40 @@ function CardFoot({
           )}
         </div>
       )}
+      {allowOther && otherOpen && (
+        <div data-slot="card-other" className="flex items-center gap-1.5">
+          <Input
+            autoFocus
+            value={otherText}
+            placeholder="Other: tell the agent what to do instead…"
+            disabled={disabled}
+            aria-label="Other: tell the agent"
+            onChange={(e) => updateOther(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && otherText.trim()) void sendOther()
+            }}
+          />
+          <Button size="sm" disabled={disabled || !otherText.trim()} onClick={() => void sendOther()}>
+            {working && <Spinner />}
+            Send
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{expires ? `Expires ${expires}` : ""}</span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          {expires ? <span>Expires {expires}</span> : null}
+          {allowOther && (
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={disabled}
+              aria-expanded={otherOpen}
+              onClick={() => setOtherOpen((v) => !v)}
+            >
+              {otherOpen ? "Hide other" : "Other…"}
+            </Button>
+          )}
+        </span>
         <CardActions>{children}</CardActions>
       </div>
     </>

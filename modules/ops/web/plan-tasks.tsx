@@ -1,10 +1,10 @@
-import { CiteRef, CiteText } from "@hollis-labs/surface-page/sdk"
+import { CiteRef, CiteText, ObjectActionsMenu } from "@hollis-labs/surface-page/sdk"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { age, message, type Plan, type Rollup, type Task } from "./api"
-import { OpsChip } from "./parts"
+import { OpsChip, UnitNotesInline } from "./parts"
 
 export function PlanTasks({
   roll,
@@ -126,6 +126,7 @@ function TaskTable({ tasks, id }: { tasks: Task[]; id: string }) {
               <TableHead>Status</TableHead>
               <TableHead>From</TableHead>
               <TableHead>Updated</TableHead>
+              <TableHead>Notes & Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -156,6 +157,19 @@ function TaskTable({ tasks, id }: { tasks: Task[]; id: string }) {
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground text-xs">{age(t.updated)}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <UnitNotesInline targetRef={t.id} compact />
+                    <ObjectActionsMenu
+                      obj={{
+                        kind: "torque.task",
+                        id: t.id,
+                        title: t.title || t.id,
+                        subtitle: t.status,
+                      }}
+                    />
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

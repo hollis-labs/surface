@@ -119,8 +119,11 @@ being moved. `parent: ""` makes one top level.
 
 - The board shows one level: the top concepts by default. "N inside" steps into one (a breadcrumb leads
   back), and the window's args say the level, so the agent knows it.
-- The Queued band orders siblings: `ops/queue` is one global order, and a reorder moves one workstream before
-  or after a queued sibling (same parent), or one place up or down among them.
+- The board layout toggle switches between **`Kanban | Cards | Activity | Fleet | Follow-ups`**:
+  - **Activity** (`modules/ops/web/activity.tsx`, `activity-row.tsx`) renders a flight-itinerary-inspired 3-column timeline (`[Timestamp + Elapsed Delta] [Vertical Spine + Semantic Action Icon] [Milestone + Clickable Rich Card + Shaded Callout Div]`) grouped into day episodes.
+  - **Follow-ups** (`modules/ops/web/followups.tsx`) renders `caster://ops/followups` as a full-page card triage workbench using the `ops/followup/v1` template (`- [KIND] <Title> | at: <Timestamp> | priority: <needs_you|high|normal|deferred> | owner: <Owner> | workstream: <ops:id> | refs: <...> :: <Summary> :: Action: <...> :: Evidence: <...>`), with click-into detail modals, workstream note routing, and inline marks.
+- The Queued band lists queued siblings in launch order (without number prefixes): `ops/queue` is one global order, and a reorder moves one workstream before or after a queued sibling (same parent), or one place up or down among them.
+- **`x of y` work breakdown & inline card expansion:** Every workstream card computes `done of total` (`x of y`) units of work across child workstreams, `active_when` checklist items, and linked/correlated Torque tasks (as new tasks or checks are added, `y` simply increases). Clicking a workstream card expands the units of work under it inline with status badges, per-unit notes/comments (`<UnitNotesInline />` backed by Surface Marks), **Request status**, `<ObjectActionsMenu />`, and a button to open the full workstream detail view in-place.
 - Tasks and activity roll up: a workstream's roll-up reads its own links and every descendant's.
 
 ## Activity

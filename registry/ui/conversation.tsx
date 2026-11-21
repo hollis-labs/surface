@@ -17,14 +17,14 @@ function ConversationViewport({ className, ...props }: React.ComponentProps<"div
     <div
       data-slot="conversation-viewport"
       role="log"
-      className={cn("absolute inset-0 overflow-y-auto overscroll-contain", className)}
+      className={cn("absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-contain", className)}
       {...props}
     />
   )
 }
 
 function ConversationContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="conversation-content" className={cn("flex flex-col gap-4 p-4", className)} {...props} />
+  return <div data-slot="conversation-content" className={cn("flex min-w-0 max-w-full flex-col gap-4 p-4", className)} {...props} />
 }
 
 function ConversationEmptyState({
@@ -61,7 +61,7 @@ function ConversationScrollButton({ className, ...props }: React.ComponentProps<
       variant="outline"
       size="icon-sm"
       aria-label="Scroll to the latest"
-      className={cn("absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-sm", className)}
+      className={cn("absolute bottom-3 left-1/2 -translate-x-1/2 rounded-sm shadow-sm", className)}
       {...props}
     >
       <ArrowDownIcon />

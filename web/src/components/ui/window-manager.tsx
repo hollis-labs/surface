@@ -14,7 +14,7 @@ import {
   type TabNode,
   TabSetNode,
 } from "flexlayout-react"
-import { Maximize2Icon, Minimize2Icon, PictureInPicture2Icon, XIcon } from "lucide-react"
+import { ArrowDownLeftIcon, Maximize2Icon, Minimize2Icon, PictureInPicture2Icon, XIcon } from "lucide-react"
 import * as React from "react"
 
 import { cn } from "cn"
@@ -97,8 +97,8 @@ const GLOBAL: IJsonModel["global"] = {
   tabEnableRename: false,
   tabEnablePopout: false,
   tabEnableFloat: true,
-  tabEnableFloatIcon: true,
-  tabSetEnableMaximize: true,
+  tabEnableFloatIcon: false,
+  tabSetEnableMaximize: false,
   tabSetEnableSingleTabStretch: true,
   tabSetEnableActiveIcon: false,
   tabSetMinWidth: 220,
@@ -206,6 +206,58 @@ function locate(tree: WindowTree, id: string): { stack: WindowNode; float?: Wind
     if (hit) return { stack: hit, float }
   }
   return undefined
+}
+
+/** Remove a window from a node tree, pruning empty stacks and rows. */
+function removeWinFromNode(n: WindowNode, id: string): WindowNode | null {
+  if (n.type === "stack") {
+    const wins = (n.wins ?? []).filter((w) => w !== id)
+    if (wins.length === 0) return null
+    return {
+      ...n,
+      wins,
+      selected: Math.min(n.selected ?? 0, wins.length - 1),
+    }
+  }
+  const children = (n.children ?? []).flatMap((c) => {
+    const kept = removeWinFromNode(c, id)
+    return kept ? [kept] : []
+  })
+  if (children.length === 0) return null
+  return { ...n, children }
+}
+
+/** Toggle a window between floating (popped out) and tiled (popped back in). */
+function toggleWindowFloat(current: WindowTree, id: string): WindowTree {
+  const where = locate(current, id)
+  if (!where) return current
+  const strippedRoot = removeWinFromNode(current.root, id) ?? { type: "row" as const }
+  const root: WindowNode = strippedRoot.type === "row" ? strippedRoot : { type: "row", children: [strippedRoot] }
+  const floats: WindowFloat[] = []
+  for (const f of current.floats ?? []) {
+    const kept = removeWinFromNode(f.root, id)
+    if (kept) {
+      floats.push({
+        ...f,
+        root: kept.type === "row" ? kept : { type: "row", children: [kept] },
+      })
+    }
+  }
+  if (where.float) {
+    // Pop back into the tiled root layout.
+    const stack: WindowNode = { type: "stack", id: `stack-${id}`, weight: 45, wins: [id], selected: 0 }
+    const nextChildren = [...(root.children ?? []), stack]
+    const nextRoot: WindowNode = { type: "row", children: nextChildren }
+    return floats.length > 0 ? { root: nextRoot, floats } : { root: nextRoot }
+  }
+  // Pop out into a new floating window.
+  const n = floats.length
+  const newFloat: WindowFloat = {
+    id: `float-${id}-${n}`,
+    rect: { x: 56 + (n % 6) * 28, y: 40 + (n % 6) * 24, w: 680, h: 460 },
+    root: { type: "row", children: [{ type: "stack", id: `stack-${id}`, wins: [id], selected: 0 }] },
+  }
+  return { root, floats: [...floats, newFloat] }
 }
 
 function WindowManager({ tree, windows, focus, onArrange, onClose, children, empty, className }: WindowManagerProps) {
@@ -344,17 +396,109 @@ function WindowManager({ tree, windows, focus, onArrange, onClose, children, emp
               {w?.badge}
             </span>
           )
-          if (w?.actions) values.buttons.push(<React.Fragment key="actions">{w.actions}</React.Fragment>)
+          const parent = node.getParent()
+          const multi = (parent?.getChildren().length ?? 1) > 1
+          const isSelected = parent instanceof TabSetNode ? parent.getSelectedNode() === node : true
+          // On a multi-tab stack, non-selected tabs still carry their own close button;
+          // the active window's actions, float/dock, maximize and close X sit on the far right of the titlebar.
+          if (multi && !isSelected) {
+            values.buttons.push(
+              <Button
+                key="close"
+                variant="ghost"
+                size="icon-xs"
+                className="size-5 rounded-sm text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                aria-label={`Close ${w?.title ?? ""}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onClose(node.getId())
+                }}
+              >
+                <XIcon />
+              </Button>,
+            )
+          }
+        }}
+        onRenderTabSet={(tabSetNode, values) => {
+          const selected = (tabSetNode.getSelectedNode() ?? tabSetNode.getChildren()[0]) as TabNode | undefined
+          if (!selected) return
+          const activeId = selected.getId()
+          const w = info.get(activeId)
+          const currentTree = fromFlex(model.toJson())
+          const where = locate(currentTree, activeId)
+          const isFloating = Boolean(where?.float)
+          const isMaximized = tabSetNode.isMaximized()
+          const canMaximize = !isFloating && (currentTree.root.children?.length ?? 0) > 1
+
+          if (w?.actions) {
+            values.buttons.push(<React.Fragment key="actions">{w.actions}</React.Fragment>)
+          }
+
+          values.buttons.push(
+            <Button
+              key="float-toggle"
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              title={isFloating ? "Pop back into tiled layout" : "Float window"}
+              aria-label={isFloating ? `Dock ${w?.title ?? ""}` : `Float ${w?.title ?? ""}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                held.current.pointer = false
+                const next = toggleWindowFloat(fromFlex(model.toJson()), activeId)
+                modelRef.current = Model.fromJson(toFlex(next, live.current.windows, activeId), model)
+                redraw()
+                const answer = live.current.onArrange(next, activeId, activeId)
+                if (answer && typeof (answer as Promise<unknown>).then === "function") {
+                  held.current.pending++
+                  void (answer as Promise<unknown>)
+                    .catch(() => {})
+                    .finally(() => {
+                      held.current.pending--
+                      redraw()
+                    })
+                }
+              }}
+            >
+              {isFloating ? <ArrowDownLeftIcon /> : <PictureInPicture2Icon />}
+            </Button>,
+          )
+
+          if (canMaximize || isMaximized) {
+            values.buttons.push(
+              <Button
+                key="maximize-toggle"
+                variant="ghost"
+                size="icon-xs"
+                className="size-5 rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                title={isMaximized ? "Restore window size" : "Maximize window"}
+                aria-label={isMaximized ? `Restore ${w?.title ?? ""}` : `Maximize ${w?.title ?? ""}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  held.current.pointer = false
+                  model.doAction(Actions.maximizeToggle(tabSetNode.getId()))
+                }}
+              >
+                {isMaximized ? <Minimize2Icon /> : <Maximize2Icon />}
+              </Button>,
+            )
+          }
+
           values.buttons.push(
             <Button
               key="close"
               variant="ghost"
               size="icon-xs"
+              className="size-5 rounded-sm text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+              title={`Close ${w?.title ?? ""}`}
               aria-label={`Close ${w?.title ?? ""}`}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation()
-                onClose(node.getId())
+                onClose(activeId)
               }}
             >
               <XIcon />

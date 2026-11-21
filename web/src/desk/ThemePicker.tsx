@@ -39,7 +39,13 @@ export function ThemePicker() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="sm" title="Theme" aria-label={`Theme: ${palette.name}`}>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-5.5 gap-1.5 rounded-sm px-2 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Theme"
+            aria-label={`Theme: ${palette.name}`}
+          >
             <Dots
               colors={{
                 accent: palette.accent,
@@ -79,16 +85,23 @@ export function ThemePicker() {
   )
 }
 
-/** The time, to the minute, like a status bar's clock. */
+/** The date and time, to the minute, matching Basalisk's status bar clock. */
 export function Clock() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 15_000)
     return () => clearInterval(t)
   }, [])
+  const date = now.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })
+  const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   return (
-    <span className="px-1.5 tabular-nums text-muted-foreground" title={now.toLocaleString()}>
-      {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-    </span>
+    <time
+      className="flex items-center gap-2.5 pr-1 pl-2 font-mono text-xs tabular-nums text-foreground"
+      dateTime={now.toISOString()}
+      title={now.toLocaleString()}
+    >
+      <span className="text-muted-foreground">{date}</span>
+      {time}
+    </time>
   )
 }

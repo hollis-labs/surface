@@ -45,7 +45,7 @@ function AppFrame({
       {showBar && bar !== undefined && bar !== null && (
         <header
           data-slot="app-frame-bar"
-          className="flex h-9 shrink-0 items-center gap-3 border-b border-border bg-desk px-2 text-xs select-none"
+          className="flex h-8 shrink-0 items-center justify-between gap-3 border-b border-border bg-desk/90 px-2.5 font-mono text-xs text-muted-foreground select-none"
         >
           {bar}
         </header>

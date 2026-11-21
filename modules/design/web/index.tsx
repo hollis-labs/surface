@@ -154,6 +154,7 @@ function Jobs({ desk, api, win }: ViewProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [all, setAll] = useState(false)
   const [error, setError] = useState("")
+  const activeJobId = typeof win.args.id === "string" ? win.args.id : ""
   const load = useCallback(() => {
     api
       .get<Job[]>(`jobs${all ? "?all=1" : ""}`)
@@ -162,9 +163,21 @@ function Jobs({ desk, api, win }: ViewProps) {
   }, [api, all])
   useEffect(load, [load])
   useEvent("design.changed", load)
-  useEffect(() => desk.report(win.id, { kind: "data", ref: "design:jobs" }), [desk, win.id])
+  useEffect(() => {
+    if (!activeJobId) desk.report(win.id, { kind: "data", ref: "design:jobs" })
+  }, [desk, win.id, activeJobId])
 
-  const open = (j: Job) => void desk.open("design.job", { key: j.id, title: `Design: ${j.title}`, args: { id: j.id } })
+  if (activeJobId) {
+    return <JobPane win={win} desk={desk} api={api} onBack={() => void desk.setArgs(win.id, {})} />
+  }
+
+  const open = (j: Job, newWindow = false) => {
+    if (newWindow) {
+      void desk.open("design.job", { key: j.id, title: `Design: ${j.title}`, args: { id: j.id } })
+      return
+    }
+    void desk.setArgs(win.id, { id: j.id })
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -201,10 +214,11 @@ function Jobs({ desk, api, win }: ViewProps) {
                 key={j.id}
                 variant="outline"
                 size="sm"
+                className="group"
                 render={<a href={`#design-${j.id}`} />}
                 onClick={(e) => {
                   e.preventDefault()
-                  open(j)
+                  open(j, e.metaKey || e.ctrlKey || e.shiftKey)
                 }}
               >
                 <ItemContent>
@@ -216,6 +230,21 @@ function Jobs({ desk, api, win }: ViewProps) {
                 <ItemActions>
                   <span className="text-xs text-muted-foreground">{when(j.updated)}</span>
                   <StatusBadge status={j.status} />
+                  <Tip label="Open in new window">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-label={`Open ${j.title} in new window`}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        open(j, true)
+                      }}
+                    >
+                      <Icon name="square-arrow-out-up-right" />
+                    </Button>
+                  </Tip>
                   {closable(j.status) && (
                     <Tip label="Close this job">
                       <Button
@@ -260,7 +289,7 @@ function frameURL(base: string, theme: string, section: string, job: string) {
   }
 }
 
-function JobPane({ win, desk, api }: ViewProps) {
+function JobPane({ win, desk, api, onBack }: ViewProps & { onBack?: () => void }) {
   const id = String(win.args.id ?? "")
   const [job, setJob] = useState<JobView | null>(null)
   const [error, setError] = useState("")
@@ -383,6 +412,12 @@ function JobPane({ win, desk, api }: ViewProps) {
   return (
     <div className="@container flex h-full min-h-0 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+        {onBack && (
+          <Button size="xs" variant="ghost" onClick={onBack}>
+            <Icon name="arrow-left" />
+            All jobs
+          </Button>
+        )}
         <span className="min-w-0 truncate text-sm font-semibold">{job.title}</span>
         <StatusBadge status={job.status} />
         <span className="font-mono text-xs text-muted-foreground @max-lg:hidden">
@@ -391,6 +426,20 @@ function JobPane({ win, desk, api }: ViewProps) {
         </span>
         {/* Wraps in a narrow window, so Send notes, Approve and Details are always in reach. */}
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {onBack && (
+            <Tip label="Open job in new window">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Open job in new window"
+                onClick={() =>
+                  void desk.open("design.job", { key: job.id, title: `Design: ${job.title}`, args: { id: job.id } })
+                }
+              >
+                <Icon name="square-arrow-out-up-right" />
+              </Button>
+            </Tip>
+          )}
           <ToggleGroup
             size="sm"
             spacing={0}

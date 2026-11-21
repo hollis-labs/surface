@@ -21,7 +21,7 @@ import { message, opsClient, type SeedPlan, type SeedResult, type Stage, stageLa
 const NONE = "\u0000none"
 const SEED_STAGES: Stage[] = ["planned", "parked", "queued", "in_flight", "landing", "complete"]
 
-export function SeedView({ win, desk, api }: ViewProps) {
+export function SeedView({ win, desk, api, onBack }: ViewProps & { onBack?: () => void }) {
   const ops = useMemo(() => opsClient(api), [api])
   const planID = typeof win.args.plan === "string" ? win.args.plan : ""
   const [plan, setPlan] = useState<SeedPlan | null>(null)
@@ -47,11 +47,13 @@ export function SeedView({ win, desk, api }: ViewProps) {
       <Source
         busy={busy}
         error={error}
+        onBack={onBack}
+        onOpenNewWindow={onBack ? () => void desk.run("ops.seed") : undefined}
         preview={async (src) => {
           setBusy(true)
           try {
             const p = await ops.seedPreview(src)
-            await desk.setArgs(win.id, { plan: p.id })
+            await desk.setArgs(win.id, { ...win.args, plan: p.id })
           } catch (e) {
             setError(message(e))
           } finally {
@@ -134,9 +136,28 @@ export function SeedView({ win, desk, api }: ViewProps) {
             </Button>
           </>
         )}
-        <Button size="sm" variant="ghost" onClick={() => void desk.run("ops.open", {})}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            if (onBack) onBack()
+            else void desk.run("ops.open", {})
+          }}
+        >
+          {onBack && <Icon name="arrow-left" />}
           Board
         </Button>
+        {onBack && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="Open Seed in new window"
+            aria-label="Open Seed in new window"
+            onClick={() => void desk.run("ops.seed", { plan: plan.id })}
+          >
+            <Icon name="square-arrow-out-up-right" />
+          </Button>
+        )}
       </div>
       {error && <p className="shrink-0 border-b px-3 py-1.5 text-destructive text-xs">{error}</p>}
       {result && (
@@ -383,20 +404,44 @@ export function SeedView({ win, desk, api }: ViewProps) {
 function Source({
   busy,
   error,
+  onBack,
+  onOpenNewWindow,
   preview,
 }: {
   busy: boolean
   error: string
+  onBack?: () => void
+  onOpenNewWindow?: () => void
   preview: (src: { path?: string; json?: string }) => Promise<void>
 }) {
   const [text, setText] = useState("")
   const [file, setFile] = useState("")
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto bg-background p-4 text-sm">
-      <h2 className="flex items-center gap-2 font-semibold text-base">
-        <Icon name="sprout" className="size-4" />
-        Seed Operations from the tracker
-      </h2>
+      <div className="flex items-center gap-2">
+        {onBack && (
+          <Button size="xs" variant="ghost" onClick={onBack}>
+            <Icon name="arrow-left" />
+            Board
+          </Button>
+        )}
+        <h2 className="flex items-center gap-2 font-semibold text-base">
+          <Icon name="sprout" className="size-4" />
+          Seed Operations from the tracker
+        </h2>
+        {onOpenNewWindow && (
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            className="ml-auto"
+            title="Open Seed in new window"
+            aria-label="Open Seed in new window"
+            onClick={onOpenNewWindow}
+          >
+            <Icon name="square-arrow-out-up-right" />
+          </Button>
+        )}
+      </div>
       <p className="text-muted-foreground text-xs">
         The tracker is read as data and mapped into workstreams. You get a preview to edit; nothing is written to Caster
         until you apply it.

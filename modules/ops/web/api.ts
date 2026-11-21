@@ -93,6 +93,8 @@ export interface Entry {
 
 export interface Card extends Workstream {
   tasks?: string
+  task_counts?: Record<string, number>
+  task_list?: Task[]
   last?: Entry
   suggest?: string
   suggest_why?: string

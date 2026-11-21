@@ -10,6 +10,7 @@ import {
   addMark,
   type Mark,
   type ModuleWeb,
+  ObjectActionsMenu,
   replyMark,
   resolveMark,
   useAnchor,
@@ -20,6 +21,7 @@ import {
 import {
   BookOpen,
   Check,
+  ExternalLink,
   FilePlus2,
   FileText,
   GitCompare,
@@ -120,7 +122,11 @@ function DraftList({ win, desk, api }: ViewProps) {
   useEffect(load, [load])
   useEvent("drafts.changed", load)
 
-  const show = (d: Draft) => {
+  const show = (d: Draft, newWindow = false) => {
+    if (newWindow) {
+      void desk.open("drafts", { key: `${d.id}:${Date.now()}`, title: d.title, args: { id: d.id } })
+      return
+    }
     void desk.setArgs(win.id, { id: d.id })
     void desk.setTitle(win.id, d.title)
   }
@@ -155,18 +161,35 @@ function DraftList({ win, desk, api }: ViewProps) {
             <li key={d.id}>
               <Item
                 size="xs"
+                className="group"
                 render={
                   <a
                     href={`#draft-${d.id}`}
                     onClick={(e) => {
                       e.preventDefault()
-                      show(d)
+                      show(d, e.metaKey || e.ctrlKey || e.shiftKey)
                     }}
                   />
                 }
               >
                 <ItemContent className="min-w-0">
-                  <ItemTitle className="w-full truncate">{d.title}</ItemTitle>
+                  <ItemTitle className="w-full">
+                    <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      title="Open in new window"
+                      aria-label={`Open ${d.title} in new window`}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        show(d, true)
+                      }}
+                    >
+                      <ExternalLink className="size-3.5" />
+                    </Button>
+                  </ItemTitle>
                   <ItemDescription>
                     {d.lang} · r{d.rev} · {d.lines ?? 0} lines · {when(d.updated)}
                   </ItemDescription>
@@ -386,6 +409,31 @@ function DraftEditor({ id, win, desk, api }: ViewProps & { id: string }) {
             </Button>
           </Tip>
         )}
+        <Tip label="Open draft in new window">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open draft in new window"
+            onClick={() =>
+              void desk.open("drafts", {
+                key: `${draft.id}:${Date.now()}`,
+                title: title || draft.title,
+                args: { id: draft.id },
+              })
+            }
+          >
+            <ExternalLink className="size-3.5" />
+          </Button>
+        </Tip>
+        <ObjectActionsMenu
+          object={{
+            kind: "drafts.draft",
+            id: draft.id,
+            title: title || draft.title,
+            subtitle: `${draft.lang} · r${draft.rev}`,
+            body: text,
+          }}
+        />
       </div>
       {notice && (
         <div className="flex items-center gap-2 bg-warning/10 px-3 py-1.5 text-xs">

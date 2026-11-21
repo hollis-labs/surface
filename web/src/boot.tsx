@@ -8,6 +8,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { MarkdownExtensions } from "@/components/ui/markdown"
 import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
+import { CiteDrawer } from "./cite/record.tsx"
 import { initCite } from "./cite/store.ts"
 import { CiteFloat } from "./cite/terminal.tsx"
 import { citeMarkdownExtensions } from "./cite/ui.tsx"
@@ -47,11 +48,10 @@ export function Page({ modules, core }: PageProps) {
   const [error, setError] = useState("")
   useEffect(() => {
     let live = true
-    Promise.all([loadManifest(), loadSettings()])
+    Promise.all([loadManifest(), loadSettings(), initCite()])
       .then(() => {
         if (!live) return
         connect()
-        void initCite()
         setReady(true)
         void call("POST", "/api/events", { topic: "page.ready", data: {} }).catch(() => {})
       })
@@ -73,6 +73,7 @@ export function Page({ modules, core }: PageProps) {
     <MarkdownExtensions value={citeMarkdownExtensions}>
       <Desktop modules={{ ...modules, surface: { ...coreWeb, views: { ...coreWeb.views, ...core } } }} />
       <CardHost />
+      <CiteDrawer />
       <CiteFloat />
     </MarkdownExtensions>
   )

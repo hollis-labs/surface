@@ -119,15 +119,17 @@ function CodeBlock({ node, className, ...p }: React.ComponentProps<"pre"> & { no
   const ref = React.useRef<HTMLPreElement>(null)
   const lang = codeLanguage(node as HastNode | undefined)
   return (
-    <div data-slot="markdown-code" className="group/code relative my-3 first:mt-0 last:mb-0">
-      <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100">
-        {lang && <span className="font-mono text-[0.7rem] text-muted-foreground">{lang}</span>}
+    <div data-slot="markdown-code" className="group/code relative my-2.5 overflow-hidden rounded-md border border-border/90 bg-desk/75 first:mt-0 last:mb-0">
+      <div className="flex items-center justify-between border-b border-border/60 bg-card/70 px-2.5 py-1">
+        <span className="font-mono text-[10.5px] font-medium tracking-wider text-chart-2 uppercase">
+          {lang || "code"}
+        </span>
         <CopyButton text={() => ref.current?.textContent ?? ""} />
       </div>
       <pre
         ref={ref}
         className={cn(
-          "overflow-x-auto rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed",
+          "overflow-x-auto p-3 font-mono text-xs leading-relaxed text-foreground",
           className,
         )}
         {...p}
@@ -139,27 +141,33 @@ function CodeBlock({ node, className, ...p }: React.ComponentProps<"pre"> & { no
 /* Sizes: the default (chat, cards) and, inside data-size="document", a page of text. */
 const defaults: Components = {
   h1: ({ node: _n, className, ...p }) => (
-    <h1 className={cn("mt-5 mb-2 text-base font-semibold first:mt-0 group-data-[size=document]/md:mb-3 group-data-[size=document]/md:text-2xl", className)} {...p} />
+    <h1 className={cn("mt-4 mb-2 border-b border-primary/25 pb-1 text-base font-semibold tracking-tight text-primary first:mt-0 group-data-[size=document]/md:mb-3 group-data-[size=document]/md:text-2xl", className)} {...p} />
   ),
   h2: ({ node: _n, className, ...p }) => (
-    <h2 className={cn("mt-5 mb-2 text-sm font-semibold first:mt-0 group-data-[size=document]/md:border-b group-data-[size=document]/md:border-border group-data-[size=document]/md:pb-1 group-data-[size=document]/md:text-xl", className)} {...p} />
+    <h2 className={cn("mt-4 mb-1.5 flex items-center gap-2 border-b border-border/70 pb-1 text-sm font-semibold text-foreground first:mt-0 group-data-[size=document]/md:text-xl", className)} {...p} />
   ),
   h3: ({ node: _n, className, ...p }) => (
-    <h3 className={cn("mt-4 mb-1.5 text-sm font-semibold first:mt-0 group-data-[size=document]/md:text-lg", className)} {...p} />
+    <h3 className={cn("mt-3.5 mb-1 text-sm font-semibold text-chart-2 first:mt-0 group-data-[size=document]/md:text-lg", className)} {...p} />
   ),
   h4: ({ node: _n, className, ...p }) => (
-    <h4 className={cn("mt-3 mb-1 text-sm font-semibold first:mt-0 group-data-[size=document]/md:text-base", className)} {...p} />
+    <h4 className={cn("mt-3 mb-1 font-mono text-xs font-semibold tracking-wider text-primary/90 uppercase first:mt-0 group-data-[size=document]/md:text-sm", className)} {...p} />
   ),
-  h5: ({ node: _n, className, ...p }) => <h5 className={cn("mt-3 mb-1 text-xs font-semibold first:mt-0", className)} {...p} />,
+  h5: ({ node: _n, className, ...p }) => <h5 className={cn("mt-2.5 mb-1 text-xs font-semibold text-foreground first:mt-0", className)} {...p} />,
   h6: ({ node: _n, className, ...p }) => (
-    <h6 className={cn("mt-3 mb-1 text-xs font-semibold text-muted-foreground first:mt-0", className)} {...p} />
+    <h6 className={cn("mt-2.5 mb-1 font-mono text-xs font-semibold text-muted-foreground uppercase first:mt-0", className)} {...p} />
   ),
   p: ({ node: _n, className, ...p }) => (
-    <p className={cn("my-2 leading-relaxed first:mt-0 last:mb-0 group-data-[size=document]/md:my-3 group-data-[size=document]/md:leading-7", className)} {...p} />
+    <p className={cn("my-2 leading-relaxed text-foreground/95 first:mt-0 last:mb-0 group-data-[size=document]/md:my-3 group-data-[size=document]/md:leading-7", className)} {...p} />
+  ),
+  strong: ({ node: _n, className, ...p }) => (
+    <strong className={cn("font-semibold text-foreground", className)} {...p} />
+  ),
+  em: ({ node: _n, className, ...p }) => (
+    <em className={cn("text-chart-2/90 italic", className)} {...p} />
   ),
   ul: ({ node: _n, className, ...p }) => <ul className={cn("my-2 list-disc pl-5 first:mt-0 last:mb-0", className)} {...p} />,
   ol: ({ node: _n, className, ...p }) => <ol className={cn("my-2 list-decimal pl-5 first:mt-0 last:mb-0", className)} {...p} />,
-  li: ({ node: _n, className, ...p }) => <li className={cn("my-0.5 leading-relaxed marker:text-muted-foreground", className)} {...p} />,
+  li: ({ node: _n, className, ...p }) => <li className={cn("my-0.5 leading-relaxed marker:font-mono marker:text-primary", className)} {...p} />,
   // The link's look is in markdown.css, so an `a` of a caller's own keeps it.
   a: ({ node: _n, href, ...p }) => (
     <a
@@ -169,31 +177,31 @@ const defaults: Components = {
     />
   ),
   blockquote: ({ node: _n, className, ...p }) => (
-    <blockquote className={cn("my-3 border-l-2 border-primary/50 pl-3 text-muted-foreground first:mt-0 last:mb-0", className)} {...p} />
+    <blockquote className={cn("my-2.5 rounded-r-sm border-l-2 border-primary bg-accent/25 py-1.5 pr-3 pl-3 text-foreground/90 first:mt-0 last:mb-0", className)} {...p} />
   ),
   pre: CodeBlock,
   code: ({ node: _n, className, ...p }) => (
     <code
       className={cn(
-        "rounded-sm bg-muted px-1 py-0.5 font-mono text-[0.85em] in-[pre]:rounded-none in-[pre]:bg-transparent in-[pre]:p-0 in-[pre]:text-xs",
+        "rounded-sm border border-border/70 bg-muted/90 px-1.5 py-0.5 font-mono text-[0.84em] text-chart-2 in-[pre]:rounded-none in-[pre]:border-0 in-[pre]:bg-transparent in-[pre]:p-0 in-[pre]:text-xs in-[pre]:text-foreground",
         className,
       )}
       {...p}
     />
   ),
   table: ({ node: _n, className, ...p }) => (
-    <div className="my-3 overflow-x-auto first:mt-0 last:mb-0">
+    <div className="my-2.5 overflow-x-auto rounded-md border border-border first:mt-0 last:mb-0">
       <table className={cn("w-full border-collapse text-xs group-data-[size=document]/md:text-sm", className)} {...p} />
     </div>
   ),
-  thead: ({ node: _n, className, ...p }) => <thead className={cn("bg-muted", className)} {...p} />,
+  thead: ({ node: _n, className, ...p }) => <thead className={cn("border-b border-border bg-muted/80", className)} {...p} />,
   th: ({ node: _n, className, ...p }) => (
-    <th className={cn("border border-border px-2 py-1 text-left font-medium [&[align=center]]:text-center [&[align=right]]:text-right", className)} {...p} />
+    <th className={cn("px-2.5 py-1.5 text-left font-mono text-[11px] font-semibold tracking-wider text-muted-foreground uppercase [&[align=center]]:text-center [&[align=right]]:text-right", className)} {...p} />
   ),
   td: ({ node: _n, className, ...p }) => (
-    <td className={cn("border border-border px-2 py-1 align-top [&[align=center]]:text-center [&[align=right]]:text-right", className)} {...p} />
+    <td className={cn("border-t border-border/60 px-2.5 py-1.5 align-top [&[align=center]]:text-center [&[align=right]]:text-right", className)} {...p} />
   ),
-  hr: ({ node: _n, className, ...p }) => <hr className={cn("my-4 border-border", className)} {...p} />,
+  hr: ({ node: _n, className, ...p }) => <hr className={cn("my-3.5 border-border/80", className)} {...p} />,
   del: ({ node: _n, className, ...p }) => <del className={cn("text-muted-foreground", className)} {...p} />,
   // An image is a link to it, not a request for it: a remote image loads from its sender's
   // server the moment the text is shown (a read receipt, the reader's address). images opts in.

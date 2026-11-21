@@ -42,9 +42,12 @@ Views: []module.View{{
 ```
 
 `ID` is unique in the app (the module id for the main view, `<module>.<name>` for others). `Render` names the
-component the web entry exports. `Multi` allows several windows, told apart by `key`. `Describe` adds what the
-module knows about one of its windows (`Kind`, `Ref`, `Extra`) to what the page reported: it is what the agent
-is told about where the owner is. Use a stable `Ref` (`"<module>:<id>"`): marks are pinned to it.
+component the web entry exports. `Multi` allows several windows, told apart by `key`. `Tiling` (`"full"` by default,
+or `"tile"`) controls window tiling behavior: modules open full-frame by default and replace the active module on
+switch, whereas a module with `Multi: true, Tiling: "tile"` (such as `terminal`) autotiles multiple windows of that
+module side-by-side within its workspace. `Describe` adds what the module knows about one of its windows (`Kind`,
+`Ref`, `Extra`) to what the page reported: it is what the agent is told about where the owner is. Use a stable `Ref`
+(`"<module>:<id>"`): marks are pinned to it.
 
 ### Commands
 
@@ -284,8 +287,13 @@ export default { views: { "scratch/main": Scratch } } satisfies ModuleWeb
 A view gets `win` (its window: `args`, `key`, `focused`), `desk` (open, close, setTitle, setArgs, report,
 setDirty, run, confirm) and `api` (calls to the module's own routes). Hooks: `useEvent(prefix, fn)`,
 `useSetting(fullKey)` (and `setSetting` to change one), `useMarks(ref)`; marks: `addMark`, `replyMark`, `resolveMark`; `Icon` draws a lucide
-icon by name. `CiteText` and `CiteRef` draw references as chips; `RecordBody` draws a record's text as the Cite record
-window does (a JSON document as fields, with the raw JSON a toggle away).
+icon by name. `CiteText` and `CiteRef` draw references as chips (clicking a chip or `"View"` in its hover card opens the
+record in the slide-over `<CiteDrawer />`); `RecordBody` draws a record's text as the Cite drawer/window does (a JSON
+document as fields, with the raw JSON a toggle away).
+
+- **Contained in-module navigation:** Clicking an item inside a module (a card, row, note, draft, or file) should navigate in-place within the current module window (`desk.setArgs(win.id, ...)` or local view state). Reserve opening a separate window for modifier-clicks (`e.metaKey || e.ctrlKey || e.shiftKey`, middle-click) or an explicit `"Open in new window"` icon button (`square-arrow-out-up-right`).
+- **Reusable Object Actions (`<ObjectActionsMenu />`):** Render `<ObjectActionsMenu object={{ kind, id, title, subtitle, url, body }} />` on any referenceable object so the owner can copy its reference/Markdown link, add it to agent context, pin, bookmark, add a mark, forward it (Agent chat, Tether mail, Request status), send it to a location (Scratchpad, Frag, Notes, Drafts), or download it. Modules can register additional object actions with `registerObjectAction(actionDef)`.
+- **Menu Nav Groups (`registerNavGroup`, `registerNavItem`):** Modules can register custom navigation groups (up to 3 levels deep, `MAX_NAV_DEPTH = 3`) or attach views/commands to existing nav groups with explicit `order` weights.
 
 - `desk.report(win.id, state)` replaces what the window says it is showing; send the whole state each time.
   The keys the desk reads are `kind`, `ref`, `url` and `selection`.

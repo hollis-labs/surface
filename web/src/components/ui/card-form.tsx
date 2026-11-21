@@ -44,7 +44,7 @@ interface CardFormProps extends AnswerableCardProps {
   submitLabel?: string
 }
 
-function CardForm({ title, body, fields, issues = [], values: initial, validate, submitLabel = "Submit", draft, onDraft, className, ...a }: CardFormProps) {
+function CardForm({ title, body, fields, issues = [], values: initial, validate, submitLabel = "Submit", allowOther = true, draft, onDraft, className, ...a }: CardFormProps) {
   const { disabled, working, respond } = useCardRespond(a)
   const [values, setValues] = React.useState<Record<string, unknown>>(() => {
     const start: Record<string, unknown> = {}
@@ -78,7 +78,7 @@ function CardForm({ title, body, fields, issues = [], values: initial, validate,
       meta={<CardStatus state={a.state} />}
       className={className}
       footer={
-        <CardFoot {...a}>
+        <CardFoot {...a} allowOther={allowOther} draft={draft} onDraft={onDraft}>
           <Button variant="outline" size="sm" disabled={disabled} onClick={() => void respond({ status: "canceled" })}>
             Cancel
           </Button>

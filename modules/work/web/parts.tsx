@@ -147,7 +147,7 @@ export function ItemCard({
   card: WorkCard
   kind?: WorkKind
   picked: boolean
-  pick: (id: string) => void
+  pick: (id: string, newWindow?: boolean) => void
   draggable?: boolean
   meta?: ReactNode
   compact?: boolean
@@ -157,14 +157,20 @@ export function ItemCard({
     <div
       data-work-color={kind?.color}
       data-picked={picked}
-      className="work-card flex cursor-pointer flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-sm hover:bg-accent"
+      className="work-card group flex cursor-pointer flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-sm hover:bg-accent"
       draggable={draggable}
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG_TYPE, card.id)
         e.dataTransfer.effectAllowed = "move"
       }}
-      onClick={() => pick(card.id)}
-      title={`${kind?.label ?? card.kind} ${card.id}`}
+      onClick={(e) => pick(card.id, e.metaKey || e.ctrlKey || e.shiftKey)}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault()
+          pick(card.id, true)
+        }
+      }}
+      title={`${kind?.label ?? card.kind} ${card.id} (⌘-click to open in new window)`}
     >
       <span className="flex min-w-0 items-center gap-1.5 font-medium">
         <KindIcon kind={kind} />
@@ -177,6 +183,19 @@ export function ItemCard({
             aria-label={card.stale_sign ? "Signed off; changed since" : "Signed off"}
           />
         )}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="ml-auto shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+          title="Open in new window"
+          aria-label={`Open ${card.title || "Untitled"} in new window`}
+          onClick={(e) => {
+            e.stopPropagation()
+            pick(card.id, true)
+          }}
+        >
+          <Icon name="square-arrow-out-up-right" />
+        </Button>
       </span>
       {!compact &&
         (card.problem ? (

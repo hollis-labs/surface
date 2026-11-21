@@ -8,6 +8,7 @@ import {
   Brain,
   Copy,
   ExternalLink,
+  Eye,
   FileText,
   Folder,
   Layers,
@@ -15,7 +16,6 @@ import {
   ListChecks,
   type LucideIcon,
   Mail,
-  Maximize2,
   NotebookText,
   Radar,
   Target,
@@ -26,19 +26,10 @@ import { Button } from "@/components/ui/button"
 import { CiteCard, type CiteTone } from "@/components/ui/cite-card"
 import { CiteChip, type CiteChipState } from "@/components/ui/cite-chip"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { ObjectActionsMenu } from "../desk/ObjectActionsMenu"
 import { buildPreviewCard, type RefIdentity } from "./core/index.ts"
 import { CITE_ATTR, CITE_ELEMENT, createRemarkCite } from "./remark.ts"
-import {
-  canResolve,
-  kindLabel,
-  openCite,
-  openRecord,
-  openURL,
-  registry,
-  requestRef,
-  segments,
-  useRefState,
-} from "./store.ts"
+import { canResolve, kindLabel, openCiteDrawer, openURL, registry, requestRef, segments, useRefState } from "./store.ts"
 
 const ICONS: Record<string, LucideIcon> = {
   "torque.task": ListChecks,
@@ -101,7 +92,7 @@ const NOTES: Partial<Record<string, string>> = {
 }
 
 /** The hover card's body for a reference: what it is, as far as is known now. */
-export function RefCard({ refId }: { refId: RefIdentity }) {
+export function RefCard({ refId, onCloseHover }: { refId: RefIdentity; onCloseHover?: () => void }) {
   const state = useRefState(refId.kind, refId.canonical, canResolve(refId.kind))
   const card = buildPreviewCard(registry, refId, state)
   const Icon =
@@ -116,7 +107,6 @@ export function RefCard({ refId }: { refId: RefIdentity }) {
       ?.writeText(refId.canonical)
       .then(() => setCopied(true))
       .catch(() => undefined)
-  const openable = (isURL || canResolve(refId.kind)) && card.phase !== "not-found"
   const title =
     card.phase === "not-found"
       ? "Not found"
@@ -125,6 +115,10 @@ export function RefCard({ refId }: { refId: RefIdentity }) {
         : isURL
           ? hostOf(refId.canonical)
           : card.title
+  const viewInDrawer = () => {
+    onCloseHover?.()
+    openCiteDrawer(refId)
+  }
   return (
     <CiteCard
       phase={card.phase}
@@ -147,28 +141,48 @@ export function RefCard({ refId }: { refId: RefIdentity }) {
       error={card.phase === "error" ? card.error : undefined}
       actions={
         <>
-          <Button variant="ghost" size="xs" onClick={copy}>
+          <Button
+            variant="outline"
+            size="xs"
+            className="h-6 rounded-sm border-border bg-transparent px-2 font-mono text-[11px] text-foreground/85 hover:border-primary hover:bg-transparent hover:text-foreground"
+            onClick={copy}
+          >
             <Copy />
             {copied ? "Copied" : "Copy id"}
           </Button>
           {entity?.url ? (
-            <Button variant="ghost" size="xs" onClick={() => openURL(entity.url as string)}>
+            <Button
+              variant="outline"
+              size="xs"
+              className="h-6 rounded-sm border-border bg-transparent px-2 font-mono text-[11px] text-foreground/85 hover:border-primary hover:bg-transparent hover:text-foreground"
+              onClick={() => {
+                onCloseHover?.()
+                openURL(entity.url as string)
+              }}
+            >
               <ExternalLink />
               {hostOf(entity.url)}
             </Button>
           ) : null}
-          {entity?.open && canResolve(refId.kind) ? (
-            <Button variant="ghost" size="xs" onClick={() => void openRecord(refId)}>
-              <Maximize2 />
-              Record
-            </Button>
-          ) : null}
-          {openable ? (
-            <Button variant="outline" size="xs" onClick={() => openCite(refId)}>
-              {isURL ? <ExternalLink /> : <Maximize2 />}
-              Open
-            </Button>
-          ) : null}
+          <Button
+            variant="outline"
+            size="xs"
+            className="h-6 rounded-sm border-primary bg-transparent px-2 font-mono text-[11px] text-foreground hover:border-primary hover:bg-accent"
+            onClick={viewInDrawer}
+          >
+            <Eye />
+            View
+          </Button>
+          <ObjectActionsMenu
+            obj={{
+              kind: refId.kind,
+              id: refId.canonical,
+              title: card.title,
+              subtitle: card.description || card.subtitle,
+              url: isURL ? refId.canonical : entity?.url,
+            }}
+            onAction={() => onCloseHover?.()}
+          />
         </>
       }
     />
@@ -179,9 +193,9 @@ const chipState = (s: string): CiteChipState =>
   s === "found" || s === "not-found" || s === "error" || s === "loading" || s === "unsupported" ? s : "idle"
 
 /**
- * A reference, inline: an icon and a label, with a card on hover or focus, opened on click.
- * Once resolved the label is the record's own ("Task: Fix the thing"); until then it is what
- * was written, or `label` (a Markdown link's text).
+ * A reference, inline: an icon and a label, with a card on hover or focus, opened in the Cite
+ * Object Drawer on click. The inline chip keeps its written label and font metrics stable so
+ * async preview resolution never shifts surrounding text or the hover card position.
  */
 export function CiteRef({
   refId,
@@ -194,35 +208,46 @@ export function CiteRef({
   label?: string
   mono?: boolean
 }) {
+  const [hoverOpen, setHoverOpen] = useState(false)
   const resolvable = canResolve(refId.kind)
   const state = useRefState(refId.kind, refId.canonical, resolvable)
   const Icon = iconFor(refId.kind)
   const kind = registry.get(refId.kind)
   const written = label ?? kind?.chipLabel?.(refId, raw ?? refId.canonical) ?? raw ?? refId.canonical
-  const text = state.status === "found" && state.entity.chipLabel && !label ? state.entity.chipLabel : written
+  // Only replace the inline text if nothing readable was written; keeping `written` prevents
+  // layout shift in the source text and hover card when the first fetch resolves.
+  const text =
+    written || (state.status === "found" && state.entity.chipLabel ? state.entity.chipLabel : refId.canonical)
   return (
-    <HoverCard onOpenChange={(open) => open && resolvable && requestRef(refId)}>
+    <HoverCard
+      open={hoverOpen}
+      onOpenChange={(open) => {
+        setHoverOpen(open)
+        if (open && resolvable) requestRef(refId)
+      }}
+    >
       <HoverCardTrigger
-        delay={300}
-        closeDelay={150}
+        delay={240}
+        closeDelay={120}
         render={
           <CiteChip
             icon={<Icon aria-hidden="true" />}
             label={clip(text, 56)}
             state={resolvable ? chipState(state.status) : "unsupported"}
-            mono={mono && text === written}
+            mono={Boolean(mono)}
             data-kind={refId.kind}
             aria-label={`${kindLabel(refId.kind)}: ${text}`}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              openCite(refId)
+              setHoverOpen(false)
+              openCiteDrawer(refId)
             }}
           />
         }
       />
       <HoverCardContent className="w-92" align="start">
-        <RefCard refId={refId} />
+        <RefCard refId={refId} onCloseHover={() => setHoverOpen(false)} />
       </HoverCardContent>
     </HoverCard>
   )

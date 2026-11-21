@@ -27,7 +27,11 @@ function CiteStatus({ label, tone = "neutral", className }: { label: string; ton
       variant="outline"
       data-slot="cite-status"
       data-tone={tone}
-      className={cn("h-4.5 border-current px-1.5 text-[0.7rem] font-normal tracking-normal normal-case", toneClass[tone] ?? toneClass.neutral, className)}
+      className={cn(
+        "h-4.5 rounded-full border-current bg-transparent px-2 py-px font-mono text-[10.5px] font-normal tracking-wide normal-case",
+        toneClass[tone] ?? toneClass.neutral,
+        className
+      )}
     >
       {label}
     </Badge>
@@ -43,7 +47,7 @@ interface CiteCardField {
 /** The kind, as the card's eyebrow: its icon, its name, and the status at the far end. */
 function CiteKind({ icon, kindLabel, status }: { icon?: React.ReactNode; kindLabel: string; status?: { label: string; tone?: CiteTone } }) {
   return (
-    <div className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-primary">
+    <div className="flex items-center gap-1.5 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground uppercase [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-primary">
       {icon}
       <span className="min-w-0 flex-1 truncate">{kindLabel}</span>
       {status ? <CiteStatus label={status.label} tone={status.tone} /> : null}
@@ -88,12 +92,12 @@ function CiteCard({
   actions?: React.ReactNode
 }) {
   return (
-    <div data-slot="cite-card" data-phase={phase} className={cn("flex min-w-0 flex-col gap-2 text-sm", className)} {...props}>
+    <div data-slot="cite-card" data-phase={phase} className={cn("flex min-w-0 flex-col gap-1.5 text-[13px]", className)} {...props}>
       <CiteKind icon={icon} kindLabel={kindLabel} status={status} />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="line-clamp-2 font-semibold break-words text-foreground">{title}</div>
+        <div className="line-clamp-2 text-[14px] leading-[1.35] font-semibold break-words text-foreground">{title}</div>
         {subtitle ? <div className="truncate text-xs text-muted-foreground">{subtitle}</div> : null}
-        <code className="font-mono text-[0.7rem] break-all text-muted-foreground" title={canonical}>
+        <code className="font-mono text-[11px] wrap-anywhere text-muted-foreground" title={canonical}>
           {canonical}
         </code>
       </div>
@@ -103,15 +107,15 @@ function CiteCard({
           <Skeleton className="h-3 w-2/3" />
         </div>
       ) : null}
-      {note ? <p className="line-clamp-4 text-xs leading-relaxed text-muted-foreground">{note}</p> : null}
+      {note ? <p className="line-clamp-4 text-xs leading-[1.45] text-muted-foreground">{note}</p> : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {description ? <p className="line-clamp-4 text-xs leading-relaxed whitespace-pre-line text-foreground/80">{description}</p> : null}
+      {description ? <p className="line-clamp-4 text-[12.5px] leading-[1.45] whitespace-pre-line text-foreground/85">{description}</p> : null}
       {fields.length > 0 ? (
-        <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-t border-border pt-1.5 text-xs">
+        <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 border-t border-border pt-1.5 text-xs">
           {fields.map((f) => (
             <React.Fragment key={f.label}>
               <dt className="truncate text-muted-foreground">{f.label}</dt>
-              <dd className={cn("truncate text-foreground", f.mono && "font-mono text-[0.7rem]")} title={f.value}>
+              <dd className={cn("truncate text-foreground", f.mono && "font-mono text-[11px]")} title={f.value}>
                 {f.value}
               </dd>
             </React.Fragment>
@@ -119,8 +123,8 @@ function CiteCard({
         </dl>
       ) : null}
       {updated || actions ? (
-        <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
-          <span className="min-w-0 flex-1 truncate text-[0.7rem] text-muted-foreground">{updated}</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2 font-mono text-[11px]">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{updated}</span>
           {actions}
         </div>
       ) : null}
@@ -129,9 +133,8 @@ function CiteCard({
 }
 
 /**
- * The head of a record read whole: the kind, a large title, the reference, then its status and
- * fields on one wrapping line, and the actions. `renderValue` draws a field's value (a reference
- * in it as a chip, say); by default the text.
+ * The head of a record read whole: compact single-bar eyebrow + actions, concise title,
+ * and a tight inline metadata strip so the record's content gets maximum vertical room.
  */
 function CiteRecordHeader({
   className,
@@ -161,29 +164,40 @@ function CiteRecordHeader({
   renderValue?: (field: CiteCardField) => React.ReactNode
 }) {
   return (
-    <div data-slot="cite-record-header" className={cn("flex min-w-0 flex-col gap-2", className)} {...props}>
-      <CiteKind icon={icon} kindLabel={kindLabel} />
-      <div className="flex min-w-0 flex-col gap-1">
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight break-words text-foreground">{title}</h1>
-        {subtitle ? <div className="text-sm text-muted-foreground">{subtitle}</div> : null}
-        <code className="font-mono text-xs break-all text-muted-foreground">{canonical}</code>
+    <div data-slot="cite-record-header" className={cn("flex min-w-0 flex-col gap-1.5", className)} {...props}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground uppercase [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-primary">
+          {icon}
+          <span>{kindLabel}</span>
+        </span>
+        <span className="text-muted-foreground/40">·</span>
+        <code className="max-w-72 truncate font-mono text-[11px] text-muted-foreground" title={canonical}>
+          {canonical}
+        </code>
+        {status ? <CiteStatus label={status.label} tone={status.tone} /> : null}
+        {updated ? <span className="font-mono text-[10.5px] text-muted-foreground">{updated}</span> : null}
+        {actions ? <div className="ml-auto flex flex-wrap items-center gap-1">{actions}</div> : null}
       </div>
-      {status || fields.length > 0 || updated ? (
-        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs">
-          {status ? <CiteStatus label={status.label} tone={status.tone} /> : null}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h1 className="text-[15px] leading-snug font-semibold tracking-tight break-words text-foreground">{title}</h1>
+        {subtitle ? <span className="truncate text-xs text-muted-foreground">{subtitle}</span> : null}
+      </div>
+      {fields.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
           {fields.map((f) => (
-            <span key={f.label} className="inline-flex min-w-0 max-w-full items-baseline gap-1.5">
-              <span className="text-muted-foreground">{f.label}</span>
-              <span className={cn("min-w-0 truncate text-foreground", f.mono && "font-mono text-[0.7rem]")} title={f.value}>
+            <span key={f.label} className="inline-flex min-w-0 max-w-full items-baseline gap-1">
+              <span className="text-[11px] text-muted-foreground">{f.label}:</span>
+              <span
+                className={cn("min-w-0 truncate text-foreground/90", f.mono && "font-mono text-[11px]")}
+                title={f.value}
+              >
                 {renderValue ? renderValue(f) : f.value}
               </span>
             </span>
           ))}
-          {updated ? <span className="text-muted-foreground">{updated}</span> : null}
         </div>
       ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {actions ? <div className="flex flex-wrap items-center gap-1">{actions}</div> : null}
     </div>
   )
 }

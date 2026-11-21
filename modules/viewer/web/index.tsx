@@ -56,7 +56,7 @@ interface Entry {
 }
 
 /** Pick a file from a Files place: folders to walk, the files the Viewer shows. */
-function Picker({ onPick }: { onPick: (place: string, path: string) => void }) {
+function Picker({ onPick }: { onPick: (place: string, path: string, newWindow?: boolean) => void }) {
   const [places, setPlaces] = useState<Place[]>([])
   const [place, setPlace] = useState("")
   const [dir, setDir] = useState("")
@@ -131,16 +131,34 @@ function Picker({ onPick }: { onPick: (place: string, path: string) => void }) {
             <Item
               key={e.path}
               size="sm"
+              className="group"
               render={<a href={`#${e.path}`} />}
               onClick={(ev) => {
                 ev.preventDefault()
                 if (e.dir) setDir(e.path)
-                else onPick(place, e.path)
+                else onPick(place, e.path, ev.metaKey || ev.ctrlKey || ev.shiftKey)
               }}
             >
               <ItemContent>
-                <ItemTitle>
-                  <Icon name={e.dir ? "folder" : iconOf(mediaOf(e.name))} /> {e.name}
+                <ItemTitle className="w-full">
+                  <Icon name={e.dir ? "folder" : iconOf(mediaOf(e.name))} />
+                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  {!e.dir && (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                      title="Open in new window"
+                      aria-label={`Open ${e.name} in new window`}
+                      onClick={(ev) => {
+                        ev.preventDefault()
+                        ev.stopPropagation()
+                        onPick(place, e.path, true)
+                      }}
+                    >
+                      <Icon name="square-arrow-out-up-right" />
+                    </Button>
+                  )}
                 </ItemTitle>
               </ItemContent>
             </Item>
@@ -162,13 +180,19 @@ function Viewer({ win, desk }: ViewProps) {
   if (!place || !path)
     return (
       <Picker
-        onPick={(p, f) =>
-          void desk.open("viewer", {
-            key: ref(p, f),
-            title: `Viewer: ${f.split("/").pop()}`,
-            args: { place: p, path: f },
-          })
-        }
+        onPick={(p, f, newWindow) => {
+          const title = `Viewer: ${f.split("/").pop()}`
+          if (newWindow) {
+            void desk.open("viewer", {
+              key: ref(p, f),
+              title,
+              args: { place: p, path: f },
+            })
+            return
+          }
+          void desk.setArgs(win.id, { place: p, path: f })
+          void desk.setTitle(win.id, title)
+        }}
       />
     )
   return <Artifact key={ref(place, path)} place={place} path={path} win={win} desk={desk} />
@@ -255,12 +279,39 @@ function Artifact({ place, path, win, desk }: { place: string; path: string } & 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Pick another file"
+          onClick={() => {
+            void desk.setArgs(win.id, {})
+            void desk.setTitle(win.id, "Viewer")
+          }}
+        >
+          <Icon name="arrow-left" />
+          Files
+        </Button>
         <Icon name={iconOf(media)} />
         <span className="min-w-0 truncate text-sm font-semibold" title={`${place}:${path}`}>
           {path.split("/").pop()}
         </span>
         <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{path}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="Open in new Viewer window"
+            aria-label="Open in new Viewer window"
+            onClick={() =>
+              void desk.open("viewer", {
+                key: `${ref(place, path)}:${Date.now()}`,
+                title: `Viewer: ${path.split("/").pop()}`,
+                args: { place, path },
+              })
+            }
+          >
+            <Icon name="square-arrow-out-up-right" />
+          </Button>
           {media !== "image" && (
             <Button
               size="sm"

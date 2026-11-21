@@ -64,12 +64,30 @@ export function saveDraft(id: string, draft: CardDraft) {
   drafts.save(id, draft)
 }
 
-/** Late answers given in this page, kept in the agent's panel a while so the owner sees
- * them go ("Sent to the agent"). */
+/** Answers given in this page, kept in the agent's panel for a brief moment as a tiny toast
+ * so the owner sees them go ("Answer submitted · Sent to agent"). */
 const lateShown = new Map<string, number>()
-const LATE_SHOWN_MS = 15_000
+const LATE_SHOWN_MS = 3_200
 export const recentlyAnsweredLate = (c: ServerCard) =>
-  c.late === true && c.status === "submitted" && Date.now() - (lateShown.get(c.id) ?? 0) < LATE_SHOWN_MS
+  c.status === "submitted" && Date.now() - (lateShown.get(c.id) ?? 0) < LATE_SHOWN_MS
+
+/** Tracks whether the Cards window was opened automatically or from the chat stream, as opposed
+ * to the user deliberately opening Cards from outside chat (menu / command palette). */
+let openedFromChat = false
+export const wasOpenedFromChat = () => openedFromChat
+export const setOpenedFromChat = (fromChat: boolean) => {
+  openedFromChat = fromChat
+}
+
+/** True when the user's keyboard/pointer focus is currently inside the agent chat sidebar. */
+export function isUserInChat(): boolean {
+  if (typeof document === "undefined") return false
+  const active = document.activeElement
+  if (active?.closest('[data-slot="app-frame-side"], [data-slot="agent-panel"], [data-slot="card-dock"]')) {
+    return true
+  }
+  return false
+}
 
 export const ANSWERABLE = ["confirm", "prompt", "choice", "form", "approval"]
 const answer = [{ id: "answer", label: "Answer" }]
@@ -102,6 +120,7 @@ engine.subscribe(emit)
 function take(c: ServerCard) {
   const have = cards.get(c.id)
   if (have && (have.revision ?? 0) > (c.revision ?? 0)) return
+  const isNewLiveAgentQuestion = !have && c.source === "agent" && ANSWERABLE.includes(c.kind) && isLive(c)
   cards.set(c.id, c)
   const expiresAt = c.expires_at ? Date.parse(c.expires_at) : undefined
   engine.ingest({
@@ -117,6 +136,9 @@ function take(c: ServerCard) {
   if (c.status) engine.applyServerState(c.id, c.status, { supersededBy: c.superseded_by })
   // Answered or dismissed (here or elsewhere): its draft has done its job.
   if (!isLive(c)) drafts.clear(c.id)
+  if (isNewLiveAgentQuestion && isUserInChat()) {
+    openedFromChat = true
+  }
   emit()
 }
 
@@ -143,11 +165,28 @@ export function startCards() {
 export async function respond(id: string, outcome: CardOutcome): Promise<void> {
   try {
     const was = cards.get(id)
-    if (was && lateOpen(was) && outcome.status === "submitted") {
+    if (was && (lateOpen(was) || was.source === "agent") && outcome.status === "submitted") {
       lateShown.set(id, Date.now())
       window.setTimeout(emit, LATE_SHOWN_MS + 100)
     }
-    take(await call<ServerCard>("POST", `/api/cards/${encodeURIComponent(id)}/response`, outcome))
+    const updated = await call<ServerCard>("POST", `/api/cards/${encodeURIComponent(id)}/response`, outcome)
+    take(updated)
+    // When a classifier/training feedback card is answered, record the feedback with the classifier.
+    if (outcome.status === "submitted" && updated.subject?.startsWith("classify:")) {
+      const text = typeof updated.payload?.text === "string" ? updated.payload.text : ""
+      const facet = updated.subject.slice("classify:".length) || "slot"
+      const ans = outcome.answers?.[0]
+      const label =
+        typeof ans?.note === "string" && ans.note ? ans.note : typeof ans?.value === "string" ? ans.value : ""
+      if (label) {
+        void call("POST", "/api/agent/classify/feedback", {
+          text,
+          facet,
+          label,
+          accepted: ans?.value !== "other",
+        }).catch(() => {})
+      }
+    }
   } catch (err) {
     // 409: the card is no longer open. Show what it became instead of an error.
     if (err instanceof ApiError && err.status === 409) {
@@ -166,6 +205,54 @@ export async function respond(id: string, outcome: CardOutcome): Promise<void> {
 export const dismissToast = (id: string) => engine.dismissToast(id)
 export const isStale = (id: string) => stale.has(id)
 export const cardById = (id: string) => cards.get(id)
+
+/** Puts a card in front of the user from the page (such as a classifier feedback/training card). */
+export async function showCard(card: Omit<ServerCard, "id">): Promise<ServerCard> {
+  const created = await call<ServerCard>("POST", "/api/cards", card)
+  take(created)
+  return created
+}
+
+/** Releases a blocking card to the Cards window so the owner can chat with the agent or inspect the desk before answering. */
+export async function holdCard(id: string): Promise<void> {
+  const updated = await call<ServerCard>("POST", `/api/cards/${encodeURIComponent(id)}/hold`)
+  take(updated)
+}
+
+/** Builds a CardOutcome from a card's saved draft when the person has filled it in, or null if incomplete. */
+export function outcomeFromDraft(c: ServerCard, draft?: CardDraft): CardOutcome | null {
+  if (!draft) return null
+  if (typeof draft.__other === "string" && draft.__other.trim() !== "") {
+    return {
+      status: "submitted",
+      answers: [{ questionId: "other", value: "other", note: draft.__other.trim() }],
+    }
+  }
+  switch (c.kind) {
+    case "prompt": {
+      const text = typeof draft.text === "string" ? draft.text.trim() : ""
+      return text ? { status: "submitted", answers: [{ questionId: "answer", value: text }] } : null
+    }
+    case "choice": {
+      const picked = Array.isArray(draft.picked) ? draft.picked.filter((x): x is string => typeof x === "string") : []
+      const other = typeof draft.other === "string" ? draft.other.trim() : ""
+      if (picked.length === 0) return null
+      const otherOn = picked.includes("other")
+      if (otherOn && !other) return null
+      const multiple = c.payload?.multiple === true
+      return {
+        status: "submitted",
+        answers: [{ questionId: "choice", value: multiple ? picked : picked[0], ...(otherOn ? { note: other } : {}) }],
+      }
+    }
+    case "form": {
+      const { __other: _, ...values } = draft
+      return Object.keys(values).length > 0 ? { status: "submitted", data: values } : null
+    }
+    default:
+      return null
+  }
+}
 
 export interface Shown {
   card: ServerCard
@@ -199,4 +286,29 @@ export function useCards(surface: Surface): Shown[] {
 /** One card by id, following its changes. */
 export function useCard(id: string): ServerCard | undefined {
   return useSyncExternalStore(subscribe, () => cards.get(id))
+}
+
+const byIdsCache = new Map<string, { at: number; list: ServerCard[] }>()
+/** Several cards by id, following their changes in the store. */
+export function useCardsByIds(ids: readonly string[]): ServerCard[] {
+  const key = ids.join(",")
+  return useSyncExternalStore(subscribe, () => {
+    const hit = byIdsCache.get(key)
+    if (hit && hit.at === version) return hit.list
+    const list = ids.flatMap((id) => {
+      const c = cards.get(id)
+      return c ? [c] : []
+    })
+    byIdsCache.set(key, { at: version, list })
+    return list
+  })
+}
+
+/** Count of currently live (open or late-open) cards in the store. */
+export function liveCardCount(): number {
+  let n = 0
+  for (const c of cards.values()) {
+    if (isLive(c)) n++
+  }
+  return n
 }

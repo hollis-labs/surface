@@ -25,6 +25,10 @@ type View struct {
 	// DefaultKey is the key a Multi window gets when opened with none, so a plain "open"
 	// brings one main window forward.
 	DefaultKey string `json:"default_key,omitempty"`
+	// Tiling says how multiple windows of this module behave when open together: "tile"
+	// autotiles windows within the module (e.g. Terminal), while "full" (the default) opens
+	// full-frame and replaces the active view.
+	Tiling string `json:"tiling,omitempty"`
 	// Bare means the body fills the window edge to edge and scrolls itself.
 	Bare bool `json:"bare,omitempty"`
 	// Render says how the window body is drawn.

@@ -11,7 +11,9 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 function PromptInput({ className, children, ...props }: React.ComponentProps<"form">) {
   return (
     <form data-slot="prompt-input" className={cn("w-full", className)} {...props}>
-      <InputGroup className="h-auto flex-col has-[textarea:enabled]:has-disabled:bg-transparent has-[textarea:enabled]:has-disabled:opacity-100 dark:has-[textarea:enabled]:has-disabled:bg-input/30">{children}</InputGroup>
+      <InputGroup className="h-auto items-end gap-1.5 rounded-md border-border bg-card/90 px-2.5 py-1.5 has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:items-stretch has-[>[data-align=block-end]]:px-0 has-[>[data-align=block-end]]:py-0 has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:items-stretch has-[>[data-align=block-start]]:px-0 has-[>[data-align=block-start]]:py-0 has-[textarea:enabled]:has-disabled:bg-card/90 has-[textarea:enabled]:has-disabled:opacity-100 dark:has-[textarea:enabled]:has-disabled:bg-card/90">
+        {children}
+      </InputGroup>
     </form>
   )
 }
@@ -20,7 +22,10 @@ function PromptInputTextarea({ className, onKeyDown, ...props }: React.Component
   return (
     <InputGroupTextarea
       data-prompt-input-textarea=""
-      className={cn("field-sizing-content max-h-48 min-h-14 px-3", className)}
+      className={cn(
+        "field-sizing-content max-h-40 min-h-6.5 px-0 py-0.5 text-[13px] leading-snug group-has-[>[data-align=block-end]]/input-group:min-h-10 group-has-[>[data-align=block-end]]/input-group:px-2.5 group-has-[>[data-align=block-end]]/input-group:pt-2",
+        className,
+      )}
       onKeyDown={(e) => {
         onKeyDown?.(e)
         if (e.defaultPrevented) return
@@ -35,7 +40,7 @@ function PromptInputTextarea({ className, onKeyDown, ...props }: React.Component
 }
 
 function PromptInputFooter({ className, ...props }: React.ComponentProps<typeof InputGroupAddon>) {
-  return <InputGroupAddon align="block-end" className={cn("justify-between gap-2", className)} {...props} />
+  return <InputGroupAddon align="block-end" className={cn("justify-between gap-2 px-2.5 pb-1.5 pt-1", className)} {...props} />
 }
 
 function PromptInputSubmit({
@@ -53,9 +58,9 @@ function PromptInputSubmit({
   return (
     <InputGroupButton
       data-slot="prompt-input-submit"
-      variant="default"
+      variant={streaming ? "destructive" : "default"}
       size="icon-xs"
-      className={cn("ml-auto rounded-full", className)}
+      className={cn("ml-auto size-6.5 shrink-0 rounded-sm", className)}
       aria-label={sending ? "Sending message" : streaming ? "Stop" : "Send"}
       {...props}
       disabled={disabled || sending}

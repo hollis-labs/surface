@@ -11,6 +11,7 @@ import {
   Icon,
   type Mark,
   type ModuleWeb,
+  ObjectActionsMenu,
   replyMark,
   resolveMark,
   useEvent,
@@ -68,7 +69,7 @@ type LayoutMode = "split" | "edit" | "preview"
 function IconButton({ label, children, ...props }: { label: string } & ComponentProps<typeof Button>) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} {...props} />}>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} {...props} />}>
         {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -77,25 +78,50 @@ function IconButton({ label, children, ...props }: { label: string } & Component
 }
 
 /** One row of the list: a note, or a line of a note the search found. */
-function NoteRow({ title, about, on, onOpen }: { title: string; about: string; on?: boolean; onOpen: () => void }) {
+function NoteRow({
+  title,
+  about,
+  on,
+  onOpen,
+}: {
+  title: string
+  about: string
+  on?: boolean
+  onOpen: (newWindow?: boolean) => void
+}) {
   return (
     <Item
       size="xs"
       variant={on ? "muted" : "default"}
+      className="group"
       aria-current={on ? "true" : undefined}
       render={
         <a
           href={`#note:${encodeURIComponent(about)}`}
           onClick={(e) => {
             e.preventDefault()
-            onOpen()
+            onOpen(e.metaKey || e.ctrlKey || e.shiftKey)
           }}
         />
       }
     >
       <ItemContent className="min-w-0">
-        <ItemTitle className="max-w-full">
-          <span className="truncate">{title}</span>
+        <ItemTitle className="w-full max-w-full">
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            title="Open note in new window"
+            aria-label={`Open ${title} in new window`}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onOpen(true)
+            }}
+          >
+            <Icon name="square-arrow-out-up-right" />
+          </Button>
         </ItemTitle>
         <ItemDescription className="truncate">{about}</ItemDescription>
       </ItemContent>
@@ -228,7 +254,17 @@ function Notes({ win, desk, api }: ViewProps) {
     return () => window.clearTimeout(t)
   }, [api, query])
 
-  const open = useCallback((p: string) => void desk.setArgs(win.id, { path: p }), [desk, win.id])
+  const open = useCallback(
+    (p: string, newWindow = false) => {
+      if (newWindow) {
+        const label = p.replace(/\.md$/i, "").split("/").pop() || p
+        void desk.open("notes", { key: `notes:${p}:${Date.now()}`, title: label, args: { path: p } })
+        return
+      }
+      void desk.setArgs(win.id, { path: p })
+    },
+    [desk, win.id],
+  )
   /** A note just made opens for writing. */
   const openNew = useCallback((p: string) => void desk.setArgs(win.id, { path: p, fresh: true }), [desk, win.id])
 
@@ -276,7 +312,13 @@ function Notes({ win, desk, api }: ViewProps) {
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-1 pb-1.5">
             {shown.map((n) => (
-              <NoteRow key={n.path} title={n.title} about={n.path} on={n.path === path} onOpen={() => open(n.path)} />
+              <NoteRow
+                key={n.path}
+                title={n.title}
+                about={n.path}
+                on={n.path === path}
+                onOpen={(newWin) => open(n.path, newWin)}
+              />
             ))}
             {hits && hits.length > 0 && (
               <div className="px-2.5 pt-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -288,7 +330,7 @@ function Notes({ win, desk, api }: ViewProps) {
                 key={`${h.path}:${h.line}`}
                 title={h.text}
                 about={`${h.path}:${h.line}`}
-                onOpen={() => open(h.path)}
+                onOpen={(newWin) => open(h.path, newWin)}
               />
             ))}
             {shown.length === 0 && !hits?.length && (
@@ -326,7 +368,7 @@ function Notes({ win, desk, api }: ViewProps) {
 
 interface EditorProps extends ViewProps {
   path: string
-  onOpen: (path: string) => void
+  onOpen: (path: string, newWindow?: boolean) => void
   onCreate: (name: string) => Promise<void>
 }
 
@@ -487,9 +529,9 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
     })
 
   const follow = useCallback(
-    (name: string) => {
+    (name: string, newWindow = false) => {
       const target = loaded?.links[name]
-      if (target) onOpen(target)
+      if (target) onOpen(target, newWindow)
       else void onCreate(name)
     },
     [loaded, onOpen, onCreate],
@@ -511,10 +553,12 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
               href={href}
               className="notes-wiki"
               data-missing={!links?.[name]}
-              title={links?.[name] ?? "No note yet: click to start it"}
+              title={
+                links?.[name] ? `${links[name]} (⌘-click to open in new window)` : "No note yet: click to start it"
+              }
               onClick={(e) => {
                 e.preventDefault()
-                follow(name)
+                follow(name, e.metaKey || e.ctrlKey || e.shiftKey)
               }}
             >
               {children}
@@ -529,10 +573,10 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
             <a
               href={href}
               className="notes-wiki"
-              title={target}
+              title={`${target} (⌘-click to open in new window)`}
               onClick={(e) => {
                 e.preventDefault()
-                if (/\.md$/i.test(target)) onOpen(target)
+                if (/\.md$/i.test(target)) onOpen(target, e.metaKey || e.ctrlKey || e.shiftKey)
                 else window.open(api.url(`asset?path=${encodeURIComponent(target)}`), "_blank", "noopener")
               }}
             >
@@ -576,8 +620,9 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
 
   return (
     <div className="@container/main flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-center gap-1 border-b border-border py-1.5 pr-2 pl-3">
-        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={path}>
+      <header className="flex shrink-0 items-center gap-1 border-b border-border bg-card/50 py-1 pr-2 pl-2.5">
+        <Icon name="file-text" size={13} className="shrink-0 text-chart-2" />
+        <span className="min-w-0 truncate font-mono text-xs text-foreground" title={path}>
           {path}
         </span>
         <span
@@ -638,12 +683,23 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
           </TooltipTrigger>
           <TooltipContent>Show or hide the marks</TooltipContent>
         </Tooltip>
+        <IconButton label="Open in new window" onClick={() => onOpen(path, true)}>
+          <Icon name="square-arrow-out-up-right" />
+        </IconButton>
         <IconButton label="Rename" onClick={rename}>
           <Icon name="pencil-line" />
         </IconButton>
         <IconButton label="Delete" variant="destructive" onClick={() => void remove()}>
           <Icon name="trash" />
         </IconButton>
+        <ObjectActionsMenu
+          object={{
+            kind: "notes.note",
+            id: path,
+            title,
+            body: text,
+          }}
+        />
       </header>
       {status === "conflict" && (
         <div className="flex flex-wrap items-center gap-x-2 bg-warning/10 px-3 py-1 text-xs text-warning">
@@ -718,7 +774,12 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
                     <footer className="mt-6 flex flex-wrap items-center gap-x-1 gap-y-0.5 border-t border-border pt-2.5">
                       <span className="text-xs text-muted-foreground">Linked from</span>
                       {loaded.backlinks.map((b) => (
-                        <Button key={b.path} variant="link" size="xs" onClick={() => onOpen(b.path)}>
+                        <Button
+                          key={b.path}
+                          variant="link"
+                          size="xs"
+                          onClick={(e) => onOpen(b.path, e.metaKey || e.ctrlKey || e.shiftKey)}
+                        >
                           {b.title}
                         </Button>
                       ))}

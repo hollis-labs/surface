@@ -4,23 +4,25 @@
  * for it, and every other tool by the plain row.
  */
 import type { ChatItem } from "@hollis-labs/surface-chat"
-import { type ComponentType, useCallback, useEffect, useState } from "react"
+import { CheckCircle2Icon, CheckIcon, CopyIcon, ExternalLinkIcon, ListChecksIcon } from "lucide-react"
+import { type ComponentType, useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Markdown } from "@/components/ui/markdown"
 import { Message, MessageContent, MessageNotice } from "@/components/ui/message"
 import { Spinner } from "@/components/ui/spinner"
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ui/tool"
-import { CardView } from "../cards/renderers"
-import { lateOpen, type ServerCard, useCard } from "../cards/store"
+import { isLive, setOpenedFromChat, useCard, useCardsByIds } from "../cards/store"
+import { desk } from "../desk/store"
 import { useEvent } from "../sdk"
 
 type Of<K extends ChatItem["kind"]> = Extract<ChatItem, { kind: K }>
 export type ToolItem = Of<"tool">
 
 /**
- * A card the agent raised, in the conversation. While the agent waits, the card itself is
- * docked above the composer and the conversation only says a question is up; once it is
- * answered the card is drawn here, closed, with what was answered.
+ * A card (or batch of cards) the agent raised in the conversation.
+ * Renders as a compact, fixed-height single-line receipt/status bar inside the chat stream
+ * so it never splits the conversation or causes layout jumps when cards open or close.
  */
 function AskedCard({ item }: { item: ToolItem }) {
   const input = (item.input ?? {}) as {
@@ -28,45 +30,103 @@ function AskedCard({ item }: { item: ToolItem }) {
     title?: string
     risk?: string
     payload?: Record<string, unknown>
+    questions?: { kind?: string; title?: string; payload?: Record<string, unknown> }[]
   }
-  let result: { id?: string; status?: string; data?: Record<string, unknown>; answers?: never[]; decisions?: never[] } =
-    {}
+  let result: {
+    id?: string
+    ids?: string[]
+    status?: string
+    data?: Record<string, unknown>
+    answers?: { questionId?: string; value?: unknown; note?: string }[]
+    decisions?: { itemId?: string; action?: string; note?: string }[]
+  } = {}
   try {
     if (item.result) result = JSON.parse(item.result)
   } catch {
     // The result is not the tool's JSON (an error message): the plain row shows it.
   }
-  const live = useCard(result.id ?? "")
+
+  const cardIds = useMemo(() => {
+    if (Array.isArray(result.ids) && result.ids.length > 0) return result.ids
+    if (typeof result.id === "string" && result.id) return [result.id]
+    return []
+  }, [result.id, result.ids])
+
+  const liveCards = useCardsByIds(cardIds)
   if (item.status === "error") return <ToolRow item={item} />
-  if (item.status === "running" || !input.kind) {
+
+  const questionList = Array.isArray(input.questions) ? input.questions : []
+  const totalCount = Math.max(cardIds.length, questionList.length, 1)
+  const primaryTitle =
+    input.title ||
+    questionList[0]?.title ||
+    (typeof input.payload?.question === "string" ? input.payload.question : "") ||
+    (totalCount > 1 ? `${totalCount} questions` : "Question")
+
+  const openCards = liveCards.filter(isLive)
+  const stillWaiting = item.status === "running" || (cardIds.length > 0 && openCards.length > 0)
+
+  const openInCardsWindow = () => {
+    setOpenedFromChat(true)
+    void desk.open("surface.cards", { args: { from_chat: true } })
+  }
+
+  if (stillWaiting) {
+    const waitingCount = openCards.length > 0 ? openCards.length : totalCount
     return (
-      <MessageNotice className="flex items-center gap-1.5">
-        <Spinner className="size-3" /> Waiting on your answer{input.title ? `: ${input.title}` : ""}
-      </MessageNotice>
+      <div
+        data-slot="chat-card-status"
+        className="my-1 flex items-center justify-between gap-2 rounded-sm border border-primary/35 bg-primary/8 px-2.5 py-1.5 text-xs"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Spinner className="size-3.5 shrink-0 text-primary" />
+          <span className="font-mono text-[11px] font-semibold text-primary">
+            {waitingCount > 1 ? `${waitingCount} questions waiting` : "Waiting for answer"}
+          </span>
+          <span className="truncate text-foreground/85">{primaryTitle}</span>
+        </div>
+        <Button
+          variant="outline"
+          size="xs"
+          className="h-5.5 shrink-0 gap-1 border-primary/35 bg-background/80 px-2 font-mono text-[10.5px] text-primary hover:bg-primary/15"
+          onClick={openInCardsWindow}
+        >
+          <ExternalLinkIcon className="size-3" />
+          Answer in Cards
+        </Button>
+      </div>
     )
   }
-  // Its run stopped waiting: the card is in the dock, still answerable, and drawn once.
-  if (live && lateOpen(live)) {
-    return (
-      <MessageNotice>
-        Stopped waiting for your answer{input.title ? ` to ${input.title}` : ""}. It is still in the cards above the
-        composer: answer it there and it is sent to the agent.
-      </MessageNotice>
-    )
-  }
-  const card: ServerCard = live ?? {
-    id: result.id ?? item.id,
-    kind: input.kind,
-    title: input.title,
-    risk: input.risk,
-    payload: input.payload,
-    status: result.status || "submitted",
-    outcome:
-      result.status === "submitted"
-        ? { status: "submitted", data: result.data, answers: result.answers, decisions: result.decisions }
-        : undefined,
-  }
-  return <CardView card={card} />
+
+  // Answered / completed receipt: compact 1-line pill that never splits the chat stream.
+  const answeredCount =
+    liveCards.length > 0 ? liveCards.filter((c) => c.status === "submitted").length || totalCount : totalCount
+  return (
+    <div
+      data-slot="chat-card-receipt"
+      className="my-1 flex items-center justify-between gap-2 rounded-sm border border-border/70 bg-muted/30 px-2.5 py-1.5 text-xs"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <CheckCircle2Icon className="size-3.5 shrink-0 text-success" />
+        <span className="font-mono text-[11px] font-medium text-success">
+          {totalCount > 1 ? `Answered ${answeredCount} of ${totalCount}` : "Answered"}
+        </span>
+        <span className="truncate text-muted-foreground">{primaryTitle}</span>
+      </div>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="h-5 shrink-0 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+        onClick={() => {
+          setOpenedFromChat(false)
+          void desk.open("surface.cards", { args: { manual: true } })
+        }}
+      >
+        <ListChecksIcon className="size-3" />
+        View
+      </Button>
+    </div>
+  )
 }
 
 /** A card the agent showed or changed without waiting: a quiet line; the card is in the dock. */
@@ -106,7 +166,23 @@ function GeneratedSurface({ item }: { item: ToolItem }) {
       </MessageNotice>
     )
   }
-  if (live) return <CardView card={live} />
+  if (live) {
+    return (
+      <div className="my-1 flex items-center justify-between gap-2 rounded-sm border border-border/70 bg-muted/30 px-2.5 py-1.5 text-xs">
+        <span className="truncate text-muted-foreground">
+          Showed you{title ? `: ${title}` : " a generated surface"}
+        </span>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="h-5 shrink-0 px-1.5 font-mono text-[10.5px]"
+          onClick={() => void desk.open("surface.cards", { args: { manual: true } })}
+        >
+          View
+        </Button>
+      </div>
+    )
+  }
   return (
     <MessageNotice>
       Showed you{title ? `: ${title}` : " a generated surface"}
@@ -196,28 +272,78 @@ function DeskPlan({ item }: { item: Of<"plan"> }) {
   )
 }
 
+/** Assistant turn with clear separation, topic/thread badge, and hover copy action. */
+function AssistantMessage({ item, topic, slot }: { item: Of<"text">; topic?: string; slot?: string }) {
+  const [copied, setCopied] = useState(false)
+  if (!item.text) {
+    return item.streaming ? (
+      <MessageNotice className="flex items-center gap-1.5">
+        <Spinner className="size-3" /> Writing…
+      </MessageNotice>
+    ) : null
+  }
+  const copy = () => {
+    void navigator.clipboard?.writeText(item.text).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    })
+  }
+  const activeTopic = topic || slot || "general"
+  return (
+    <Message from="assistant" className="my-1">
+      <MessageContent>
+        <div className="mb-1 flex items-center gap-1.5 border-b border-border/60 pb-1.5">
+          <span className="size-1.5 rounded-full bg-primary" />
+          <span className="font-mono text-[11px] font-semibold text-primary">Agent</span>
+          <Badge
+            variant="outline"
+            className="h-4 border-chart-2/30 bg-chart-2/10 px-1.5 py-0 font-mono text-[10px] text-chart-2"
+            title={`Tracking topic: #${activeTopic}`}
+          >
+            #{activeTopic}
+          </Badge>
+          {slot && topic && slot !== topic && (
+            <Badge
+              variant="secondary"
+              className="h-4 px-1.5 py-0 font-mono text-[10px] text-muted-foreground"
+              title={`Active context slot: ${slot}`}
+            >
+              {slot}
+            </Badge>
+          )}
+          {item.streaming && (
+            <span className="flex items-center gap-1 font-mono text-[10.5px] text-primary">
+              <Spinner className="size-2.5" /> streaming
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="ml-auto size-5 opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
+            title={copied ? "Copied" : "Copy response"}
+            aria-label={copied ? "Copied" : "Copy response"}
+            onClick={copy}
+          >
+            {copied ? <CheckIcon className="size-3 text-success" /> : <CopyIcon className="size-3" />}
+          </Button>
+        </div>
+        <Markdown streaming={item.streaming}>{item.text}</Markdown>
+      </MessageContent>
+    </Message>
+  )
+}
+
 /** One kind → how it is drawn. */
 export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }> } = {
   user: ({ item }) =>
     item.auto ? (
       <MessageNotice>{item.auto}</MessageNotice>
     ) : (
-      <Message from="user">
+      <Message from="user" className="mt-2 first:mt-0">
         <MessageContent>{item.text}</MessageContent>
       </Message>
     ),
-  text: ({ item }) =>
-    item.text ? (
-      <Message from="assistant">
-        <MessageContent>
-          <Markdown streaming={item.streaming}>{item.text}</Markdown>
-        </MessageContent>
-      </Message>
-    ) : item.streaming ? (
-      <MessageNotice className="flex items-center gap-1.5">
-        <Spinner className="size-3" /> Writing…
-      </MessageNotice>
-    ) : null,
+  text: ({ item }) => <AssistantMessage item={item} />,
   tool: ({ item }) => {
     const Card = toolCards[item.name] ?? ToolRow
     return <Card item={item} />
@@ -226,7 +352,10 @@ export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }
   notice: ({ item }) => <MessageNotice tone={item.tone}>{item.text}</MessageNotice>,
 }
 
-export function ItemView({ item }: { item: ChatItem }) {
+export function ItemView({ item, topic, slot }: { item: ChatItem; topic?: string; slot?: string }) {
+  if (item.kind === "text") {
+    return <AssistantMessage item={item} topic={topic} slot={slot} />
+  }
   const Draw = renderers[item.kind] as ComponentType<{ item: ChatItem }>
   return <Draw item={item} />
 }

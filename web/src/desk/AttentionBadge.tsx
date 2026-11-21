@@ -23,15 +23,21 @@ export function AttentionBadge({ ui }: { ui: UI }) {
   const first = a.items[0]
   return (
     <Button
-      variant={needs > 0 ? "secondary" : "ghost"}
-      size="sm"
+      variant="ghost"
+      size="xs"
+      className={`h-5.5 gap-1.5 rounded-sm px-2 font-mono text-xs ${
+        needs > 0
+          ? "bg-accent text-primary hover:bg-accent hover:text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+      }`}
       aria-pressed={needs > 0}
+      data-bar-on={needs > 0 || undefined}
       aria-label={`${total} waiting: ${summary}. Jump to the first.`}
       title={`${summary}\nNext: ${first?.title ?? first?.subject ?? ""}  (⌘.)`}
       onClick={() => void jumpTo(first, ui)}
     >
-      <Icon name={needs > 0 ? "bell-ring" : "bell"} />
-      <span className="tabular-nums">{total}</span>
+      <Icon name={needs > 0 ? "bell-ring" : "bell"} size={14} />
+      <span className="tabular-nums">{needs > 0 ? `${needs} for you` : `${total}`}</span>
     </Button>
   )
 }

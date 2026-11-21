@@ -57,6 +57,7 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("POST /api/cards", s.showCard)
 	mux.HandleFunc("GET /api/cards/{id}", s.card)
 	mux.HandleFunc("POST /api/cards/{id}/response", s.respondCard)
+	mux.HandleFunc("POST /api/cards/{id}/hold", s.holdCard)
 
 	mux.HandleFunc("GET /api/layouts", s.layouts)
 	mux.HandleFunc("POST /api/layouts", s.saveLayout)
@@ -460,6 +461,20 @@ func (s *server) respondCard(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, cards.ErrClosed):
 		write(w, http.StatusConflict, map[string]any{"error": err.Error(), "card": c})
+	case errors.Is(err, cards.ErrNotFound):
+		fail(w, http.StatusNotFound, err)
+	case err != nil:
+		fail(w, http.StatusUnprocessableEntity, err)
+	default:
+		ok(w, c)
+	}
+}
+
+// holdCard releases a blocking agent question from waiting in-turn so the owner can chat
+// with the agent or inspect the desk and answer it in the Cards window.
+func (s *server) holdCard(w http.ResponseWriter, r *http.Request) {
+	c, err := s.a.Cards().End(r.Context(), r.PathValue("id"), cards.Abandoned)
+	switch {
 	case errors.Is(err, cards.ErrNotFound):
 		fail(w, http.StatusNotFound, err)
 	case err != nil:

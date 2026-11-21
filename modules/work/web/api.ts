@@ -313,7 +313,7 @@ export interface ViewArgs {
   ws: string
   space: WorkSpace
   picked: string | null
-  pick: (id: string) => void
+  pick: (id: string, newWindow?: boolean) => void
   changed: () => void
   setError: (s: string) => void
 }

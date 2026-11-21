@@ -20,26 +20,42 @@ type FleetDisk struct {
 	Total *float64 `json:"total"`
 }
 type FleetMetrics struct {
-	CPUPercent      *float64    `json:"cpu_percent,omitempty"`
-	MemoryUsed      *float64    `json:"memory_used,omitempty"`
-	Disks           []FleetDisk `json:"disks,omitempty"`
-	CPU             *float64    `json:"cpu,omitempty"`
-	Load1           *float64    `json:"load1,omitempty"`
-	Load5           *float64    `json:"load5,omitempty"`
-	Load15          *float64    `json:"load15,omitempty"`
-	MemoryAvailable *float64    `json:"memory_available,omitempty"`
-	MemoryTotal     *float64    `json:"memory_total,omitempty"`
-	DiskFree        *float64    `json:"disk_free,omitempty"`
-	DiskTotal       *float64    `json:"disk_total,omitempty"`
+	CPUPercent      *float64          `json:"cpu_percent,omitempty"`
+	MemoryUsed      *float64          `json:"memory_used,omitempty"`
+	Disks           []FleetDisk       `json:"disks,omitempty"`
+	CPU             *float64          `json:"cpu,omitempty"`
+	CPUModel        string            `json:"cpu_model,omitempty"`
+	GPUCount        *int              `json:"gpu_count,omitempty"`
+	GPUModel        string            `json:"gpu_model,omitempty"`
+	OS              string            `json:"os,omitempty"`
+	OSVersion       string            `json:"os_version,omitempty"`
+	Arch            string            `json:"arch,omitempty"`
+	Kernel          string            `json:"kernel,omitempty"`
+	DiskMount       string            `json:"disk_mount,omitempty"`
+	UptimeSeconds   *int64            `json:"uptime_seconds,omitempty"`
+	Tools           map[string]bool   `json:"tools,omitempty"`
+	Units           map[string]string `json:"units,omitempty"`
+	Load1           *float64          `json:"load1,omitempty"`
+	Load5           *float64          `json:"load5,omitempty"`
+	Load15          *float64          `json:"load15,omitempty"`
+	MemoryAvailable *float64          `json:"memory_available,omitempty"`
+	MemoryTotal     *float64          `json:"memory_total,omitempty"`
+	DiskFree        *float64          `json:"disk_free,omitempty"`
+	DiskTotal       *float64          `json:"disk_total,omitempty"`
 }
 type FleetHost struct {
-	Name     string       `json:"name"`
-	Role     string       `json:"role"`
-	State    string       `json:"state"`
-	LastSeen string       `json:"last_seen,omitempty"`
-	ProbedAt string       `json:"probed_at,omitempty"`
-	Stale    bool         `json:"stale"`
-	Metrics  FleetMetrics `json:"metrics"`
+	Name      string            `json:"name"`
+	Role      string            `json:"role"`
+	Provider  string            `json:"provider,omitempty"`
+	Owner     string            `json:"owner,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	State     string            `json:"state"`
+	Reason    string            `json:"reason,omitempty"`
+	LastSeen  string            `json:"last_seen,omitempty"`
+	ProbedAt  string            `json:"probed_at,omitempty"`
+	CheckedAt string            `json:"checked_at,omitempty"`
+	Stale     bool              `json:"stale"`
+	Metrics   FleetMetrics      `json:"metrics"`
 }
 type FleetSample struct {
 	SampleAt string `json:"sample_at,omitempty"`
@@ -141,17 +157,22 @@ func readFleetHosts(ctx context.Context, link tetherlink.Caller) (FleetResult, e
 		var data struct {
 			Items []struct {
 				Host struct {
-					Name string `json:"name"`
-					Role string `json:"role"`
+					Name     string            `json:"name"`
+					Role     string            `json:"role"`
+					Provider string            `json:"provider"`
+					Owner    string            `json:"owner"`
+					Labels   map[string]string `json:"labels"`
 				} `json:"host"`
 				State  string `json:"state"`
+				Reason string `json:"reason"`
 				Status struct {
 					Status string `json:"status"`
 				} `json:"status"`
-				LastSeen string       `json:"last_seen"`
-				ProbedAt string       `json:"probed_at"`
-				Stale    bool         `json:"stale"`
-				Probed   FleetMetrics `json:"probed"`
+				LastSeen  string       `json:"last_seen"`
+				ProbedAt  string       `json:"probed_at"`
+				CheckedAt string       `json:"checked_at"`
+				Stale     bool         `json:"stale"`
+				Probed    FleetMetrics `json:"probed"`
 			} `json:"items"`
 		}
 		if err = json.Unmarshal([]byte(raw), &data); err != nil || data.Items == nil {
@@ -169,7 +190,20 @@ func readFleetHosts(ctx context.Context, link tetherlink.Caller) (FleetResult, e
 			if state == "" {
 				state = "unknown"
 			}
-			result.Hosts = append(result.Hosts, FleetHost{Name: item.Host.Name, Role: item.Host.Role, State: state, LastSeen: item.LastSeen, ProbedAt: item.ProbedAt, Stale: item.Stale, Metrics: item.Probed})
+			result.Hosts = append(result.Hosts, FleetHost{
+				Name:      item.Host.Name,
+				Role:      item.Host.Role,
+				Provider:  item.Host.Provider,
+				Owner:     item.Host.Owner,
+				Labels:    item.Host.Labels,
+				State:     state,
+				Reason:    item.Reason,
+				LastSeen:  item.LastSeen,
+				ProbedAt:  item.ProbedAt,
+				CheckedAt: item.CheckedAt,
+				Stale:     item.Stale,
+				Metrics:   item.Probed,
+			})
 		}
 		if len(data.Items) < 25 {
 			break

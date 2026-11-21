@@ -40,9 +40,14 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 ### Core and app shell
 - [x] Core separate from modules (seam test, `core/api_test.go`)
 - [x] Generator (`cmd/surface`): from surface.yaml to Substrate shell and wiring
-- [x] Windows and layout: tile, tab and float in a tree the server owns; focus history; maximize
+- [x] Windows and layout: tile, tab and float in a tree the server owns; focus history; maximize; **full-frame module switching by default** (new module replaces active module; closing restores previous module or trail; per-module autotiling via `View.Tiling: "full" | "tile"`)
+- [x] **Contained in-module navigation**: clicking items inside a module opens detail views in-place within that module; modifier-click (`⌘`/`Ctrl`/`Shift`) or the pop-out icon opens a new window
+- [x] **3-level Nav Groups semantic & Menu Organizer** (`registerNavGroup`, `registerNavItem`, `useNavTree` in `@hollis-labs/surface-page/sdk`, persisted in `surface.nav_config`, configurable live in **Settings → Navigation & Menu**)
+- [x] **Reusable `<ObjectActionsMenu />` & callback registry** (`registerObjectAction`, `useObjectActions`): copy reference/Markdown link, add to agent context, pin, bookmark, add mark, forward (Agent chat, Tether mail, Request status), send to location (Scratchpad, Frag, Notes, Drafts), and download
+- [x] **Two-pane Settings Workbench** (`surface.settings`): category rail, instant filter, bounded cards, segmented enum switches, and embedded 3-level Menu Organizer
+- [x] **Cite slide-over drawer (`<CiteDrawer />`) & hover card parity**: boot-time `initCite()` prefetching (zero first-hover layout shift), `"View"` action opening the slide-over drawer and auto-closing the hover card, compact `CiteRecordHeader`, and `<ObjectActionsMenu />`
 - [x] Saved layouts with a setup (mode, standing instructions, reflexes)
-- [x] Palette and commands (core, modules, page), with shortcuts
+- [x] Palette and commands (core, modules, page), with `Tabs | Commands` mode bar and immediate search autofocus on open
 - [x] Live app config: settings in the DB, no restart needed
 - [x] Collaboration marks on any module's refs (owner and agent)
 - [x] HTTP API, SSE event bus, MCP endpoint, CLI (`open|run|call|tools|desk|settings|layouts`)
@@ -52,22 +57,26 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 - [ ] Rebinding shortcuts; window snapping in float mode
 
 ### Modules
-- [x] Notes, Files, Scratch, Drafts, Browser
+- [x] Notes, Files, Scratch, Drafts, Browser (with native WebView bridge & readable proxy fallback)
 - [x] Design module and review window (design jobs, branch preview against base, marks, rounds to the Design team, approval bound to a commit)
-- [x] Basalisk ports: terminal, files, viewer, diagram, inbox, reader
+- [x] Basalisk ports: terminal (with in-module multi-pane autotiling), files, viewer, diagram, inbox, reader, frag, work (Planner, Content, Writer), projects, registry, tether, assist
+- [x] **Operations** (`modules/ops`, CW-20261120-0117): workstream board (`Kanban | Cards | Timeline`), unnumbered launch-order Queued band, **`x of y` expandable work breakdown** on each card (across child workstreams, `active_when` checklist items, and Torque tasks), inline per-unit comments/notes via Surface Marks, **Request status** action, `<ObjectActionsMenu />`, and tracker seed preview/apply
+- [x] **Agent Workbench** (`modules/workbench`, in Studio): library, templates, validation, versions, editors, offline and live eval runs, comparison, and improvement proposals
 - [x] Builder (Interaction Builder, in Studio)
 - [x] **Approvals** (`approvals`, CW-20261119-0041): Gatecrasher's approvals as cards. The module follows Gatecrasher's event stream as the owner (`approvals.url`, `approvals.key_file`), resuming from the last seq handled. Each pending approval is shown as a card: a grant on the core's approval card (one change per scope, so the owner can narrow; a critical one asks for the phrase), a choice on a choice card, a question on a prompt card. The owner's answer is sent to Gatecrasher's decide, and the card goes when the approval closes anywhere. A secret request is the module's own card (`gatecrasher.secret`), whose form posts the value from the page straight to the producer's intake; it never reaches the server, its database, its log, the bus or the agent (a canary test checks this)
-- [ ] Remaining Basalisk ports: Frag, Planner, Contexts, Done for you, Story, Writer, Content
+- [ ] Remaining Basalisk ports: Contexts, Done for you, Story
 - [ ] Reader's Fragments Engine half
 - [ ] Move Design onto `module/tetherlink`
 - [ ] Run-time loaded and generated modules (the contract leaves room for them)
 - [~] **Module agent profiles** (CW-20261120-0128, in review): the contract for module-declared skills and helpers. A module ships an optional profile, `modules/<id>/profile/` (a Nanite agent directory without host.yaml or .mcp.json: agent.md, context/, skills/, variants/, tools/, steering.json; evals/ is the Workbench's), embedded and named by `Manifest.Profile` (`module.ProfileFS`). On the Nanite runner each turn runs as the pinned profile (the panel's Profile picker, or the agent's `profile_switch`, act level; kept per conversation in `agent_profile_pins`), else the focused module's, else the app's seat. All profiles share the conversation, front desk, mailbox, tools, levels, grants, the Approver and the identity (one ADE, one Warden grant); internal helpers are Nanite variants inside a profile, not identities. The run log's `profile` column says which profile acted. Off on the scripted runner. Not yet: steering.json applied (Nanite takes steering once, at open), a per-request header naming the profile (Nanite's gateway headers are static), split grants per profile (Warden token exchange). Format: writing-a-module.md, "An agent profile"
-- [ ] The rest of the later contract: data and service dependencies, module-declared reflexes and triggers outside a profile, install-time permissions
+- [ ] The rest of the later contract: data and service dependencies, module-declared reflexes and triggers outside a profile, install-time permissions, Go `Manifest.NavGroups` for out-of-tree backend plugins (CW-20261121-0105)
 
 ### Embedded agent
-- [x] Agent panel: one agent beside the windows, asks before a write
+- [x] Agent panel: one agent beside the windows, asks before a write; removable context attachment chips above the composer (`surface:add-to-context`)
 - [x] Nanite embedded runtime and scripted test runner
-- [x] Context slots: chosen by the window in front and the mode, with a pin through `context_switch`, per-slot notes, live Knowledge and budgets
+- [x] Context slots: chosen by the window in front and the mode (`surface.context_mode`: `auto` or `manual`), with a pin through `context_switch`, per-slot notes, live Knowledge and budgets
+- [x] **Context Modal & Developer Agent Inspector** (CW-20261120-0060): clickable context pill in the agent panel opens the Context Modal (`Now` & `History`); `surface.dev_mode` enables the Developer Agent Inspector (`i` button) showing active profile, instructions, tools, skills, helpers, prompt assembly, and trace signals
+- [x] **Folded Activity Line & Activity Timeline Window** (`surface.activity`): consecutive tool calls collapse into a single live activity bar in chat and open a detailed vertical timeline window on click
 - [x] Router: rules answered without the model (`/open`, `/layout`, `/run`, plus the owner's rules)
 - [x] Reflexes: text, predicate, event and focus triggers; remind, halt, run_command and call_tool actions; switched on per layout
 - [x] Approval levels read/act/write/confirm, plus the `Approver` hook
@@ -99,22 +108,22 @@ Apps today: **Desk** (:8190, running Nanite) and **Studio** (:8091, with the Int
 
 ### Cards and generated UI
 - [x] Cards held on the server: show, update, answer once, lapse by the server's clock; `card_show`, `card_ask`, `card_update`; ten `card-*` registry components
+- [x] **Non-blocking card hold, wizard pagination & universal escape hatch** (CW-20261120-0060): one-click `"Hold & open in Cards window"` unblocks the chat composer; multi-question wizards paginate `N` at a time (`surface.wizard_page_size`); every interactive card includes `"Other: tell the agent…"`
 - [x] GenUI with Surface as host: three reviewed patterns (approval, form, list with detail), immutable snapshots, journaled actions run once, a second step for high-risk choices
 - [ ] Card lifecycle (audit gap 4): end-of-turn next-actions, a card lapses when the owner types instead of answering, edit before approving, approval bound to a hash, lapse tied to state, a per-turn budget for questions, a blocked-on-you cascade
 - [ ] GenUI additions (gap 9): a next-actions card, a sandboxed visual with a screenshot self-check, a report kit restricted to theme tokens
 
 ### Chat
 - [x] `packages/chat` (wire, reducer, store, scroll-follow) and the registry components conversation, message, markdown, prompt-input and tool
-- [~] Chat composer mock-up (Design, CW-20261118-0040, in review)
+- [x] Framed assistant turns with `#slot` topic tags, rich Markdown hierarchy, vertical-only scroll lock, and compact single-border composer
 - [ ] Input semantics, the rest of gap 3: steer, queue and interrupt as separate actions; stop holds the queue; a stall banner; a `/btw` side-chat fork
 
 ### Interface standard, theme and design
-- [x] Theme, registry (36 components), sync and drift check; the page built entirely from registry components
+- [x] Theme, registry (61 items), sync and drift check; the page built entirely from registry components
 - [x] `app-frame` for apps that are not a desk
-- [x] Theme system: Blade Runner default, mixed and mono type, Hyprland borders, bar picker, dark only; scrollbars hidden
+- [x] **Taste & Design System ([docs/taste.md](taste.md))**: Evolved Blade Runner baseline theme, standardized `6px`/`5px`/`4px` corner radii, mixed and mono type, right-aligned window controls (`[Float/Dock, Maximize, Close X]`), Basalisk header/menu/palette/modal parity, and **Workflow Golden Samples** (`surface.workflows`)
 - [x] One version line (`vX.Y.Z`) for the registry, Go module and npm packages; `make pack-check`
 - [x] Live design review, slice 1
-- [ ] **Design polish**: the owner's next focus. The base theme is meant to be a good starting point for Basalisk and other apps. (Design rounds CW-20261119-0006 palettes and 0007 bar and window chrome; approval card mock-up 0004)
 - [ ] `surface-ui report` shows whether a newer registry tag exists (CW-20261118-0002)
 - [ ] Automatic registry-update PRs for app repos (CW-20261118-0003)
 - [ ] ui-shots for palettes; Diagram fit zoom (about 22% in half-width windows)

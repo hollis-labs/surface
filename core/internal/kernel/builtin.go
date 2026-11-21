@@ -23,6 +23,10 @@ var coreSettings = []module.Setting{
 	{Key: "confirm_close_dirty", Title: "Ask before closing unsaved work", Type: module.SettingBool, Default: true},
 	{Key: "agent_selector", Title: "Who picks the agent's context", About: "focus: the window in front picks the slot (and a slot you pin holds). classifier: the classifier may overrule the window in front when it is sure (p ≥ 0.7) the message is about another slot; a pin still wins. Check its record first at /api/agent/classify/replay.", Type: module.SettingEnum, Default: "focus", Options: []string{"focus", "classifier"}},
 	{Key: "agent_trace", Title: "Keep a context trace", About: "Record, in this app's database, what each message put in front of the agent and why, and what you did after it (a re-pin, a move to another window). It is what a classifier that picks the agent's context learns from. Read it at /api/agent/trace.", Type: module.SettingBool, Default: true},
+	{Key: "developer_mode", Title: "Developer mode", About: "Show the Agent Inspector in the agent panel: context pressure, token usage, runs, tool calls, standing notes, memory, reflexes, skills and trace.", Type: module.SettingBool, Default: false},
+	{Key: "card_display", Title: "Where the agent's cards open", About: "inline: in the agent panel above the composer. window: in the Cards window (holding questions so you can keep chatting until you submit or they expire).", Type: module.SettingEnum, Default: "inline", Options: []string{"inline", "window"}},
+	{Key: "card_window_slots", Title: "Slots that open cards in the Cards window", About: "Comma-separated slot names (or * for all) where the agent's questions open in the Cards window instead of inline.", Type: module.SettingString, Default: ""},
+	{Key: "card_page_size", Title: "Cards shown at a time in the Cards window", About: "How many open question cards to show per wizard step in the Cards window.", Type: module.SettingInt, Default: 3},
 }
 
 // coreViews are the core's own windows. Their bodies are in the page's core (web/src/desk).
@@ -31,6 +35,8 @@ var coreViews = []module.View{
 	{ID: "surface.layouts", Title: "Layouts", Icon: "layout-dashboard", Width: 520, Height: 560, Menu: true, Render: module.Component("surface/layouts")},
 	{ID: "surface.marks", Title: "Marks", Icon: "message-square-quote", Width: 480, Height: 600, Menu: true, Render: module.Component("surface/marks")},
 	{ID: "surface.cards", Title: "Cards", Icon: "gallery-vertical-end", Width: 480, Height: 640, Menu: true, Render: module.Component("surface/cards")},
+	{ID: "surface.activity", Title: "Activity", Icon: "activity", Width: 660, Height: 680, Menu: true, Render: module.Component("surface/activity")},
+	{ID: "surface.workflows", Title: "Workflows", Icon: "sparkles", Width: 980, Height: 740, Menu: true, Render: module.Component("surface/workflows")},
 	// Why the agent gets the context it gets: now, and turn by turn (the context trace).
 	{ID: "surface.context", Title: "Context", Icon: "scan-eye", Width: 1000, Height: 720, Menu: true, Render: module.Component("surface/context")},
 	// Every registry component in its variants and states, for design work and screenshots.
@@ -456,27 +462,82 @@ func coreTools(a *App) []module.Tool {
 				return map[string]any{"id": c.ID}, nil
 			}},
 		{Name: "card_ask", Level: module.LevelAct,
-			Description: "Ask the user something with a card and wait for the answer. Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. The result has status (submitted, canceled, expired) and the answer: data for a form, answers for prompt and choice, decisions for approval. canceled means the user declined: do not ask again unasked. expired means no answer came in time; the card stays up, and if the user answers it later the answer comes to you as a message.",
-			Input:       schema(`{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
+			Description: "Ask the user something with a card (or a batch of cards in questions) and wait for the answer—or set hold: true (or surface: \"window\") to place the questions in the Cards window and return immediately so the user can keep chatting with you while answering them (wizard style, page_size at a time). Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. All cards also let the user pick Other and tell you something in their own words. When held or answered later, the answers come to you as a message.",
+			Input:       schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"questions":{"type":"array","description":"Ask several card questions at once in the Cards window wizard.","items":{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"}}}},"hold":{"type":"boolean","description":"Do not block the conversation: hold the question(s) open in the Cards window so the user can chat with you before submitting."},"surface":{"type":"string","enum":["inline","window"],"description":"Where to display the card(s): inline in the chat panel or in the Cards window."},"page_size":{"type":"integer","description":"How many cards to show at a time in the Cards window wizard (e.g. 3)."},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
 			Describe:    func(json.RawMessage) string { return "Ask you something" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[struct {
 					module.Card
-					Timeout int `json:"timeout_seconds"`
+					Questions []module.Card `json:"questions"`
+					Hold      bool          `json:"hold"`
+					Surface   string        `json:"surface"`
+					PageSize  int           `json:"page_size"`
+					Timeout   int           `json:"timeout_seconds"`
 				}](raw)
 				if err != nil {
 					return nil, err
-				}
-				if !cards.Answerable(in.Kind) {
-					return nil, fmt.Errorf("a %s card does not ask anything: use card_show", in.Kind)
 				}
 				wait := time.Duration(min(max(in.Timeout, 0), 3600)) * time.Second
 				if wait == 0 {
 					wait = 10 * time.Minute
 				}
-				c := in.Card
+				expires := time.Now().Add(wait).UTC().Format(time.RFC3339)
+				if in.PageSize > 0 {
+					_ = a.cfg.Set(ctx, "surface.card_page_size", in.PageSize)
+				}
+				batch := in.Questions
+				if len(batch) == 0 {
+					batch = []module.Card{in.Card}
+				}
+				for _, item := range batch {
+					if !cards.Answerable(item.Kind) {
+						return nil, fmt.Errorf("a %s card does not ask anything: use card_show", item.Kind)
+					}
+				}
+				// Check whether the app settings or tool args route these cards to the Cards window (held).
+				hold := in.Hold || in.Surface == "window" || len(batch) > 1
+				if !hold && in.Surface != "inline" {
+					coreCfg := a.cfg.Scoped(CoreScope)
+					if coreCfg.String("card_display") == "window" {
+						hold = true
+					} else if slotsCSV := strings.TrimSpace(coreCfg.String("card_window_slots")); slotsCSV != "" {
+						activeSlot := ""
+						if f, ok := a.desk.Focused(ctx); ok {
+							activeSlot = f.Module
+						}
+						for _, part := range strings.Split(slotsCSV, ",") {
+							p := strings.TrimSpace(part)
+							if p == "*" || (p != "" && strings.EqualFold(p, activeSlot)) {
+								hold = true
+								break
+							}
+						}
+					}
+				}
+				if hold {
+					var ids []string
+					for _, item := range batch {
+						item.Source, item.Blocking = "agent", false
+						item.ExpiresAt = expires
+						shown, serr := a.cards.Show(ctx, item)
+						if serr != nil {
+							return nil, serr
+						}
+						// Mark as abandoned (waiting for late/held answer) so the card stays open in the
+						// Cards window while freeing the conversation wire for the user to chat.
+						_, _ = a.cards.End(context.WithoutCancel(ctx), shown.ID, cards.Abandoned)
+						ids = append(ids, shown.ID)
+					}
+					_, _ = a.desk.Open(ctx, "surface.cards", module.OpenOptions{
+						Background: false,
+						Args:       map[string]any{"from_chat": true},
+						Reason:     "Questions waiting for your answer",
+					})
+					return map[string]any{"ids": ids, "status": "held", "note": "The questions are open in the Cards window so the user can review and chat with you before submitting. Their answers will arrive as a message when submitted."}, nil
+				}
+				c := batch[0]
 				c.Source, c.Blocking = "agent", true
-				c.ExpiresAt = time.Now().Add(wait).UTC().Format(time.RFC3339)
+				c.ExpiresAt = expires
 				shown, err := a.cards.Show(ctx, c)
 				if err != nil {
 					return nil, err
@@ -488,6 +549,9 @@ func coreTools(a *App) []module.Tool {
 					// user can still answer it, and the answer comes to the agent as a message.
 					_, _ = a.cards.End(context.WithoutCancel(ctx), shown.ID, cards.Abandoned)
 					return nil, err
+				}
+				if done.Status == cards.Abandoned {
+					return map[string]any{"id": done.ID, "status": "held", "note": "The user moved this question to the Cards window to answer after checking or chatting. The answer will arrive as a message when submitted."}, nil
 				}
 				out := map[string]any{"id": done.ID, "status": done.Status}
 				if o := done.Outcome; o != nil {

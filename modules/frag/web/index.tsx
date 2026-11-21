@@ -81,6 +81,7 @@ const TONE: Record<string, string> = {
 }
 
 function CaptureBox({ win, desk, api }: ViewProps) {
+  const mode = typeof win.args.view === "string" ? win.args.view : "capture"
   const [draft, setDraft] = useState<Draft>({ content: "", tags: "" })
   const [loaded, setLoaded] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
@@ -121,12 +122,23 @@ function CaptureBox({ win, desk, api }: ViewProps) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: opening with compose again refocuses the box
   useEffect(() => {
-    if (win.focused && !preview) box.current?.focus()
-  }, [win.focused, win.args.compose, preview])
+    if (mode !== "outbox" && win.focused && !preview) box.current?.focus()
+  }, [win.focused, win.args.compose, preview, mode])
 
   useEffect(() => {
-    desk.report(win.id, { kind: "data", ref: "frag:draft" })
-  }, [desk, win.id])
+    if (mode !== "outbox") desk.report(win.id, { kind: "data", ref: "frag:draft" })
+  }, [desk, win.id, mode])
+
+  if (mode === "outbox") {
+    return (
+      <Outbox
+        win={win}
+        desk={desk}
+        api={api}
+        onBackToCapture={() => void desk.setArgs(win.id, { ...win.args, view: "capture" })}
+      />
+    )
+  }
 
   // Every edit is kept on the server, a moment after the typing stops.
   const edit = (patch: Partial<Draft>) => {
@@ -222,7 +234,15 @@ function CaptureBox({ win, desk, api }: ViewProps) {
           <Switch size="sm" checked={preview} onCheckedChange={togglePreview} aria-label="Preview" />
           preview
         </span>
-        <Button size="xs" variant="ghost" onClick={() => void desk.open("frag.outbox")}>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) void desk.open("frag.outbox")
+            else void desk.setArgs(win.id, { ...win.args, view: "outbox" })
+          }}
+          title="Open the outbox (⌘-click for new window)"
+        >
           Outbox
         </Button>
         <span className="text-muted-foreground">
@@ -242,7 +262,7 @@ const STATE_BADGE: Record<State, "default" | "secondary" | "destructive" | "outl
 
 type Filter = "all" | State
 
-function Outbox({ win, desk, api }: ViewProps) {
+function Outbox({ win, desk, api, onBackToCapture }: ViewProps & { onBackToCapture?: () => void }) {
   const [items, setItems] = useState<Capture[]>([])
   const [status, setStatus] = useState<Status | null>(null)
   const [filter, setFilter] = useState<Filter>("all")
@@ -315,9 +335,29 @@ function Outbox({ win, desk, api }: ViewProps) {
           >
             Check connection
           </Button>
-          <Button size="sm" variant="outline" onClick={() => void desk.run("frag.capture")}>
+          <Button
+            size="sm"
+            variant="outline"
+            title="Switch to Capture (⌘-click for new window)"
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey) void desk.run("frag.capture")
+              else if (onBackToCapture) onBackToCapture()
+              else void desk.setArgs(win.id, { ...win.args, view: "capture" })
+            }}
+          >
             <Icon name="feather" /> Capture
           </Button>
+          {onBackToCapture && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title="Open Outbox in new window"
+              aria-label="Open Outbox in new window"
+              onClick={() => void desk.open("frag.outbox")}
+            >
+              <Icon name="square-arrow-out-up-right" />
+            </Button>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap gap-x-3 border-b px-3 py-1.5 text-muted-foreground text-xs">

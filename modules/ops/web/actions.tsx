@@ -33,19 +33,23 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
       refresh()
     }
   }
-  const canSend = !w.settled_at && (["planned", "parked", "queued"].includes(w.stage) || pending)
+  const canSend = !w.settled_at && (["planned", "parked", "queued", "in_flight"].includes(w.stage) || pending)
+  const alreadySent = !!w.orchestration_request?.message_id
   return (
     <>
       {w.settled_at ? (
         <Button
           size="xs"
           variant="ghost"
+          className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
           disabled={busy}
+          title="Unsettle workstream"
           onClick={(e) => {
             e.stopPropagation()
             void run(() => ops.unsettle(w.id, w.rev))
           }}
         >
+          <Icon name="rotate-ccw" size={11} />
           Unsettle
         </Button>
       ) : (
@@ -53,20 +57,37 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
           <Button
             size="xs"
             variant="ghost"
+            className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-success hover:text-success"
             disabled={busy}
+            title="Settle completed workstream"
             onClick={(e) => {
               e.stopPropagation()
               void run(() => ops.settle(w.id, w.rev))
             }}
           >
+            <Icon name="check-circle-2" size={11} />
             Settle
           </Button>
         )
       )}
       {canSend && (
         <Button
-          size="icon-xs"
+          size="xs"
           variant="ghost"
+          className={`h-6 gap-1 px-1.5 font-mono text-[10.5px] ${
+            alreadySent
+              ? "text-primary hover:text-primary"
+              : pending
+                ? "text-warning hover:text-warning"
+                : "text-muted-foreground hover:text-foreground"
+          }`}
+          title={
+            alreadySent
+              ? "Sent to orchestration (click to send follow-up instructions)"
+              : pending
+                ? "Orchestration send pending (click to retry)"
+                : `Send ${w.title} to orchestration`
+          }
           aria-label={`Send ${w.title} to orchestration`}
           onClick={(e) => {
             e.stopPropagation()
@@ -76,7 +97,8 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
             setOpen(true)
           }}
         >
-          <Icon name="send" />
+          <Icon name="send" size={11} />
+          <span>{alreadySent ? "Sent" : pending ? "Retry" : "Orchestrate"}</span>
         </Button>
       )}
       {!open && error && (

@@ -235,7 +235,7 @@ export function Chip({
   card: WorkCard
   kind?: WorkKind
   picked: boolean
-  pick?: (id: string) => void
+  pick?: (id: string, newWindow?: boolean) => void
   onPointerDown?: (e: React.PointerEvent) => void
 }) {
   return (
@@ -249,7 +249,7 @@ export function Chip({
         e.dataTransfer.effectAllowed = "move"
       }}
       onPointerDown={onPointerDown}
-      onClick={pick ? () => pick(card.id) : undefined}
+      onClick={pick ? (e) => pick(card.id, e.metaKey || e.ctrlKey || e.shiftKey) : undefined}
       title={`${kind?.label ?? card.kind} · ${label(card.stage) || "no stage"} · ${card.title}`}
     >
       <KindIcon kind={kind} size={11} />

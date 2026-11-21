@@ -84,6 +84,7 @@ function answerable({ card, respond: send }: CardRendererProps): AnswerableCardP
     stale: isStale(card.id),
     receipt: receiptOf(card),
     expires: !late && state === "open" && Number.isFinite(at) ? `at ${clock.format(at)}` : undefined,
+    allowOther: card.payload?.allow_other !== false,
     onRespond: send,
     ...(isLive(card) ? { draft: loadDraft(card.id), onDraft: (d) => saveDraft(card.id, d) } : {}),
   }
@@ -133,7 +134,7 @@ registerCard("choice", "1", (p) => (
     body={str(p.card.payload?.body)}
     options={list<CardChoiceOption>(p.card.payload?.options)}
     multiple={p.card.payload?.multiple === true}
-    allowOther={p.card.payload?.allow_other === true}
+    allowOther={p.card.payload?.allow_other !== false}
   />
 ))
 registerCard("form", "1", function FormRenderer(p) {

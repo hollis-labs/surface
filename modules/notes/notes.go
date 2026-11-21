@@ -32,7 +32,8 @@ func (m *mod) Manifest() module.Manifest {
 		ID: "notes", Title: "Notes", Version: "0.1.0",
 		About: "Markdown notes in a folder, with wiki links, search and marks.",
 		Views: []module.View{{
-			ID: "notes", Title: "Notes", Icon: "notebook-pen", Width: 980, Height: 680, Menu: true, Bare: true,
+			ID: "notes", Title: "Notes", Icon: "notebook-pen", Width: 980, Height: 680,
+			Menu: true, Multi: true, DefaultKey: "notes", Bare: true,
 			Render: module.Component("notes/main"), Opens: []string{"*.md"},
 			Describe: m.describe,
 		}},

@@ -110,7 +110,8 @@ func (s *Service) deliverLate(ctx context.Context, store lateCards, d *lateDeliv
 		}
 		return true
 	}
-	for _, c := range list {
+	for i := 0; i < len(list); {
+		c := list[i]
 		if s.wire == nil {
 			d.mu.Lock()
 			if !d.warned[c.ID] {
@@ -119,9 +120,17 @@ func (s *Service) deliverLate(ctx context.Context, store lateCards, d *lateDeliv
 					"card", c.ID, "title", c.Title)
 			}
 			d.mu.Unlock()
+			i++
 			continue
 		}
-		run, err := s.submitLate(ctx, c)
+		batch := list[i:]
+		var run string
+		var err error
+		if len(batch) > 1 {
+			run, err = s.submitLateBatch(ctx, batch)
+		} else {
+			run, err = s.submitLate(ctx, c)
+		}
 		if errors.Is(err, chat.ErrBusy) {
 			return true // the rest wait behind it, in order
 		}
@@ -136,14 +145,38 @@ func (s *Service) deliverLate(ctx context.Context, store lateCards, d *lateDeliv
 			// The host's own hook refused the turn: trying again would be refused again.
 			s.log.Warn("a late answer's turn was refused by the host", "card", c.ID, "reason", rejected.Message)
 		}
-		if _, err := store.MarkDelivered(context.WithoutCancel(ctx), c.ID); err != nil {
-			s.log.Warn("a late answer was delivered but not marked so", "card", c.ID, "err", err)
+		for _, item := range batch {
+			if _, merr := store.MarkDelivered(context.WithoutCancel(ctx), item.ID); merr != nil {
+				s.log.Warn("a late answer was delivered but not marked so", "card", item.ID, "err", merr)
+			}
 		}
 		if run != "" {
 			s.k.Events().Publish("agent.errand", map[string]any{"run_id": run, "module": LateErrand, "title": c.Title, "card": c.ID})
 		}
+		i += len(batch)
 	}
 	return false
+}
+
+// submitLateBatch submits multiple waiting late/held answers together as one consolidated turn.
+func (s *Service) submitLateBatch(ctx context.Context, batch []module.Card) (string, error) {
+	title := fmt.Sprintf("Answers to %d cards", len(batch))
+	meta, _ := json.Marshal(errandMeta{Auto: true, Errand: LateErrand, Title: title})
+	view, err := s.wire.svc.EnsureConversation(ctx, s.wire.agent)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "[The owner's answers to %d of your cards, submitted from the Cards window:]\n", len(batch))
+	for _, c := range batch {
+		t := cardTitle(c)
+		fmt.Fprintf(&b, "\n### %s (%s, id %s)\n%s\n", t, c.Kind, c.ID, answerText(c.Outcome))
+	}
+	r, err := s.wire.svc.Submit(ctx, view.ConversationID, chat.Turn{Text: strings.TrimSpace(b.String()), Meta: meta})
+	if err != nil {
+		return "", err
+	}
+	return r.RunID, nil
 }
 
 // submitLate submits one late answer as a turn on the agent's conversation.

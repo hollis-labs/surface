@@ -4,12 +4,12 @@
   "items": {
     "alert-dialog": {
       "files": {
-        "web/src/components/ui/alert-dialog.tsx": "d39348ea094dea9b83ecf1baac1cd0ef98b73944bcca1e592da04fd30f452787"
+        "web/src/components/ui/alert-dialog.tsx": "3feeb0220c15a081baf15c5be001453f1aae3a2e2164bc061ad1330c27e93eee"
       }
     },
     "app-frame": {
       "files": {
-        "web/src/components/ui/app-frame.tsx": "b13c38ade565cb1fa24737c961ba814bacf1576a715c2495c12b006bf8aa566b"
+        "web/src/components/ui/app-frame.tsx": "37832f11614ddf97e6a498789e5224e07165b97ae7200d8b8fda9e10911d7157"
       }
     },
     "attention-layer": {
@@ -24,7 +24,7 @@
     },
     "badge": {
       "files": {
-        "web/src/components/ui/badge.tsx": "d9fb280e266119c4b62a4c518e63152de27b094c68d3e5f8929d05bfb0c1bc6c"
+        "web/src/components/ui/badge.tsx": "6989d2359f893d2269cb162d7c9821e425cc7431df9e9905170e3210dcc7ace8"
       }
     },
     "breadcrumb": {
@@ -34,37 +34,37 @@
     },
     "button": {
       "files": {
-        "web/src/components/ui/button.tsx": "313353436d0fcc8e44ab470adb614b9fd013d28626f624328ea0d66d41a6c81b"
+        "web/src/components/ui/button.tsx": "cd353309a95d02710bd4a2ae42b976b7e083df22aff1e85d6ca75453393353ca"
       }
     },
     "card": {
       "files": {
-        "web/src/components/ui/card.tsx": "8ad3a18d36bda0598dc0e9aa96ea22854944d5443ee4946f1d173815e115375f"
+        "web/src/components/ui/card.tsx": "580cdb12795054043f35169710074755fd6e4ecd571658ab563445b634bd8486"
       }
     },
     "card-approval": {
       "files": {
-        "web/src/components/ui/card-approval.tsx": "0cddc51dd6cc8eb74fa66e7b2a0620abc0c1f5d204d7e02f7ec7a975d1bc8986"
+        "web/src/components/ui/card-approval.tsx": "107789747a1905a74e5028a922f89be461f2f5ca651093467ed6a232ed96d042"
       }
     },
     "card-choice": {
       "files": {
-        "web/src/components/ui/card-choice.tsx": "fef436ae5c1031a09607b97d826e8eb05fe81eda2b16e60c310cf458b3be73c9"
+        "web/src/components/ui/card-choice.tsx": "3c1ce80a621630761cf2820109a3d19233b7515a419efd9224e48276bd7c6e9d"
       }
     },
     "card-confirm": {
       "files": {
-        "web/src/components/ui/card-confirm.tsx": "89577cf45d77bae1362f12c3b3ad129ec8ec85b299774297fb481b0876378a87"
+        "web/src/components/ui/card-confirm.tsx": "014c91b04ed8099fa46627d59b3645129e60a3d879219bfd60af88b2b54f374e"
       }
     },
     "card-form": {
       "files": {
-        "web/src/components/ui/card-form.tsx": "1f4bca8b958309a030c37dad180a2c3ed331b622cda0730bfc4c75d163d3314e"
+        "web/src/components/ui/card-form.tsx": "cb5c72708dc9920736b390fb902e73bbc0cac773bfa5bc4c8a53242a4b706dc1"
       }
     },
     "card-frame": {
       "files": {
-        "web/src/components/ui/card-frame.tsx": "f8c63e21822f39e574e64b6759db273b06d027c3be94c024365db0a86e2324de"
+        "web/src/components/ui/card-frame.tsx": "5b445be28393cbae9ec0a7ac064e6bb4fdc5190789949273aa8a2ec5d946e8f8"
       }
     },
     "card-miss": {
@@ -99,12 +99,12 @@
     },
     "cite-card": {
       "files": {
-        "web/src/components/ui/cite-card.tsx": "b0e23b148ebf59542801b3607a2422ad5e4b7230ad08d561ac18bb617c9b3d6f"
+        "web/src/components/ui/cite-card.tsx": "3ce71abdc4ace0bd6a5a82f2a6f73c06eaad0f66d8cac21e4651f844c1134270"
       }
     },
     "cite-chip": {
       "files": {
-        "web/src/components/ui/cite-chip.tsx": "dd678fa4951ffee5737daa52a5e1e637413388f840efc4d6d42999849539e824"
+        "web/src/components/ui/cite-chip.tsx": "cde174a39428c1649d3924b9b7636c02a61356da490588001b866129797ce034"
       }
     },
     "collapsible": {
@@ -114,7 +114,7 @@
     },
     "command": {
       "files": {
-        "web/src/components/ui/command.tsx": "eaccda4b82a74406fc744a6ec084f56951a0a613e9c2a4f762b54fa548b376e9"
+        "web/src/components/ui/command.tsx": "af2d0798e1b188b930eae4a29f65bdf36ce73d370aa83c93c1f10622638fc9eb"
       }
     },
     "context-menu": {
@@ -124,17 +124,17 @@
     },
     "conversation": {
       "files": {
-        "web/src/components/ui/conversation.tsx": "6a314a6f92a2602c89a19a9410508e8b77e4119e7357e41dc1c4ced877e54b2b"
+        "web/src/components/ui/conversation.tsx": "e235936ab3b423cf02a1f97bb72175cef8df07ef9a60aa10a7327b7abe523a2d"
       }
     },
     "dialog": {
       "files": {
-        "web/src/components/ui/dialog.tsx": "8081cc14ab4d744b75925706523192f60cc75863e05cb986aaf6a08677c83304"
+        "web/src/components/ui/dialog.tsx": "a089477b54a2af4c78c2253771b8f93055d51321d9aff6466481726eeaf2333f"
       }
     },
     "dropdown-menu": {
       "files": {
-        "web/src/components/ui/dropdown-menu.tsx": "38eb2d79c390295e7038ed4c016543afdd5441611e9692f10c85f78434752a3f"
+        "web/src/components/ui/dropdown-menu.tsx": "f668adda9ce782b025ba002a61b90d92297b52c05705a3f59b7ffd9aede092f2"
       }
     },
     "empty": {
@@ -159,7 +159,7 @@
     },
     "hover-card": {
       "files": {
-        "web/src/components/ui/hover-card.tsx": "467504538bda69483fd582016db4c72391669841282ddea1e2d6d3013dc4e6f9"
+        "web/src/components/ui/hover-card.tsx": "4f5fd78864c2181bf3e38284cb0ad5a22144ac60ae2be22f5f851c8f78653d72"
       }
     },
     "input": {
@@ -169,7 +169,7 @@
     },
     "input-group": {
       "files": {
-        "web/src/components/ui/input-group.tsx": "492310e6d519441c3e2a3b11330b3f35da71bd37630672f749271b9585a88e64"
+        "web/src/components/ui/input-group.tsx": "1a3f47510ec29b9fcb5dcd47e3e250ef94a4e5a936ce56e441a698c11fa4fe1c"
       }
     },
     "item": {
@@ -189,18 +189,18 @@
     },
     "markdown": {
       "files": {
-        "web/src/components/ui/markdown.tsx": "97f2ac066b4290a1236ceebee79e79c76331eadf79e19930ff4770cb5c8cf685",
+        "web/src/components/ui/markdown.tsx": "b8fc90d4456755d608d5cc7a46661add00dcf3f813cbede2b9c133083502f32c",
         "web/src/components/ui/markdown.css": "f39f80c493a1689aa374703fd5126c1ead8ef6555684c1f7d1525b58ef040d54"
       }
     },
     "message": {
       "files": {
-        "web/src/components/ui/message.tsx": "10821a75fa664e608b360a4e91324ea390281122f4e8660c911fa0d6bbc09902"
+        "web/src/components/ui/message.tsx": "1d2fefe8c979587f822258b4e20332ca9d4fe3b8d3e06fd4605bb838bc3ed2fa"
       }
     },
     "popover": {
       "files": {
-        "web/src/components/ui/popover.tsx": "5fecff622f4eecc06e8be32bface11c59d529be5c0a1484c78c9e40530b2b7d0"
+        "web/src/components/ui/popover.tsx": "b2173cac05078b0fd53d8203632e451893f9c4f340b6e8f196064ee7bea4efab"
       }
     },
     "progress": {
@@ -210,7 +210,7 @@
     },
     "prompt-input": {
       "files": {
-        "web/src/components/ui/prompt-input.tsx": "6774a4405845cc9bf6cc3f033de6da90818770c707b888f09aa69f05e6040fdb"
+        "web/src/components/ui/prompt-input.tsx": "2b2339c5964cbe63289bfc729eddf88f8cb3749439adb092098a64083dda66de"
       }
     },
     "resizable": {
@@ -255,7 +255,7 @@
     },
     "table": {
       "files": {
-        "web/src/components/ui/table.tsx": "300dc171ff0e09543dce0787f43a3ceb0d168fa800eaecb98b6c5630f3c6d7e9"
+        "web/src/components/ui/table.tsx": "dfeaad5695615d1a71e041fbc74c4b05426c132fcd20db7d5c01ee54ecbcb862"
       }
     },
     "tabs": {
@@ -300,8 +300,8 @@
     },
     "window-manager": {
       "files": {
-        "web/src/components/ui/window-manager.tsx": "757b534d49430babf3cf76059f1d7d8bdabd57879010f38982a49803ea6c3d69",
-        "web/src/components/ui/window-manager.css": "102aa8d1c6949d14c49e07b70a8cf889b3f5412f4e9d91679e4d8aaa1d13c3e1"
+        "web/src/components/ui/window-manager.tsx": "a219d98cc38da8b84906168e079d3b4f8c18c586dd3ee9657b8b0e3154e1ae0f",
+        "web/src/components/ui/window-manager.css": "0a5fa40bffc78a63e0b0d5a42ee4a99bf6f0cb670924a079a3d2f59f4008b25b"
       }
     }
   }

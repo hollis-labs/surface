@@ -157,6 +157,7 @@ function CardApproval({
   decision,
   approveLabel = "Approve",
   rejectLabel = "Decline",
+  allowOther = true,
   className,
   receipt,
   ...a
@@ -206,7 +207,7 @@ function CardApproval({
         className,
       )}
       footer={
-        <CardFoot {...a} receipt={decision ? <DecisionReceipt decision={decision} /> : receipt}>
+        <CardFoot {...a} allowOther={allowOther} receipt={decision ? <DecisionReceipt decision={decision} /> : receipt}>
           {confirming ? (
             <div className="flex w-full flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2" role="alertdialog" aria-label="Confirm a high-risk approval">
               <p className="text-xs text-foreground">

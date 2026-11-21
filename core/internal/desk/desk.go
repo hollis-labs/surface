@@ -784,7 +784,12 @@ func (d *Desk) claim(i int, by module.Actor) {
 
 // background says whether an open should leave the focus where it is: when asked, or when a
 // delegate would otherwise take it from the owner's unsaved work (rule 2).
+// Exception: surface.cards opened in the foreground (when the agent raises questions for the owner)
+// takes focus immediately so the cards window is never hidden behind the active module.
 func (d *Desk) background(a Action) bool {
+	if a.View == "surface.cards" && !a.Background {
+		return false
+	}
 	return a.Background || (a.Actor.Delegate() && d.ownerBusy())
 }
 

@@ -35,6 +35,7 @@ interface Page {
   search?: boolean
   query?: string
   results?: { title: string; url: string; snippet?: string }[]
+  public_only?: boolean
   framable: boolean
 }
 
@@ -80,7 +81,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
     if (win.args.focus_address || !url) input.current?.focus()
   }, [win.args.focus_address, url])
 
-  const showReader = !page?.search && (reader || (page !== null && !page.framable))
+  const showReader = !page?.search && (reader || page?.public_only === true || (page !== null && !page.framable))
 
   // Read the page on the server: its title, whether it may be framed, and the reader text.
   // Only a new address or a reload (tick) reads it again.
@@ -92,7 +93,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
     setLoading(true)
     setErr("")
     api
-      .get<Page>(`read?url=${encodeURIComponent(url)}`)
+      .post<Page>(`read?url=${encodeURIComponent(url)}&public=${win.args.public_only === true}`, {})
       .then((p) => {
         if (!live) return
         setPage(p)
@@ -103,7 +104,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
     return () => {
       live = false
     }
-  }, [url, tick, api])
+  }, [url, tick, api, win.args.public_only])
 
   // desk.report replaces the window's state: report the whole of it.
   useEffect(() => {
@@ -119,7 +120,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
       })
       if (!r) return
       const hist = [...history.slice(0, at + 1), r.url].slice(-100)
-      void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1 })
+      void desk.setArgs(win.id, { url: r.url, history: hist, at: hist.length - 1, public_only: false })
     },
     [api, desk, win.id, history, at],
   )
@@ -136,7 +137,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
     const s = window.getSelection()?.toString().trim() ?? ""
     desk.report(win.id, { title: page?.title, reader: true, selection: s.slice(0, 2000) })
   }
-  const unframable = page !== null && !page.framable
+  const unframable = page !== null && (!page.framable || page.public_only === true)
   const readerComponents = useMemo<ComponentProps<typeof Markdown>["components"]>(
     () => ({
       a: ({ href, children }) => (
@@ -152,11 +153,14 @@ function BrowserView({ win, desk, api }: ViewProps) {
           {children}
         </a>
       ),
-      img: ({ src, alt }) => (
-        <img src={src} alt={alt ?? ""} className="max-w-full" loading="lazy" referrerPolicy="no-referrer" />
-      ),
+      img: ({ src, alt }) =>
+        page?.public_only ? (
+          <span>{alt || "Image"}</span>
+        ) : (
+          <img src={src} alt={alt ?? ""} className="max-w-full" loading="lazy" referrerPolicy="no-referrer" />
+        ),
     }),
-    [go],
+    [go, page?.public_only],
   )
 
   return (
@@ -209,11 +213,13 @@ function BrowserView({ win, desk, api }: ViewProps) {
         />
         <Tip
           label={
-            page?.search
-              ? "Search results"
-              : unframable
-                ? "This site cannot be shown in a frame: reader mode"
-                : "Reader mode"
+            page?.public_only
+              ? "Read-only page opened by the agent"
+              : page?.search
+                ? "Search results"
+                : unframable
+                  ? "This site cannot be shown in a frame: reader mode"
+                  : "Reader mode"
           }
         >
           <Toggle
@@ -253,7 +259,7 @@ function BrowserView({ win, desk, api }: ViewProps) {
             </EmptyHeader>
           </Empty>
         )}
-        {url && page && !page.search && !showReader && (
+        {url && page?.url === url && !win.args.public_only && !page.search && !showReader && (
           <iframe
             key={`${url}#${tick}`}
             className="browser-frame block size-full border-0"

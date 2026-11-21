@@ -122,9 +122,9 @@ function Consumers({ title, rows }: { title: string; rows: Totals[] }) {
   )
 }
 
-function GatewayDetail({ d }: { d: Detail }) {
+function RouterDetail({ d }: { d: Detail }) {
   return (
-    <section aria-label="LLM gateway details" className="flex flex-col gap-3">
+    <section aria-label="Tether AI router details" className="flex flex-col gap-3">
       {d.warnings?.map((w) => (
         <p key={w} role="status" className="text-sm">
           {w}
@@ -156,11 +156,25 @@ function GatewayDetail({ d }: { d: Detail }) {
         </TableBody>
       </Table>
       <p className="text-muted-foreground text-xs">
-        The gateway records requests and tokens but no cost. Daily history beyond these windows is not stored yet.
+        The router records requests and tokens but no cost. Daily history beyond these windows is not stored yet.
       </p>
       <Consumers title="Biggest providers · last 30 days" rows={d.by_provider} />
       <Consumers title="Biggest models · last 30 days" rows={d.by_model} />
       <h4 className="font-medium text-sm">Budgets</h4>
+      {d.budgets
+        .filter((b) => b.error)
+        .map((b) => (
+          <p key={`problem:${b.provider}:${b.model}:${b.scope}`} role="status" className="text-sm">
+            <span className="font-medium">
+              {b.provider}
+              {b.model ? ` / ${b.model}` : ""} ({limitText(b)} per {b.window || "unknown window"}
+              {b.scope ? `, scoped by ${b.scope}` : ""})
+            </span>{" "}
+            cannot be evaluated. Tether reports: “{b.error}”. A request this budget covers fails with that error and is
+            logged as a budget rejection (below), so the limit is not being measured. The budget is set in Tether’s AI
+            catalog.
+          </p>
+        ))}
       {d.budgets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No gateway budgets are configured.</p>
       ) : (
@@ -188,7 +202,13 @@ function GatewayDetail({ d }: { d: Detail }) {
                 </TableCell>
                 <TableCell>{time(b.reset_at) || "Unknown"}</TableCell>
                 <TableCell>
-                  {b.exhausted ? <StatusBadge status="exhausted" /> : b.error ? b.error : "Within limit"}
+                  {b.exhausted ? (
+                    <StatusBadge status="exhausted" />
+                  ) : b.error ? (
+                    <StatusBadge status="warning" />
+                  ) : (
+                    "Within limit"
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -296,7 +316,7 @@ export function Usage({ win, desk, api }: ViewProps) {
               <h3 className="font-semibold">{selected.title}</h3>
               {selected.summary && <p className="text-sm">{selected.summary}</p>}
               {data.detail ? (
-                <GatewayDetail d={data.detail} />
+                <RouterDetail d={data.detail} />
               ) : (
                 <p className="text-muted-foreground text-sm">{selected.gap || "No details for this source."}</p>
               )}

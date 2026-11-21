@@ -250,8 +250,12 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 		s.log.Warn("authored context exceeds the Nanite context budget; restart to resize",
 			"needed_tokens", needed, "budget_tokens", available, "turn_tokens", naniteContextTokens)
 	}
+	info, infoErr := r.Agent().Info(ctx)
+	if infoErr != nil {
+		s.log.Warn("daily token budget could not be read", "err", infoErr)
+	}
 	s.log.Info("the agent is a Nanite agent", "dir", dir, "tools", len(s.toolBindings()), "builtins", len(groups),
-		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget, "auto_approve", c.AutoApprove)
+		"compact_at", effectiveCompact, "compact_keep_tokens", effectiveKeep, "context_tokens", contextBudget, "auto_approve", c.AutoApprove, "daily_token_budget", info.Definition.Profile.Runtime.DailyTokenBudget)
 	return r, nil
 }
 

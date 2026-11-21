@@ -360,7 +360,13 @@ func TestReconnectResumesWithoutDuplicates(t *testing.T) {
 	f.submit("apr_2", "approve", "elevated", nil)
 	eventually(t, "the second shows", func() bool { return len(openCards(h)) == 2 })
 	m.reconnect()
-	time.Sleep(300 * time.Millisecond)
+	// A marker handled after the replay proves the new connection has caught up.
+	// Seeing a card alone does not prove its identity/cursor has been persisted yet.
+	f.mu.Lock()
+	f.events = append(f.events, feedEvent{Seq: 3, Type: "checkpoint"})
+	f.mu.Unlock()
+	f.push <- struct{}{}
+	eventually(t, "the replay checkpoint is committed", func() bool { return m.cursor(context.Background(), f.srv.URL) == 3 })
 	if n := len(openCards(h)); n != 2 {
 		t.Fatalf("%d cards after reconnects, want 2", n)
 	}
@@ -370,7 +376,7 @@ func TestReconnectResumesWithoutDuplicates(t *testing.T) {
 	if len(lids) < 2 || lids[len(lids)-1] == "" {
 		t.Fatalf("a reconnect did not send Last-Event-ID: %v", lids)
 	}
-	if n := m.cursor(context.Background(), f.srv.URL); n != 2 {
+	if n := m.cursor(context.Background(), f.srv.URL); n != 3 {
 		t.Fatalf("cursor %d", n)
 	}
 }

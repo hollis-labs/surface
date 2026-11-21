@@ -40,12 +40,11 @@ func TestSearchPageUsesHTMLSearchAndSafeResults(t *testing.T) {
 	calls := 0
 	f.client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
-		if r.URL.String() != "https://html.duckduckgo.com/html/" || r.Method != "POST" {
+		if r.URL.Host != "html.duckduckgo.com" || r.URL.Path != "/html/" || r.Method != "GET" {
 			t.Fatalf("request: %s %s", r.Method, r.URL)
 		}
-		body, _ := io.ReadAll(r.Body)
-		if string(body) != "q=surface+docs" {
-			t.Fatal(string(body))
+		if r.URL.Query().Get("q") != "surface docs" {
+			t.Fatal(r.URL.RawQuery)
 		}
 		doc := `<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs">Docs</a><span class="result__snippet">Useful docs</span></div><a class="result__a" href="javascript:bad">Bad</a><a class="result__a" href="https://example.com/docs">Duplicate</a>`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(doc)), Header: make(http.Header), Request: r}, nil

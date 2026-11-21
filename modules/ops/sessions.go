@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -97,6 +98,9 @@ func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
 		Count      int    `json:"count"`
 	}
 	if err = sessionCall(ctx, c, "tether_agents_live", map[string]any{"include_stale": false}, &snapshot); err != nil {
+		if errors.Is(err, errSessionToolMissing) {
+			return (legacySessionReader{link: func() (tetherlink.Caller, error) { return c, nil }}).Read(ctx)
+		}
 		return out, fmt.Errorf("live agent observations unavailable")
 	}
 	if snapshot.Agents == nil || snapshot.ObservedAt == "" {
@@ -155,9 +159,40 @@ func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
 	return out, nil
 }
 
+var errSessionToolMissing = errors.New("live agents tool is not deployed")
+
+// Recognize explicit missing-tool refusals only. Authentication, timeout and
+// source failures must stay visible instead of silently narrowing the fleet.
+func sessionToolMissing(detail, tool string) bool {
+	text := strings.ToLower(detail)
+	var problem struct {
+		Code  string          `json:"code"`
+		Error json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal([]byte(detail), &problem) == nil {
+		if problem.Code == "tool_not_found" || problem.Code == "unknown_tool" {
+			return true
+		}
+		if len(problem.Error) > 0 && string(problem.Error) != "null" {
+			var message string
+			if json.Unmarshal(problem.Error, &message) == nil {
+				return sessionToolMissing(message, tool)
+			}
+			return sessionToolMissing(string(problem.Error), tool)
+		}
+	}
+	return strings.Contains(text, strings.ToLower(tool)) &&
+		(strings.Contains(text, "unknown tool") || strings.Contains(text, "tool not found") ||
+			strings.Contains(text, "tool '"+strings.ToLower(tool)+"' not found"))
+}
+
 func sessionCall(ctx context.Context, c tetherlink.Caller, tool string, args map[string]any, into any) error {
 	raw, err := c.Call(ctx, tool, args)
 	if err != nil {
+		var refused *tetherlink.RefusedError
+		if errors.As(err, &refused) && sessionToolMissing(refused.Detail, tool) {
+			return errSessionToolMissing
+		}
 		return err
 	}
 	var envelope struct {
@@ -167,6 +202,9 @@ func sessionCall(ctx context.Context, c tetherlink.Caller, tool string, args map
 		return err
 	}
 	if envelope.OK != nil && !*envelope.OK {
+		if sessionToolMissing(raw, tool) {
+			return errSessionToolMissing
+		}
 		return fmt.Errorf("%s unavailable", tool)
 	}
 	return json.Unmarshal([]byte(raw), into)

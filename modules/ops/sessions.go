@@ -27,6 +27,7 @@ type SessionRow struct {
 	LastActivityAt string `json:"last_activity_at,omitempty"`
 	LastActivity   string `json:"last_activity,omitempty"`
 	WorkstreamID   string `json:"workstream_id,omitempty"`
+	TaskID         string `json:"task_id,omitempty"`
 	Stale          bool   `json:"stale"`
 	Warning        string `json:"warning,omitempty"`
 }
@@ -82,16 +83,24 @@ func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
 	}
 	var snapshot struct {
 		Agents *[]struct {
-			AgentURN       string `json:"agent_urn"`
-			DisplayName    string `json:"display_name"`
+			AgentURN    string `json:"agent_urn"`
+			DisplayName string `json:"display_name"`
+			// Agent is the current snapshot's identity; agent_urn and display_name are
+			// the earlier flat shape, still accepted.
+			Agent *struct {
+				URN  string `json:"urn"`
+				Name string `json:"name"`
+			} `json:"agent"`
 			Kind           string `json:"kind"`
 			Host           string `json:"host"`
 			State          string `json:"state"`
+			RawState       string `json:"raw_state"`
 			LastActivityAt string `json:"last_activity_at"`
 			Summary        string `json:"summary"`
 			SessionID      string `json:"session_id"`
 			RunID          string `json:"run_id"`
 			WorkstreamID   string `json:"workstream_id"`
+			TaskID         string `json:"task_id"`
 			Stale          bool   `json:"stale"`
 		} `json:"agents"`
 		ObservedAt string `json:"observed_at"`
@@ -118,6 +127,14 @@ func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
 		if s.Stale {
 			continue
 		}
+		if s.Agent != nil {
+			if s.AgentURN == "" {
+				s.AgentURN = s.Agent.URN
+			}
+			if s.DisplayName == "" {
+				s.DisplayName = s.Agent.Name
+			}
+		}
 		id := s.SessionID
 		kind := "session"
 		if s.Kind == "kit_seat" {
@@ -132,18 +149,24 @@ func (r tetherSessionReader) Read(ctx context.Context) (SessionsResult, error) {
 			continue
 		}
 		seen[id] = true
+		raw := s.State
+		if s.RawState != "" {
+			raw = s.RawState
+		}
 		row := SessionRow{ID: id, Kind: kind, AgentID: s.AgentURN, AgentName: s.DisplayName, Host: s.Host,
-			State: "unknown", RawState: s.State, LastActivityAt: s.LastActivityAt, LastActivity: s.Summary, WorkstreamID: s.WorkstreamID}
+			State: "unknown", RawState: raw, LastActivityAt: s.LastActivityAt, LastActivity: s.Summary, WorkstreamID: s.WorkstreamID, TaskID: s.TaskID}
 		if row.AgentName == "" {
 			row.AgentName = s.AgentURN
 		}
 		if strings.HasPrefix(s.AgentURN, "msg://") {
 			row.AgentRef = s.AgentURN
 		}
+		// The current snapshot states liveness itself (awake, sleeping); the earlier one
+		// gave the runtime state (busy, idle).
 		switch s.State {
-		case "busy":
+		case "awake", "busy":
 			row.State = "awake"
-		case "idle":
+		case "sleeping", "idle":
 			row.State = "sleeping"
 		default:
 			row.Warning = "Live state unavailable"

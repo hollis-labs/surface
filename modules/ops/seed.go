@@ -101,11 +101,9 @@ type SeedFollowup struct {
 
 // stageMap is the tracker's stage as Ops'.
 var stageMap = map[string]string{
-	"flight": StageInFlight, "queued": StageQueued, "review": StageInReview,
-	// landed is Adoption, not Active: landed means merged or deployed, and Active is the
-	// owner's "active when" checklist met, which the tracker does not attest (its one landed
-	// thread is "unverified"). The owner ticks the list and moves it on.
-	"landed": StageAdoption,
+	"flight": StageInFlight, "queued": StageQueued, "review": StageLanding,
+	// Merged or deployed work is landing; goal completion needs an explicit owner move.
+	"landed": StageLanding,
 }
 
 // conceptRules are the proposed groupings: a thread whose name (or, failing that, summary)
@@ -235,7 +233,7 @@ func Preview(t Tracker, source string, existing map[string]bool) SeedPlan {
 	p := SeedPlan{Source: source, TrackerUpdated: t.Updated, CreatedAt: now(),
 		Workstreams: []SeedItem{}, Concepts: []SeedConcept{}, Followups: []SeedFollowup{}}
 	p.Mapping = []string{
-		"stage: flight → In Flight, queued → Queued, review → In Review, landed → Adoption (landed is merged or deployed; Active means its active-when list is met, which the tracker does not say: tick it and move it on).",
+		"stage: flight → In Flight, queued → Queued, review or landed → Landing. Complete means the workstream met its goal; task completion alone does not attest that.",
 		"id: from the thread's name (a slug); edit it before applying, since an Ops id is never re-keyed and is the Registry workstream key.",
 		"tasks: each [Torque id, title, state] becomes a torque.task link (role task, its title as the label); the state is read live from Torque, not copied.",
 		"summary and phase note: the workstream's notes, with the tracker's phase.",
@@ -259,8 +257,8 @@ func Preview(t Tracker, source string, existing map[string]bool) SeedPlan {
 		}
 		st, ok := stageMap[th.Stage]
 		if !ok {
-			st = StagePlanning
-			it.Problems = append(it.Problems, fmt.Sprintf("stage %q is not one the seed knows: put in Planning", th.Stage))
+			st = StagePlanned
+			it.Problems = append(it.Problems, fmt.Sprintf("stage %q is not one the seed knows: put in Planned", th.Stage))
 		}
 		it.Stage = st
 		if it.Owner == "" {
@@ -449,7 +447,7 @@ func conceptStage(items []SeedItem, ms []string) string {
 		}
 	}
 	if best == "" {
-		best = StagePlanning
+		best = StagePlanned
 	}
 	return best
 }
@@ -681,10 +679,11 @@ func (s *Store) Apply(ctx context.Context, p SeedPlan, by string) (SeedResult, e
 }
 
 func orStage(s string) string {
+	s = ReadStage(s)
 	if ValidStage(s) {
 		return s
 	}
-	return StagePlanning
+	return StagePlanned
 }
 
 func joinNotes(lead string, more []string) string {

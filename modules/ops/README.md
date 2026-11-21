@@ -28,10 +28,10 @@ owner: owner                   # a name or an agent urn
 project: PRJ-20990101-0001     # optional Torque project
 status_ns: project/registry/event/status   # optional: where its status entries are read
 parent: auth-identity-secrets  # optional: the workstream it sits inside
-stage: in_flight               # planning | planned | queued | in_flight | in_review | adoption | active | dropped
+stage: in_flight               # planned | parked | queued | in_flight | landing | complete | dropped
 stage_since: 2026-11-20T13:37:12Z
 held: {reason: "awaiting a review", since: ...}   # optional: a flag in any lane, not a stage
-active_when:                   # what "active" means for this one
+active_when:                   # what goal completion means for this one
   - {text: "Torque dispatch ensures workstream ids", done: false, ref: CW-20990101-0002}
 links:                         # each kind is a Cite kind, so each link is a chip
   - {kind: work.item, id: garden/ab12cd34, role: origin}
@@ -78,15 +78,34 @@ mints the `workstream:<ULID>`, and Ops keeps it as the `identity` link. Ops neve
 
 ## Lifecycle
 
-`planning → planned → queued → in_flight → in_review → adoption → active`, plus `dropped`. Any move is
+`planned → parked → queued → in_flight → landing → complete`, plus the separate discarded state `dropped`. Any move is
 allowed, explicit and recorded (`transitions`, and a Caster revision). Moving into Queued appends the id to
 `ops/queue`; moving out removes it. The stage decides membership and the queue document decides order, so a
 queue that lags a move (two writes) still shows every queued workstream, the unnamed ones last by
 `stage_since`. The order is advisory: it does not drive dispatch.
 
-Moves are the owner's. When a workstream's tasks point elsewhere (a task in progress while it is Planned or
+Moves are the owner's. When a workstream's tasks point elsewhere (a task in progress while it is Planned, Parked or
 Queued; nothing in progress and the rest done or in review while it is In Flight), Ops shows a suggested
 stage with a button. It never moves anything by itself.
+
+The board shows all six lifecycle stages in that order, including the Queued band. Parked is
+between Planned and Queued. In Flight means agents are dispatched and actually working.
+Landing means built work is being taken into use. Complete means the workstream met its goal;
+finishing every task does not automatically complete a workstream. Dropped remains opt-in.
+
+Old ops/v1 documents remain readable: `planning` maps to `planned`; `flight` (or `in flight`)
+to `in_flight`; `review`, `in_review` and `adoption` to `landing`; `active` to `complete`.
+A legacy `planning` or `planned` document with a nonempty `held.reason` reads as `parked`;
+held remains a separate flag in every stage. Unknown stages retain their raw value, carry a
+problem marker and appear in an Unknown stage section instead of silently becoming Planned.
+New writes and tool schemas use the current vocabulary. Reading does not rewrite documents or
+historical transitions. Existing `active_when` and `Active means` document fields remain compatible;
+the page labels them “Complete when” and “Complete means”.
+
+Before the live writer switches vocabulary, record a read-only report of document revisions,
+stored stages and mapped stages. The writer owns the live rewrite after the compatible reader
+is deployed, including staging workstreams from their current operational state. Surface does
+not bulk-rewrite those documents. Caster revisions preserve the earlier content.
 
 ## Nesting
 
@@ -168,8 +187,8 @@ never a plan sent with the request; an apply that wrote nothing gives the claim 
 |---|---|
 | `stage: flight` | In Flight |
 | `stage: queued` | Queued (end of the band, in tracker order) |
-| `stage: review` | In Review |
-| `stage: landed` | **Adoption**, not Active: landed means merged or deployed, and Active means the workstream's own active-when list is met, which the tracker does not attest. The owner ticks it and moves it on. |
+| `stage: review` | Landing |
+| `stage: landed` | Landing: merged or deployed work is being adopted. Complete requires the workstream goal to be met, not just its tasks to be done. |
 | `name` | title, and the id (a slug of it, editable in the preview; a name with too few plain letters gets a made-up id, flagged) |
 | `tasks` | `torque.task` links (role `task`, the title as label; a run `CW-…-0097..0105` is expanded). The tracker's state is not copied: Torque is read live. |
 | `summary`, `phase_note`, `phase_label` | notes |

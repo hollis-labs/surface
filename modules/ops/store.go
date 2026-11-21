@@ -557,7 +557,7 @@ func (s *Store) Create(ctx context.Context, in NewWorkstream, by string) (Workst
 		return Workstream{}, bad("a workstream needs a title")
 	}
 	if in.Stage == "" {
-		in.Stage = StagePlanning
+		in.Stage = StagePlanned
 	}
 	if !ValidStage(in.Stage) {
 		return Workstream{}, bad("%q is not a stage", in.Stage)

@@ -63,14 +63,14 @@ func TestStageWithLaysAppFilesOverTheSeat(t *testing.T) {
 	if err := profile.StageWith(stage, seat, nil, map[string][]byte{"providers.yaml": []byte("app's")}); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(stage, "providers.yaml")); string(b) != "app's" {
+	if b, _ := os.ReadFile(filepath.Join(stage, "providers.yaml")); string(b) != "app's" { //nolint:gosec // a file this test staged
 		t.Fatalf("got %q", b)
 	}
 	// without app files the seat's comes back
 	if err := profile.StageWith(stage, seat, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(stage, "providers.yaml")); string(b) != "seat's own" {
+	if b, _ := os.ReadFile(filepath.Join(stage, "providers.yaml")); string(b) != "seat's own" { //nolint:gosec // a file this test staged
 		t.Fatalf("got %q", b)
 	}
 }
@@ -125,14 +125,14 @@ func TestNaniteAnswersThroughTheAppsProvidersFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyFile := filepath.Join(keyDir, "local.key")
-	if err := os.WriteFile(keyFile, []byte("sk-test-123\n"), 0o600); err != nil {
+	if err = os.WriteFile(keyFile, []byte("sk-test-123\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(k.dataDir, "agent"), 0o700); err != nil {
+	if err = os.MkdirAll(filepath.Join(k.dataDir, "agent"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	providers := fmt.Sprintf("providers:\n  local:\n    wire: openai-chat\n    base_url: %s/v1\n    key_ref: file://%s\nuse:\n  chat: {provider: local, model: tiny-model}\n", llm.URL, keyFile)
-	if err := os.WriteFile(filepath.Join(k.dataDir, "agent", "providers.yaml"), []byte(providers), 0o600); err != nil {
+	if err = os.WriteFile(filepath.Join(k.dataDir, "agent", "providers.yaml"), []byte(providers), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -210,7 +210,7 @@ func TestNaniteAnswersThroughTheAppsProvidersFile(t *testing.T) {
 
 	// An edit to the providers file applies on the next turn, without reopening the runner.
 	providers = strings.Replace(providers, "model: tiny-model", "model: other-model", 1)
-	if err := os.WriteFile(filepath.Join(k.dataDir, "agent", "providers.yaml"), []byte(providers), 0o600); err != nil {
+	if err = os.WriteFile(filepath.Join(k.dataDir, "agent", "providers.yaml"), []byte(providers), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.wire.svc.Submit(t.Context(), view.ConversationID, chat.Turn{Text: "Again."}); err != nil {

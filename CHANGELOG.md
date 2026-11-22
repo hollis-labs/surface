@@ -5,6 +5,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.18.1] - 2026-11-22
+
 - **Recovering a locked-out account.** A recovery link (`<app> identity recover --user <name> --url …`, made on the
   host) opens a page that signs that person in once. There they set a new password, remove their passkeys and
   turn off two-step sign-in, as needed. Needs Substrate 195cd13.

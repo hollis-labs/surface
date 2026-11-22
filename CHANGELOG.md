@@ -5,6 +5,40 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.17.0] - 2026-11-22
+
+- **Sign-in (opt-in), through Substrate identity.** `auth: identity` in an app's `surface.yaml` turns it on; the
+  default `auth: off` leaves apps as they were, and `desk` and `studio` stay off.
+  - With it on, Substrate serves the identity routes. Every other `/api` and `/mcp` request needs a verified
+    credential: a session cookie, an API key, or a token minted from one. Reading takes `<app>.read`, and changes
+    take `<app>.use`.
+  - The page and its assets stay public, and so do module routes marked `module.Public`. Binding beyond loopback
+    is allowed, because auth decides.
+  - See `docs/sign-in.md`.
+- **Module contract (additive).** `module.User`, `module.WithUser` and `module.UserOf(ctx)` give a module the
+  signed-in user, with their role and scopes (`HasScope`, `Person`). `module.Public` marks a route that needs no
+  sign-in. Modules written against 0.16 compile unchanged.
+- **The CLI signs its requests** with an operator key kept 0600 in the app's data directory.
+- **The page's AuthGate.** Setup from a setup link, sign-in, "set up on the host", and an expired session. Requests
+  are same-origin, add `X-Requested-With`, and return to sign-in on a 401. An account menu offers changing the
+  password and signing out. `mountPage` takes the generated `app` (name and title) for the gate; it is optional, so
+  an existing call still works.
+- **HTTPS, trusted proxies and passkeys** for apps with sign-in.
+  - `<APP>_PUBLIC_URL` sets the identity public URL (Secure cookies, the passkey relying party), and its host is
+    allowed by the host guard.
+  - `<APP>_TRUSTED_PROXIES` names the proxies whose forwarded headers are trusted.
+  - `<APP>_TLS_CERT` and `<APP>_TLS_KEY` serve HTTPS directly, re-reading the certificate when the files change.
+  - The page offers "Sign in with a passkey" (in a secure context, when the server offers passkeys), an "Add a
+    passkey" step after the owner is created, and a Passkeys dialog in the account menu (add, remove,
+    passkey-only).
+- **Invites and a users page.** An invite link (`/invite#c=…`) shows "Join <app>" with the invite's role;
+  accepting creates the account and signs in. Admins get "Users and invites" in the account menu: people and
+  their roles (change, disable), new invites for a role, and pending invites to revoke.
+- **Module contract (additive): Keys.** `module.KeysOf(h)` returns the app's key service when it has sign-in, with
+  no change to `Host`. A module can mint identity API keys with the app's own scopes for what it launches (an
+  agent, a device), revoke them, and verify bearers on its `module.Public` routes. The owner sees and can revoke
+  them. `moduletest.NewKeys` gives tests an in-memory store.
+- **Substrate** bumped to 90857c1 (identity roles, setup links, passkeys, public URL, trusted proxies, invites).
 - **The app's providers file.** The embedded agent can take its model providers from a Nanite `providers.yaml`
   the app keeps outside the agent directory: `<app data dir>/agent/providers.yaml`, or `providers_file` in
   `agent.json` (`SURFACE_AGENT_PROVIDERS_FILE`). It is staged into the agent directory before each turn, so an
@@ -13,6 +47,28 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   existing gateway configuration works as before (`docs/agent.md`).
 - **`<app> call` waits as long as the tool does.** It had a 60 s client timeout, so a tool that waits on purpose
   printed nothing; `--timeout` sets one when wanted. The other client commands keep 60 s.
+- **Evolved Blade Runner and a design pass.** A new theme, a taste guide (`docs/taste.md`), workflow golden
+  samples, and refinements to the registry's card, dialog and cite components. Navigation gains 3-level groups,
+  Settings becomes a two-pane workbench, and there is a reusable `ObjectActionsMenu` and a Cite drawer.
+- **Ops redesign.**
+  - Kanban cards show the full title and an activity pulse driven by the event bus, with footer actions and a large
+    detail modal.
+  - Activity and History are timelines; Follow-ups is a full-page card grid; Fleet has line-art server cards with a
+    detail modal.
+  - Agents, sessions and Usage get line-art emblems, stepped meters and click-into detail.
+  - The board's view tabs and card actions are icon-only, and Kanban/Cards filters move to a view toolbar, so the
+    subnav no longer shifts.
+- **Registry as an operational wiki and knowledge graph.** Inline editing, icon-gated inspectors (fields,
+  relations, schema, history and governance), a search-and-select relationship linker, readable object chips, and
+  in-module back navigation. The overview sweeps larger draft catalogs.
+- **Fixed:** chatstream card status and receipt pills, the submit toast's timing, and the Cards window's focus and
+  auto-close.
+- **Fixed: the workbench tests on macOS.** They wrote key files under `t.TempDir()` (`/var`, a symlink to
+  `/private/var`), which the secrets resolver refuses. Six tests failed, and `TestRunsAreLimited` hung until the
+  test timeout; it now fails after 30 s instead.
+- **Sample data uses generic hosts and paths**, and the repository's history was rewritten to remove deployment
+  names. Tags before this one were re-pointed at the rewritten commits; this is the first release cut from the new
+  history.
 
 ## [0.16.0] - 2026-11-21
 

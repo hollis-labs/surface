@@ -112,7 +112,7 @@ func withGateway(t *testing.T, h *moduletest.Host, f *fakeGateway) {
 	t.Helper()
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	key := filepath.Join(t.TempDir(), "key")
+	key := filepath.Join(realTempDir(t), "key")
 	if err := os.WriteFile(key, []byte("test-key\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

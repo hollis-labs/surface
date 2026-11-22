@@ -226,7 +226,7 @@ func TestCancelInterruptsTheRun(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Cleanup(func() { close(release) }) // runs first: the handler lets go before Close waits
-	key := filepath.Join(t.TempDir(), "key")
+	key := filepath.Join(realTempDir(t), "key")
 	_ = os.WriteFile(key, []byte("k"), 0o600)
 	h.AgentState.GW = &module.Gateway{Model: "claude-test-1", URL: srv.URL, KeyFile: key}
 	if _, err := m.create("cancel", "", "embedded", "owner"); err != nil {

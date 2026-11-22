@@ -10,6 +10,18 @@ import (
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
+// realTempDir is t.TempDir with symlinks resolved. On macOS the temp dir sits under /var, a
+// symlink to /private/var, and the secrets resolver refuses a credential file that resolves
+// through a symlink outside its directory.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
+}
+
 func start(t *testing.T) (*mod, *moduletest.Host) {
 	t.Helper()
 	m := &mod{}

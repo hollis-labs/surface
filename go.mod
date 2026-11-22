@@ -15,7 +15,7 @@ require (
 	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/nanite v0.16.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261122192141-af569674daa4
+	github.com/hollis-labs/substrate v0.1.1-0.20261122193301-90857c1a95c2
 	github.com/spf13/cobra v1.10.2
 	github.com/tdewolff/parse/v2 v2.25.0
 	golang.org/x/net v0.62.0

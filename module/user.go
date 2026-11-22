@@ -23,6 +23,9 @@ type User struct {
 	Role string `json:"role,omitempty"`
 	// Scopes are the effective scopes: the account's own and its role's.
 	Scopes []string `json:"scopes"`
+	// For is, for an API key a person made (the account menu's API keys), that person
+	// ("user:<id>"): attribute the key's work to them. "" for a person and for other keys.
+	For string `json:"for,omitempty"`
 }
 
 // HasScope reports whether the user holds want: exactly, through "*", or through

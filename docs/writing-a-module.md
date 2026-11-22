@@ -218,7 +218,10 @@ check out is left out at boot, with the reason in the log; the app still starts.
   sign-in off), then `keys.Create(ctx, module.KeyRequest{Name, Scopes, TTL, CreatedBy})` (only the app's own
   `<app>.…` scopes), `keys.Revoke(ctx, id)` when it is done, and `keys.Verify(ctx, bearer)` on its
   `module.Public` route. The keys show in the app's key list and the owner can revoke them. In tests, set
-  `moduletest.Host.KeyStore = moduletest.NewKeys()`.
+  `moduletest.Host.KeyStore = moduletest.NewKeys()`. People also make keys of their own (the account menu's
+  **API keys**) for their agents and scripts. `Verify` then returns `Caller.For`, the maker (`user:<id>`), and on
+  the app's routes `module.UserOf` gives a service `User` whose `For` is that maker.
+  Attribute such a caller's work to that person, not to the key.
 - The app answers only at IPs, `localhost` and the names in `SURFACE_ALLOWED_HOSTS` (a guard against DNS
   rebinding). A module whose own clients still dial a name the app no longer serves can add names for its
   `module.Public` routes only: `ph, ok := module.PublicHostsOf(h)`, then `ph.Set([]string{"old.example.net"})`.

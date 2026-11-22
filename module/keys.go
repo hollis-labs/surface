@@ -52,6 +52,9 @@ type Caller struct {
 	Kind   string // user or service
 	Name   string
 	Scopes []string
+	// For is the person an API key acts for ("user:<id>", the key's maker), "" for a person's
+	// own session or token and for keys a module or the CLI made. Attribute a key's work to it.
+	For string
 }
 
 // HasScope reports whether the caller holds want, with the same wildcard rules as User.

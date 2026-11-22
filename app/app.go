@@ -47,6 +47,9 @@ type Config struct {
 	Assets fs.FS
 	// Ready, when set, learns the bound address (tests listen on port 0).
 	Ready func(net.Addr)
+	// Auth is "" (or "off": one owner, loopback only, no sign-in) or AuthIdentity: people
+	// sign in through Substrate's identity module (app/auth.go). surface.yaml's auth sets it.
+	Auth string
 }
 
 // Main runs the app until it is interrupted, and exits non-zero on failure.
@@ -103,6 +106,15 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 				}
 				sq["path"] = filepath.Join(dataDir, p)
 			}
+			// So does the identity signing key, for an app with sign-in.
+			if id, ok := app.Config["identity"].(map[string]any); ok {
+				if p, _ := id["key_file"].(string); p == "" || !filepath.IsAbs(p) {
+					if p == "" {
+						p = "identity-signing.key"
+					}
+					id["key_file"] = filepath.Join(dataDir, p)
+				}
+			}
 			if addr := getenv(envName(cfg.Name) + "_ADDR"); addr != "" {
 				child(app.Config, "httphost")["addr"] = addr
 			}
@@ -123,7 +135,7 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 		RunE: func(*cobra.Command, []string) error { return serveApp(ctx, cfg, started.App, dataDir) },
 	}
 	root.AddCommand(serve)
-	root.AddCommand(clientCommands(cfg, started.App, getenv)...)
+	root.AddCommand(clientCommands(cfg, started.App, getenv, dataDir)...)
 	root.RunE = func(c *cobra.Command, a []string) error { return serve.RunE(c, a) }
 	root.Args = cobra.NoArgs
 	root.SetArgs(args)
@@ -155,8 +167,10 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 	if err != nil {
 		return fmt.Errorf("httphost.addr %q: %w", addr, err)
 	}
-	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return fmt.Errorf("httphost.addr %q is not loopback: a Surface app has no sign-in and serves only this machine", addr)
+	// Without sign-in the app serves this machine only. With it, Substrate's auth module
+	// (enforce) decides what may be bound.
+	if ip := net.ParseIP(host); cfg.Auth != AuthIdentity && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return fmt.Errorf("httphost.addr %q is not loopback: a Surface app without sign-in serves only this machine (set auth: identity in surface.yaml to serve beyond it)", addr)
 	}
 	st := database.From(sapp)
 	if st == nil {
@@ -180,9 +194,17 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 	if err != nil {
 		return err
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/healthz", sh)
-	mux.Handle("/", a.Handler())
-	slog.Info("surface app serving", "app", cfg.Name, "url", "http://"+addr, "data", dataDir, "modules", cfg.Modules)
-	return httphost.Serve(ctx, sapp, mux, httphost.ServeOptions{Addr: addr, Ready: cfg.Ready})
+	var handler http.Handler
+	if cfg.Auth == AuthIdentity {
+		if handler, err = authHandler(cfg, sapp, a, sh); err != nil {
+			return err
+		}
+	} else {
+		mux := http.NewServeMux()
+		mux.Handle("/healthz", sh)
+		mux.Handle("/", a.Handler())
+		handler = mux
+	}
+	slog.Info("surface app serving", "app", cfg.Name, "url", "http://"+addr, "data", dataDir, "modules", cfg.Modules, "auth", cfg.Auth)
+	return httphost.Serve(ctx, sapp, handler, httphost.ServeOptions{Addr: addr, Ready: cfg.Ready})
 }

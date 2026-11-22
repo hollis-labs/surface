@@ -12,7 +12,7 @@ import (
 func main() {
 	assets, _ := webui.Assets()
 	app.Main(app.Config{
-		Name: surfaceApp, Title: surfaceTitle, Modules: surfaceModules,
+		Name: surfaceApp, Title: surfaceTitle, Modules: surfaceModules, Auth: surfaceAuth,
 		SubstrateModules: substrateModules, SubstrateConfigJSON: substrateConfigJSON,
 		Assets: assets,
 	})

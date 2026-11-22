@@ -17,7 +17,7 @@ import (
 
 // clientCommands are the commands that drive a running app over its API: the CLI path for
 // a person, a script or an outside agent.
-func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) []*cobra.Command {
+func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string, dataDir string) []*cobra.Command {
 	base := func() string {
 		addr := listenAddr(sapp)
 		if a := getenv(envName(cfg.Name) + "_ADDR"); a != "" {
@@ -44,6 +44,13 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if cfg.Auth == AuthIdentity { // signed with the operator key (app/auth.go)
+			key, kerr := operatorKey(c.Context(), sapp, dataDir)
+			if kerr != nil {
+				return kerr
+			}
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
 		res, err := (&http.Client{Timeout: timeout}).Do(req)
 		if err != nil {
 			return fmt.Errorf("%s is not running at %s (start it with `%s serve`): %w", cfg.Name, base(), cfg.Name, err)

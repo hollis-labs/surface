@@ -27,6 +27,7 @@ import (
 const (
 	surfaceApp   = "desk"
 	surfaceTitle = "Surface Desk"
+	surfaceAuth  = ""
 )
 
 // surfaceModules is the start order.

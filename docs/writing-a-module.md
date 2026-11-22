@@ -208,6 +208,11 @@ check out is left out at boot, with the reason in the log; the app still starts.
 ### Routes, events, marks
 
 - `h.Handle("GET /items", handler)` serves the module's views at `/api/m/<id>/items`. Call it in `Start`.
+- In an app with sign-in (`auth: identity`), every route needs a signed-in caller: `<app>.read` to read,
+  `<app>.use` to change anything. `module.UserOf(r.Context())` says who (id, username, role, scopes); stamp
+  records with it and check `HasScope("<app>.admin")` for admin-only actions. A route the module authenticates
+  itself (a device token, a single-use code) or serves to anyone is wrapped: `h.Handle("POST /enroll",
+  module.Public(handler))`. With sign-in off there is no user and `Public` changes nothing.
 - After any write, `h.Events().Publish("<id>.changed", …)`. Views listen and refresh; that is how a window
   learns the agent changed its data.
 - `h.Marks()` pins notes to a part of something (`Ref`, `Quote`, `Anchor`). Do not build your own comments.

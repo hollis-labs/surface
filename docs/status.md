@@ -81,5 +81,6 @@ against collabtest's fake Caster and a fake Torque. See [modules/ops/README.md](
 - **Approvals.** A hook for Gatecrasher (`agent.Approver`); the default asks in the panel.
 - **A desktop shell.** The app is served to a browser. Basalisk's native shell pattern (a web view on the
   loopback server) would fit unchanged.
-- **Sign-in.** Loopback, single owner.
+- **Sign-in, beyond the first step.** `auth: identity` (docs/sign-in.md) gives people, sessions, roles and a
+  setup link; passkeys and HTTPS (served or behind a proxy), invites with a users page, and TOTP are next.
 - **Rebinding shortcuts, and window snapping in float mode.**

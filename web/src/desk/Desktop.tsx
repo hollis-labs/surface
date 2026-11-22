@@ -25,6 +25,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { type WindowInfo, WindowManager, type WindowTree } from "@/components/ui/window-manager"
 import { AdeAttention, AdeGuide } from "../ade/Overlay"
 import { AgentPanel } from "../agent"
+import { AccountMenu } from "../auth/AccountMenu"
 import { setOpenedFromChat } from "../cards/store"
 import { Icon, type ModuleWeb, useSetting } from "../sdk"
 import { call, getSetting, isConnected, onConnection, setSetting } from "../sdk/runtime"
@@ -527,6 +528,7 @@ export function Desktop({ modules }: DesktopProps) {
           <span>{state.layout}</span>
         </Button>
 
+        <AccountMenu />
         <ThemePicker />
 
         <Button

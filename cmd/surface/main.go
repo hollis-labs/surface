@@ -34,6 +34,10 @@ type manifest struct {
 	Modules []moduleRef `yaml:"modules"`
 	// Log is Substrate's logging block.
 	Log map[string]any `yaml:"log"`
+	// Auth is "off" (the default: one owner, loopback only) or "identity": people sign in
+	// through Substrate's identity module (users, sessions, roles, API keys), and the app may
+	// serve beyond loopback. The owner is made with a setup link ("<app> identity setup-link").
+	Auth string `yaml:"auth"`
 }
 
 // moduleRef names a module: its id, its Go import path and its web entry.
@@ -115,6 +119,13 @@ func load(file string) (*app, error) {
 	}
 	if m.Addr == "" {
 		m.Addr = "127.0.0.1:8190"
+	}
+	switch m.Auth {
+	case "", "off":
+		m.Auth = ""
+	case "identity":
+	default:
+		return nil, fmt.Errorf("%s: auth must be off or identity", file)
 	}
 	if len(m.Modules) == 0 {
 		return nil, fmt.Errorf("%s: an app needs at least one module", file)
@@ -199,15 +210,23 @@ func generate(file string) (*app, error) {
 	if logging == nil {
 		logging = map[string]any{"level": "info", "format": "text"}
 	}
+	subModules := []string{"database", "cli"}
+	subConfig := map[string]any{
+		"logging":  logging,
+		"httphost": map[string]any{"addr": a.Addr},
+		// Relative: the binary joins it onto the app's data directory at boot.
+		"database": map[string]any{"sqlite": map[string]any{"path": "surface.db"}},
+	}
+	if a.Auth == "identity" {
+		subModules = append(subModules, "auth", "identity")
+		subConfig["auth"] = map[string]any{"mode": "enforce"}
+		// key_file is relative, joined onto the data directory at boot like the database.
+		subConfig["identity"] = map[string]any{"key_file": "identity-signing.key", "setup": "offline"}
+	}
 	sub := map[string]any{
 		"app": a.App, "variant": "app-host", "profiles": []string{"minimal"},
-		"modules": map[string]any{"add": []string{"database", "cli"}},
-		"config": map[string]any{
-			"logging":  logging,
-			"httphost": map[string]any{"addr": a.Addr},
-			// Relative: the binary joins it onto the app's data directory at boot.
-			"database": map[string]any{"sqlite": map[string]any{"path": "surface.db"}},
-		},
+		"modules": map[string]any{"add": subModules},
+		"config":  subConfig,
 	}
 	y, err := yaml.Marshal(sub)
 	if err != nil {
@@ -236,11 +255,12 @@ import (
 const (
 	surfaceApp   = %q
 	surfaceTitle = %q
+	surfaceAuth  = %q
 )
 
 // surfaceModules is the start order.
 var surfaceModules = []string{%s}
-`, imports.String(), a.App, a.Title, strings.TrimSuffix(ids.String(), ", "))
+`, imports.String(), a.App, a.Title, a.Auth, strings.TrimSuffix(ids.String(), ", "))
 	if err := write(filepath.Join(a.dir, "surface_wiring.go"), wiring); err != nil {
 		return nil, err
 	}
@@ -259,7 +279,7 @@ import (
 func main() {
 	assets, _ := webui.Assets()
 	app.Main(app.Config{
-		Name: surfaceApp, Title: surfaceTitle, Modules: surfaceModules,
+		Name: surfaceApp, Title: surfaceTitle, Modules: surfaceModules, Auth: surfaceAuth,
 		SubstrateModules: substrateModules, SubstrateConfigJSON: substrateConfigJSON,
 		Assets: assets,
 	})

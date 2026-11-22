@@ -1,7 +1,8 @@
 # Architecture
 
 A Surface app is one binary: the Surface core plus the modules its `surface.yaml` names, with the page embedded.
-It serves on loopback, for one owner.
+It serves on loopback, for one owner, unless its `surface.yaml` sets `auth: identity`: then people sign in
+(Substrate's identity module) and it may serve beyond loopback (docs/sign-in.md).
 
 ```
 apps/<name>/surface.yaml ──surface generate──▶ substrate.yaml + substrate_wiring.go   (Substrate's shell)

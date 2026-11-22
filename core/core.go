@@ -80,6 +80,10 @@ func (a *App) Handler() http.Handler {
 	return api.Handler(a.k, a.assets, ms...)
 }
 
+// PublicRoute reports whether r is for a module route marked module.Public, which an app
+// with sign-in serves without a signed-in caller.
+func (a *App) PublicRoute(r *http.Request) bool { return a.k.PublicRoute(r) }
+
 // Stop stops the agent, then the modules, and closes the stores.
 func (a *App) Stop(ctx context.Context) error {
 	for _, s := range a.services {

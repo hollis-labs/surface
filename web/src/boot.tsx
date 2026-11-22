@@ -6,6 +6,7 @@
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { MarkdownExtensions } from "@/components/ui/markdown"
+import { AuthGate } from "./auth/gate"
 import { registerCard } from "./cards/renderers"
 import { CardHost } from "./cards/views"
 import { CiteDrawer } from "./cite/record.tsx"
@@ -39,6 +40,12 @@ export interface PageProps {
   modules: Record<string, ModuleWeb>
   /** Views of the core's own (`surface/*`) to add, such as the Components window from ./gallery. */
   core?: ModuleWeb["views"]
+  /**
+   * The app's name and title (the generated module list exports them as `app`), for the
+   * sign-in screens of an app with sign-in, which draw before the server says who it is.
+   * Default: the document's title.
+   */
+  app?: { name: string; title: string }
 }
 
 /** The whole page: a loading state until the server answers, then the desktop and the cards. */
@@ -83,9 +90,15 @@ export function Page({ modules, core }: PageProps) {
 export function mountPage(props: PageProps, element: Element | null = document.getElementById("root")): Root {
   if (!element) throw new Error("mountPage: no element to draw into (#root not found)")
   const root = createRoot(element)
+  const title = props.app?.title ?? document.title
+  const name = props.app?.name ?? title.toLowerCase().split(/\s+/)[0]
+  // With sign-in (surface.yaml auth: identity) nothing of the desk loads until someone has
+  // signed in; without it the gate renders the page at once.
   root.render(
     <StrictMode>
-      <Page {...props} />
+      <AuthGate name={name} title={title}>
+        <Page {...props} />
+      </AuthGate>
     </StrictMode>,
   )
   return root

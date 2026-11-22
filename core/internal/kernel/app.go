@@ -69,6 +69,7 @@ type App struct {
 	asker        atomic.Pointer[askerBox]
 	gateway      atomic.Pointer[func(context.Context) (module.Gateway, error)]
 	routes       *http.ServeMux
+	public       *http.ServeMux // the module routes marked module.Public, by the same patterns
 	started      bool
 	mu           sync.RWMutex
 }
@@ -106,7 +107,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 		return nil, err
 	}
 	a := &App{name: o.Name, title: o.Title, dataDir: o.DataDir, db: o.DB, log: o.Log,
-		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux(),
+		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux(), public: http.NewServeMux(),
 		palette: map[string]boundPalette{}, paletteSlots: make(chan struct{}, 6), refs: map[string]*boundRef{}, cite: citeCache{m: map[string]citeEntry{}}}
 	if a.title == "" {
 		a.title = o.Name
@@ -571,6 +572,16 @@ func (h *host) Handle(pattern string, handler http.Handler) {
 		full = method + " " + full
 	}
 	h.app.routes.Handle(full, http.StripPrefix(prefix, handler))
+	if module.IsPublic(handler) {
+		h.app.public.Handle(full, handler)
+	}
+}
+
+// PublicRoute reports whether r is for a module route marked module.Public: one an app
+// with sign-in serves without a signed-in caller.
+func (a *App) PublicRoute(r *http.Request) bool {
+	_, pattern := a.public.Handler(r)
+	return pattern != ""
 }
 
 var _ Kernel = (*App)(nil)

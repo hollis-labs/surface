@@ -5,6 +5,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.18.0] - 2026-11-22
+
 - **Modules can add host names for their public routes (`module.PublicHosts`).** The host guard answers only
   at IPs, localhost and `SURFACE_ALLOWED_HOSTS`, read once at start. A module can now add names live with
   `module.PublicHostsOf(h)`, then `Set(names)` (nil removes them). They are answered for that app's

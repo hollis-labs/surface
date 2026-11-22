@@ -120,7 +120,7 @@ function NoteRow({
               onOpen(true)
             }}
           >
-            <Icon name="square-arrow-out-up-right" />
+            <Icon name="external-link" />
           </Button>
         </ItemTitle>
         <ItemDescription className="truncate">{about}</ItemDescription>
@@ -684,7 +684,7 @@ function Editor({ path, win, desk, api, onOpen, onCreate }: EditorProps) {
           <TooltipContent>Show or hide the marks</TooltipContent>
         </Tooltip>
         <IconButton label="Open in new window" onClick={() => onOpen(path, true)}>
-          <Icon name="square-arrow-out-up-right" />
+          <Icon name="external-link" />
         </IconButton>
         <IconButton label="Rename" onClick={rename}>
           <Icon name="pencil-line" />

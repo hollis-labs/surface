@@ -585,7 +585,7 @@ export function Flow({ w, ws, space, view, picked, pick, changed, setError }: Vi
               })()}
             </span>
             <Button variant="outline" size="sm" onClick={() => removeEdge(sel.id)}>
-              <Icon name="trash-2" /> Remove link
+              <Icon name="trash" /> Remove link
             </Button>
           </div>
         )}

@@ -596,7 +596,7 @@ function Files({ win, desk, api }: ViewProps) {
                       {!e.locked && !renaming && (
                         <div className="invisible flex justify-end [tr:focus-within_&]:visible [tr:hover_&]:visible">
                           <IconButton label="Open in new window" onClick={() => openInNewWindow(e)}>
-                            <Icon name="square-arrow-out-up-right" />
+                            <Icon name="external-link" />
                           </IconButton>
                           <IconButton label="Rename" onClick={() => setNaming({ kind: "rename", entry: e })}>
                             <Icon name="pencil" />

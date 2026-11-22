@@ -66,7 +66,7 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
               void run(() => ops.settle(w.id, w.rev))
             }}
           >
-            <Icon name="check-circle-2" size={11} />
+            <Icon name="circle-check" size={11} />
           </Button>
         )
       )}

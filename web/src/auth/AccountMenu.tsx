@@ -263,7 +263,7 @@ export function AccountMenu() {
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => setPk(true)}>
-            <Icon name="fingerprint" /> Passkeys
+            <Icon name="fingerprint-pattern" /> Passkeys
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setTwo(true)}>
             <Icon name="smartphone" /> Two-step sign-in

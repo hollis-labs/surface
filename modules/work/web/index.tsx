@@ -253,7 +253,7 @@ function Workspaces({
                     })
                   }}
                 >
-                  <Icon name="square-arrow-out-up-right" />
+                  <Icon name="external-link" />
                 </Button>
                 <Icon name="chevron-right" size={14} className="text-muted-foreground" />
               </ItemActions>

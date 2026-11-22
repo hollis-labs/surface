@@ -392,7 +392,7 @@ export function SessionRowView({
 
       {s.warning && (
         <div className="flex items-center gap-1.5 rounded-xs border border-warning/35 bg-warning/10 px-2.5 py-1 text-xs text-warning">
-          <Icon name="alert-triangle" size={12} className="shrink-0" />
+          <Icon name="triangle-exclamation-point" size={12} className="shrink-0" />
           <span>{s.warning}</span>
         </div>
       )}

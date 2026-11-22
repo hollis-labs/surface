@@ -204,7 +204,7 @@ export function Board({ win, desk, api }: ViewProps) {
       {...laneProps("queued", (e) => dropInBand(e))}
     >
       <h3 className="flex items-center gap-1.5 px-1 font-semibold text-sm">
-        <Icon name="list-ul" size={14} />
+        <Icon name="list" size={14} />
         Queued, in launch order
         <Badge variant="secondary">{queued.length}</Badge>
       </h3>

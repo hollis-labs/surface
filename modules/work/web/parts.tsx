@@ -22,7 +22,12 @@ const excerptParts: NonNullable<Parameters<typeof Markdown>[0]["components"]> = 
 }
 
 /** Kind icon names the presets use that lucide has since renamed. */
-const ICON_ALIAS: Record<string, string> = { "alert-triangle": "triangle-alert", "check-circle-2": "circle-check" }
+// Kinds name icons by older lucide names; these are their lucide 1.x names.
+const ICON_ALIAS: Record<string, string> = {
+  "alert-triangle": "triangle-exclamation-point",
+  "triangle-alert": "triangle-exclamation-point",
+  "check-circle-2": "circle-check",
+}
 
 /** A kind's icon in its colour. */
 export function KindIcon({ kind, size = 12 }: { kind?: WorkKind; size?: number }) {
@@ -194,7 +199,7 @@ export function ItemCard({
             pick(card.id, true)
           }}
         >
-          <Icon name="square-arrow-out-up-right" />
+          <Icon name="external-link" />
         </Button>
       </span>
       {!compact &&

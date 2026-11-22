@@ -285,7 +285,7 @@ function Reader({ win, desk, api }: ViewProps) {
           </Button>
           {current && (
             <Button size="sm" variant="ghost" onClick={() => void unfollow()} title="Stop following this feed">
-              <Icon name="trash-2" />
+              <Icon name="trash" />
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => setAdding(true)}>

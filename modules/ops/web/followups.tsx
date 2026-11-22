@@ -73,14 +73,14 @@ export const KIND_META: Record<FollowupKind, KindMeta> = {
   },
   incident: {
     label: "Incident",
-    icon: "triangle-alert",
+    icon: "triangle-exclamation-point",
     circleClass: "bg-destructive/15 text-destructive border border-destructive/30",
     badgeClass: "bg-destructive/15 text-destructive border-destructive/30",
     calloutTitleClass: "text-destructive",
   },
   policy: {
     label: "Owner Stance / Policy",
-    icon: "shield-alert",
+    icon: "shield-exclamation-point",
     circleClass: "bg-primary/15 text-primary border border-primary/30",
     badgeClass: "bg-primary/15 text-primary border-primary/30",
     calloutTitleClass: "text-primary",

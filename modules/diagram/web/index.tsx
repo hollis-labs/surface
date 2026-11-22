@@ -618,7 +618,7 @@ function DiagramWindow({ win, desk, api }: ViewProps) {
                   aria-label={`Delete ${d.title}`}
                   onClick={() => void removeDoc(d)}
                 >
-                  <Icon name="trash-2" />
+                  <Icon name="trash" />
                 </Button>
               </div>
             ))}
@@ -875,7 +875,7 @@ function DiagramWindow({ win, desk, api }: ViewProps) {
                 )}
                 {(node || edge) && (
                   <Button variant="outline" size="sm" className="mt-auto" onClick={removeSel}>
-                    <Icon name="trash-2" /> Delete the {node ? "node" : "edge"}
+                    <Icon name="trash" /> Delete the {node ? "node" : "edge"}
                   </Button>
                 )}
               </aside>
@@ -906,7 +906,7 @@ function NewMenu({ onCreate, label }: { onCreate: (t: Template) => void; label?:
             aria-label="New diagram"
             title="New diagram"
           >
-            <Icon name="file-plus-2" />
+            <Icon name="file-plus-corner" />
             {label}
           </Button>
         }

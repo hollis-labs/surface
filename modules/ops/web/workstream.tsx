@@ -208,7 +208,7 @@ export function WorkstreamView({
                     title="Pop out workstream into its own window"
                     aria-label="Open workstream in new window"
                   >
-                    <Icon name="square-arrow-out-up-right" size={12} />
+                    <Icon name="external-link" size={12} />
                   </Button>
                 )}
                 <ObjectActionsMenu
@@ -520,7 +520,7 @@ function Overview({
                     onOpenWorkstream?.(c.id, true)
                   }}
                 >
-                  <Icon name="square-arrow-out-up-right" />
+                  <Icon name="external-link" />
                 </Button>
               </div>
             ))}

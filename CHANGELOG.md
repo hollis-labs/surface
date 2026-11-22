@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Icons lucide 1.x renamed draw again.** `<Icon name>` names lucide dropped as aliases drew a dot: the account
+  menu's Passkeys (`fingerprint`), and `trash-2`, `alert-triangle`/`triangle-alert`, `square-arrow-out-up-right`,
+  `file-plus-2`, `history`, `code-2`, `building-2`, `shield-alert`, `check-circle-2`, `pause-circle`, `list-ul`,
+  `archive-restore` in the modules. A test now checks every `<Icon name>` against lucide. Work kinds stored with
+  the old names keep their icons.
 - **Two-step sign-in (TOTP).** For apps with sign-in: the account menu's "Two-step sign-in" sets up an
   authenticator app (QR code or key, one code to confirm, ten recovery codes shown once to copy or download),
   makes a new set of recovery codes, or turns it off (each takes a code). Signing in with a password then asks

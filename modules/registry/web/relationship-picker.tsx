@@ -448,7 +448,7 @@ export function RelationshipLinkerModal({
                           aria-label={`Remove relation to ${e.relation.to.id}`}
                           title="Unlink relationship"
                         >
-                          <Icon name="trash-2" className="size-3.5" />
+                          <Icon name="trash" className="size-3.5" />
                         </Button>
                       </div>
                     ))}
@@ -496,7 +496,7 @@ export function RelationshipLinkerModal({
                           aria-label={`Remove incoming relation from ${e.relation.from.id}`}
                           title="Unlink relationship"
                         >
-                          <Icon name="trash-2" className="size-3.5" />
+                          <Icon name="trash" className="size-3.5" />
                         </Button>
                       </div>
                     ))}
@@ -597,7 +597,7 @@ export function RelationshipLinkerModal({
                     onClick={() => onRemoveCorrelation(cb.id)}
                     aria-label={`Remove correlation ${cb.label}`}
                   >
-                    <Icon name="trash-2" className="size-3.5" />
+                    <Icon name="trash" className="size-3.5" />
                   </Button>
                 </div>
               ))}

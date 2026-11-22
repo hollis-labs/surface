@@ -15,7 +15,7 @@ require (
 	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/nanite v0.16.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261122193301-90857c1a95c2
+	github.com/hollis-labs/substrate v0.1.1-0.20261122195024-e25430c2cb27
 	github.com/spf13/cobra v1.10.2
 	github.com/tdewolff/parse/v2 v2.25.0
 	golang.org/x/net v0.62.0
@@ -115,4 +115,5 @@ require (
 	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
+	rsc.io/qr v0.2.0 // indirect
 )

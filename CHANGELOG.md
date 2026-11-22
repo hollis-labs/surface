@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Two-step sign-in (TOTP).** For apps with sign-in: the account menu's "Two-step sign-in" sets up an
+  authenticator app (QR code or key, one code to confirm, ten recovery codes shown once to copy or download),
+  makes a new set of recovery codes, or turns it off (each takes a code). Signing in with a password then asks
+  for the code, or a recovery code. When Substrate's `identity.require_second_factor` lists the account's
+  role, the gate asks for a passkey or an authenticator app before the app opens. In Users and invites, an
+  admin sees who has two-step on and can reset it for someone who lost their app. Needs Substrate e25430c.
+
 ## [0.17.0] - 2026-11-22
 
 - **Sign-in (opt-in), through Substrate identity.** `auth: identity` in an app's `surface.yaml` turns it on; the

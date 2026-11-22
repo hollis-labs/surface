@@ -101,8 +101,8 @@ github.com/hollis-labs/libs/ui/ui-go v0.4.0 h1:3TydDJElqD1ilgfY1FY+ei+joAuRcwMyu
 github.com/hollis-labs/libs/ui/ui-go v0.4.0/go.mod h1:MBO41Mrbgo6YfRbm8MI50qQXjDfwhkvA/WxRdtOiL38=
 github.com/hollis-labs/nanite v0.16.0 h1:npcyCN1Qqlo8R15MCCzC5y6/6Cx3u0G7x9fSoG6dEvk=
 github.com/hollis-labs/nanite v0.16.0/go.mod h1:DLS9oKPArM6+T9baq9FdSlPU6Eu73dHlaxql5m6aOG4=
-github.com/hollis-labs/substrate v0.1.1-0.20261122193301-90857c1a95c2 h1:nPbbWxsSBo55muu8ggK3NqOqhNt8aUpE4Bi3KfsnfDk=
-github.com/hollis-labs/substrate v0.1.1-0.20261122193301-90857c1a95c2/go.mod h1:rgtzA52p+jnv1frJEyT+xU9lZQ6VHfn4QVzgJ22wUjQ=
+github.com/hollis-labs/substrate v0.1.1-0.20261122195024-e25430c2cb27 h1:Ef20p0fiEQmOVmSUAyecPxDhVClwO70XtMF3VQAUlZw=
+github.com/hollis-labs/substrate v0.1.1-0.20261122195024-e25430c2cb27/go.mod h1:ZRN31jPnAFuCaw9yAyRpXvYW800Zr4nTMX5HwQT2z0M=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/invopop/jsonschema v0.14.0 h1:MHQqLhvpNUZfw+hM3AZDYK7jxO8FZoQeQM77g8iyZjg=
@@ -298,3 +298,5 @@ modernc.org/strutil v1.2.1 h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=
 modernc.org/strutil v1.2.1/go.mod h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=
 modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
 modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
+rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
+rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

@@ -1,6 +1,6 @@
 /**
- * The bar's account menu, for an app with sign-in: who is signed in (and their role), change
- * the password, sign out. Absent when the app has no sign-in.
+ * The bar's account menu, for an app with sign-in: who is signed in (and their role), passkeys,
+ * two-step sign-in, change the password, sign out. Absent when the app has no sign-in.
  */
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,7 @@ import {
   setPasskeyOnly,
 } from "./passkeys"
 import { AuthError, changePassword, isAdmin, signOut } from "./session"
+import { TwoStepDialog } from "./TwoStep"
 import { UsersDialog } from "./UsersDialog"
 
 function PasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -222,10 +223,11 @@ function PasskeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 }
 
 export function AccountMenu() {
-  const { account, signedOut } = useAccount()
+  const { account, signedOut, refresh } = useAccount()
   const [pw, setPw] = useState(false)
   const [pk, setPk] = useState(false)
   const [people, setPeople] = useState(false)
+  const [two, setTwo] = useState(false)
   if (!account) return null
   const out = () => void signOut().finally(signedOut)
   return (
@@ -263,6 +265,9 @@ export function AccountMenu() {
           <DropdownMenuItem onClick={() => setPk(true)}>
             <Icon name="fingerprint" /> Passkeys
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTwo(true)}>
+            <Icon name="smartphone" /> Two-step sign-in
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPw(true)}>
             <Icon name="key-round" /> Change password
           </DropdownMenuItem>
@@ -273,6 +278,7 @@ export function AccountMenu() {
       </DropdownMenu>
       <PasswordDialog open={pw} onOpenChange={setPw} />
       <PasskeysDialog open={pk} onOpenChange={setPk} />
+      <TwoStepDialog open={two} onOpenChange={setTwo} onChanged={refresh} />
       {isAdmin(account) && <UsersDialog me={account} open={people} onOpenChange={setPeople} />}
     </>
   )

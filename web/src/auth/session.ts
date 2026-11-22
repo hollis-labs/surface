@@ -18,6 +18,10 @@ export interface Account {
   email?: string
   role?: string
   scopes: string[]
+  /** Two-step sign-in (TOTP) is on. */
+  totp?: boolean
+  /** The role needs a second factor the account lacks: until it has one, it can only enroll. */
+  second_factor_required?: boolean
 }
 
 export interface SetupStatus {
@@ -34,7 +38,14 @@ export type Whoami = { auth: "off" } | { auth: "identity"; account: Account | nu
 const SIGNED_OUT = "surface:signed-out"
 
 /** Routes that answer 401 for a wrong password rather than an ended session. */
-const ANSWERS_401 = ["/api/login", "/api/setup", "/api/password"]
+const ANSWERS_401 = [
+  "/api/login",
+  "/api/setup",
+  "/api/password",
+  "/api/identity/totp",
+  "/api/identity/totp/confirm",
+  "/api/identity/totp/recovery-codes",
+]
 
 let installed = false
 
@@ -107,7 +118,9 @@ export async function setupStatus(): Promise<SetupStatus> {
   return (await res.json()) as SetupStatus
 }
 
-export const signIn = (username: string, password: string) => post<Account>("/api/login", { username, password })
+/** Signs in. An account with two-step sign-in answers AuthError "totp_required" until code is sent. */
+export const signIn = (username: string, password: string, code?: string) =>
+  post<Account>("/api/login", code ? { username, password, code } : { username, password })
 
 export const setUp = (input: { username: string; display_name: string; password: string; setup_token?: string }) =>
   post<Account>("/api/setup", input)
@@ -163,6 +176,8 @@ export interface UserRow {
   display_name: string
   role?: string
   disabled: boolean
+  /** Two-step sign-in is on. */
+  totp?: boolean
 }
 
 export interface PendingInvite {
@@ -180,7 +195,7 @@ async function get<T>(path: string): Promise<T> {
 
 export const listUsers = () => get<{ users: UserRow[] | null }>("/api/identity/users").then((r) => r.users ?? [])
 
-export const updateUser = (id: string, patch: { role?: string; disabled?: boolean }) =>
+export const updateUser = (id: string, patch: { role?: string; disabled?: boolean; reset_totp?: boolean }) =>
   post<UserRow>(`/api/identity/users/${encodeURIComponent(id)}`, patch, "PUT")
 
 export const listInvites = () =>

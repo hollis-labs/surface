@@ -126,13 +126,30 @@ export function UsersDialog({
                     {u.display_name || u.username}
                     {u.id === me.id ? " (you)" : ""}
                   </span>
-                  <span className="truncate text-muted-foreground text-xs">{u.username}</span>
+                  <span className="truncate text-muted-foreground text-xs">
+                    {u.username}
+                    {u.totp ? " · two-step on" : ""}
+                  </span>
                 </div>
                 <RoleSelect
                   value={u.role || "member"}
                   disabled={busy}
                   onChange={(r) => void run(() => updateUser(u.id, { role: r }))}
                 />
+                {u.totp && u.id !== me.id && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={busy}
+                    title="For someone who lost their authenticator app and recovery codes: their password alone signs them in until they set it up again."
+                    onClick={() => {
+                      if (window.confirm(`Turn off two-step sign-in for ${u.display_name || u.username}?`))
+                        void run(() => updateUser(u.id, { reset_totp: true }))
+                    }}
+                  >
+                    Reset two-step
+                  </Button>
+                )}
                 {u.id !== me.id && (
                   <Button
                     size="xs"

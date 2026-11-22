@@ -40,8 +40,10 @@ import {
   setupStatus,
   setupTokenFromURL,
   signIn,
+  signOut,
   whoami,
 } from "./session"
+import { CodeInput, TotpEnroll } from "./TwoStep"
 
 interface AccountState {
   /** The signed-in account; null when the app has no sign-in. */
@@ -64,6 +66,7 @@ type GateState =
   | { k: "error"; message: string }
   | { k: "off" }
   | { k: "in"; account: Account }
+  | { k: "second-factor"; account: Account; passkeys: boolean }
   | { k: "setup"; token: string; passkeys: boolean }
   | { k: "offer-passkey" }
   | { k: "invite"; code: string; info: InviteInfo; passkeys: boolean }
@@ -87,6 +90,11 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         signedIn.current = true
         clearSetupURL()
         clearInviteURL()
+        if (who.account.second_factor_required) {
+          const st = await setupStatus().catch(() => ({ passkeys: false }) as Partial<SetupStatus>)
+          setState({ k: "second-factor", account: who.account, passkeys: passkeysUsable(st.passkeys) })
+          return
+        }
         setState({ k: "in", account: who.account })
         return
       }
@@ -158,6 +166,16 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         <AccountContext.Provider value={{ account: state.account, refresh, signedOut }}>
           {children}
         </AccountContext.Provider>
+      )
+    case "second-factor":
+      return (
+        <SecondFactorScreen
+          title={title}
+          account={state.account}
+          passkeys={state.passkeys}
+          done={() => void check()}
+          signedOut={signedOut}
+        />
       )
     case "setup":
       return (
@@ -261,25 +279,67 @@ function SignInScreen({
 }) {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  // The second step: the password was right and the account has two-step sign-in.
+  const [needCode, setNeedCode] = useState(false)
+  const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const restart = () => {
+    setNeedCode(false)
+    setCode("")
+    setPassword("")
+    setError("")
+  }
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError("")
     try {
-      await signIn(username.trim(), password)
+      await signIn(username.trim(), password, needCode ? code.trim() : undefined)
       done()
     } catch (err) {
-      setError(
-        err instanceof AuthError && err.code === "passkey_required"
-          ? "This account signs in with a passkey only. Use “Sign in with a passkey”."
-          : message(err),
-      )
-      setPassword("")
+      if (err instanceof AuthError && err.code === "totp_required") {
+        setNeedCode(true)
+      } else if (needCode && err instanceof AuthError && err.code === "invalid_code") {
+        setError("That code did not work. Codes change every 30 seconds; each works once.")
+        setCode("")
+      } else {
+        setError(
+          err instanceof AuthError && err.code === "passkey_required"
+            ? "This account signs in with a passkey. Use “Sign in with a passkey”."
+            : message(err),
+        )
+        setPassword("")
+        setNeedCode(false)
+        setCode("")
+      }
     } finally {
       setBusy(false)
     }
+  }
+  if (needCode) {
+    return (
+      <Screen title={title} heading="Two-step sign-in">
+        <p className="text-muted-foreground text-sm">
+          Enter the 6-digit code from your authenticator app. Lost it? Use one of your recovery codes instead.
+        </p>
+        <form onSubmit={(e) => void submit(e)}>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="auth-code">Code</FieldLabel>
+              <CodeInput id="auth-code" value={code} onChange={setCode} recovery autoFocus />
+            </Field>
+            <ErrorBox text={error} />
+            <Button type="submit" disabled={busy || code.trim().length < 6}>
+              {busy ? "Checking…" : "Sign in"}
+            </Button>
+            <Button type="button" variant="ghost" disabled={busy} onClick={restart}>
+              Back
+            </Button>
+          </FieldGroup>
+        </form>
+      </Screen>
+    )
   }
   const withPasskey = async () => {
     setBusy(true)
@@ -337,6 +397,63 @@ function SignInScreen({
           </Button>
         </FieldGroup>
       </form>
+    </Screen>
+  )
+}
+
+/**
+ * The account's role needs a second factor and it has none: set one up before the app opens
+ * (the server gives the session no scopes until then).
+ */
+function SecondFactorScreen({
+  title,
+  account,
+  passkeys,
+  done,
+  signedOut,
+}: {
+  title: string
+  account: Account
+  passkeys: boolean
+  done: () => void
+  signedOut: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const withPasskey = async () => {
+    setBusy(true)
+    setError("")
+    try {
+      await addPasskey(deviceName())
+      done()
+    } catch (err) {
+      if (!cancelled(err)) setError(message(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Screen title={title} heading="Set up two-step sign-in">
+      <p className="text-muted-foreground text-sm">
+        As {ROLE_TEXT[account.role ?? ""] ?? account.role} of {title}, your account needs a second way to prove it is
+        you{passkeys ? ": a passkey, or an authenticator app" : ": an authenticator app"}.
+      </p>
+      {passkeys && (
+        <>
+          <Button variant="outline" disabled={busy} onClick={() => void withPasskey()}>
+            <KeyRound /> {busy ? "Waiting for your device…" : "Add a passkey"}
+          </Button>
+          <ErrorBox text={error} />
+          <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <span className="h-px flex-1 bg-border" /> or an authenticator app{" "}
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
+      <TotpEnroll onDone={done} />
+      <Button variant="ghost" size="sm" onClick={() => void signOut().finally(signedOut)}>
+        Sign out
+      </Button>
     </Screen>
   )
 }

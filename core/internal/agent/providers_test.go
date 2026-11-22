@@ -201,8 +201,35 @@ func TestNaniteAnswersThroughTheAppsProvidersFile(t *testing.T) {
 		t.Fatalf("answer %q", text.String())
 	}
 	fake.mu.Lock()
-	defer fake.mu.Unlock()
 	if len(fake.auth) == 0 || fake.auth[0] != "Bearer sk-test-123" || fake.model[0] != "tiny-model" {
+		fake.mu.Unlock()
 		t.Fatalf("auth %v model %v", fake.auth, fake.model)
+	}
+	calls := len(fake.model)
+	fake.mu.Unlock()
+
+	// An edit to the providers file applies on the next turn, without reopening the runner.
+	providers = strings.Replace(providers, "model: tiny-model", "model: other-model", 1)
+	if err := os.WriteFile(filepath.Join(k.dataDir, "agent", "providers.yaml"), []byte(providers), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.wire.svc.Submit(t.Context(), view.ConversationID, chat.Turn{Text: "Again."}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		fake.mu.Lock()
+		n, last := len(fake.model), fake.model[len(fake.model)-1]
+		fake.mu.Unlock()
+		if n > calls {
+			if last != "other-model" {
+				t.Fatalf("second turn used %q", last)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second turn never reached the provider")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

@@ -27,8 +27,13 @@ import { addPasskey, cancelled, deviceName, passkeysUsable, signInWithPasskey } 
 import {
   type Account,
   AuthError,
+  acceptInvite,
+  checkInvite,
+  clearInviteURL,
   clearSetupURL,
+  type InviteInfo,
   installAuthFetch,
+  inviteCodeFromURL,
   onSignedOut,
   type SetupStatus,
   setUp,
@@ -61,6 +66,8 @@ type GateState =
   | { k: "in"; account: Account }
   | { k: "setup"; token: string; passkeys: boolean }
   | { k: "offer-passkey" }
+  | { k: "invite"; code: string; info: InviteInfo; passkeys: boolean }
+  | { k: "invite-invalid"; message: string }
   | { k: "setup-offline" }
   | { k: "sign-in"; expired: boolean; notice?: string; passkeys: boolean }
 
@@ -79,10 +86,26 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
       if (who.account) {
         signedIn.current = true
         clearSetupURL()
+        clearInviteURL()
         setState({ k: "in", account: who.account })
         return
       }
       const st: SetupStatus = await setupStatus()
+      const invite = inviteCodeFromURL()
+      if (invite && !st.setup_required) {
+        try {
+          setState({
+            k: "invite",
+            code: invite,
+            info: await checkInvite(invite),
+            passkeys: passkeysUsable(st.passkeys),
+          })
+        } catch (err) {
+          clearInviteURL()
+          setState({ k: "invite-invalid", message: (err as Error).message })
+        }
+        return
+      }
       const token = setupTokenFromURL()
       if (st.setup_required) {
         setState(
@@ -144,6 +167,24 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
           done={() => (state.passkeys ? setState({ k: "offer-passkey" }) : void check())}
           closed={() => void check()}
         />
+      )
+    case "invite":
+      return (
+        <InviteScreen
+          title={title}
+          code={state.code}
+          info={state.info}
+          done={() => (state.passkeys ? setState({ k: "offer-passkey" }) : void check())}
+        />
+      )
+    case "invite-invalid":
+      return (
+        <Screen title={title} heading="This invite does not work">
+          <p className="text-muted-foreground text-sm">{state.message}</p>
+          <Button variant="outline" onClick={() => void check()}>
+            Go to sign in
+          </Button>
+        </Screen>
       )
     case "offer-passkey":
       return <OfferPasskeyScreen title={title} done={() => void check()} />
@@ -329,6 +370,111 @@ function OfferPasskeyScreen({ title, done }: { title: string; done: () => void }
       <Button variant="ghost" disabled={busy} onClick={done}>
         Not now
       </Button>
+    </Screen>
+  )
+}
+
+const ROLE_TEXT: Record<string, string> = {
+  owner: "an owner",
+  admin: "an admin",
+  member: "a member",
+  guest: "a guest (read only)",
+}
+
+/** An invite link: choose a username and password and join with the invite's role. */
+function InviteScreen({
+  title,
+  code,
+  info,
+  done,
+}: {
+  title: string
+  code: string
+  info: InviteInfo
+  done: () => void
+}) {
+  const [display, setDisplay] = useState(info.label ?? "")
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [again, setAgain] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const mismatch = again !== "" && again !== password
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (password !== again) return
+    setBusy(true)
+    setError("")
+    try {
+      await acceptInvite({ code, username: username.trim(), display_name: display.trim(), password })
+      clearInviteURL()
+      done()
+    } catch (err) {
+      setError(message(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Screen title={title} heading={`Join ${title}`}>
+      <p className="text-muted-foreground text-sm">
+        You were invited as {ROLE_TEXT[info.role] ?? info.role}. Choose how you will sign in. The invite works once.
+      </p>
+      <form onSubmit={(e) => void submit(e)}>
+        <FieldGroup>
+          <fieldset disabled={busy} className="contents">
+            <Field>
+              <FieldLabel htmlFor="inv-display">Your name</FieldLabel>
+              <Input
+                id="inv-display"
+                autoComplete="name"
+                autoFocus
+                value={display}
+                onChange={(e) => setDisplay(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="inv-username">Username</FieldLabel>
+              <Input
+                id="inv-username"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+              <FieldDescription>Lowercase letters, digits, dot, dash or underscore.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="inv-password">Password</FieldLabel>
+              <Input
+                id="inv-password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <FieldDescription>At least 12 characters. You can add a passkey once you are in.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="inv-again">Repeat the password</FieldLabel>
+              <Input
+                id="inv-again"
+                type="password"
+                autoComplete="new-password"
+                value={again}
+                onChange={(e) => setAgain(e.target.value)}
+                aria-invalid={mismatch}
+              />
+              {mismatch && (
+                <FieldDescription className="text-destructive">The passwords do not match.</FieldDescription>
+              )}
+            </Field>
+          </fieldset>
+          <ErrorBox text={error} />
+          <Button type="submit" disabled={busy || !username.trim() || password.length < 12 || password !== again}>
+            {busy ? "Joining…" : "Join and sign in"}
+          </Button>
+        </FieldGroup>
+      </form>
     </Screen>
   )
 }

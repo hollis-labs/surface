@@ -36,7 +36,8 @@ import {
   removePasskey,
   setPasskeyOnly,
 } from "./passkeys"
-import { AuthError, changePassword, signOut } from "./session"
+import { AuthError, changePassword, isAdmin, signOut } from "./session"
+import { UsersDialog } from "./UsersDialog"
 
 function PasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [current, setCurrent] = useState("")
@@ -224,6 +225,7 @@ export function AccountMenu() {
   const { account, signedOut } = useAccount()
   const [pw, setPw] = useState(false)
   const [pk, setPk] = useState(false)
+  const [people, setPeople] = useState(false)
   if (!account) return null
   const out = () => void signOut().finally(signedOut)
   return (
@@ -253,6 +255,11 @@ export function AccountMenu() {
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
+          {isAdmin(account) && (
+            <DropdownMenuItem onClick={() => setPeople(true)}>
+              <Icon name="users" /> Users and invites
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => setPk(true)}>
             <Icon name="fingerprint" /> Passkeys
           </DropdownMenuItem>
@@ -266,6 +273,7 @@ export function AccountMenu() {
       </DropdownMenu>
       <PasswordDialog open={pw} onOpenChange={setPw} />
       <PasskeysDialog open={pk} onOpenChange={setPk} />
+      {isAdmin(account) && <UsersDialog me={account} open={people} onOpenChange={setPeople} />}
     </>
   )
 }

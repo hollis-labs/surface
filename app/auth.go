@@ -37,7 +37,7 @@ const AuthIdentity = "identity"
 
 // identityPaths are the routes Substrate's identity module serves, which go to Substrate's
 // handler (with /healthz).
-var identityPaths = []string{"/healthz", "/api/setup", "/api/login", "/api/logout", "/api/password", "/api/token", "/api/pair", "/api/passkey/", "/api/identity/"}
+var identityPaths = []string{"/healthz", "/api/setup", "/api/login", "/api/logout", "/api/password", "/api/token", "/api/pair", "/api/passkey/", "/api/invite/", "/api/identity/"}
 
 // authHandler wraps the core's handler in sign-in, for Config.Auth == AuthIdentity.
 func authHandler(cfg Config, sapp *smodule.App, a *core.App, substrateHandler http.Handler) (http.Handler, error) {

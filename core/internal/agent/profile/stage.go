@@ -36,7 +36,11 @@ type staged struct {
 }
 
 // Stage makes dst the seat with p laid over it (p nil: the seat alone).
-func Stage(dst, seat string, p *Profile) error {
+func Stage(dst, seat string, p *Profile) error { return StageWith(dst, seat, p, nil) }
+
+// StageWith is Stage plus app-owned files laid over everything (by slash path), such as the
+// app's providers.yaml. A profile can never carry those (appOwned); the app can.
+func StageWith(dst, seat string, p *Profile, app map[string][]byte) error {
 	want, err := seatFiles(seat)
 	if err != nil {
 		return fmt.Errorf("profile: the seat %s: %w", seat, err)
@@ -69,6 +73,9 @@ func Stage(dst, seat string, p *Profile) error {
 				want[name] = staged{data: raw, exec: p.exec[name]}
 			}
 		}
+	}
+	for name, raw := range app {
+		want[name] = staged{data: raw}
 	}
 	return sync(dst, want)
 }

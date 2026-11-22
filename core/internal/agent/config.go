@@ -30,6 +30,13 @@ type FileConfig struct {
 	GatewayURL string `json:"gateway_url"`
 	// KeyFile holds the bearer key. "~/" is the home directory.
 	KeyFile string `json:"key_file"`
+	// ProvidersFile is the app's providers.yaml (Nanite's format: named providers and a
+	// provider and model per use), kept by the app or its owner rather than authored in the
+	// agent directory: a module's settings page may write it. The Nanite runner stages it
+	// into the agent directory before each turn, so an edit takes effect on the next turn.
+	// When it selects use.chat, model, gateway_url and key_file are optional. Default:
+	// <app data dir>/agent/providers.yaml. "~/" is the home directory.
+	ProvidersFile string `json:"providers_file,omitempty"`
 	// System is added to the agent's standing instructions.
 	System    string `json:"system,omitempty"`
 	MaxTokens int    `json:"max_tokens,omitempty"`
@@ -206,6 +213,9 @@ func LoadConfig(app string) (FileConfig, error) {
 	if v := os.Getenv("SURFACE_AGENT_KEY_FILE"); v != "" {
 		c.KeyFile = v
 	}
+	if v := os.Getenv("SURFACE_AGENT_PROVIDERS_FILE"); v != "" {
+		c.ProvidersFile = v
+	}
 	if v := os.Getenv("SURFACE_TETHER_URL"); v != "" {
 		c.Tether.URL = v
 	}
@@ -231,6 +241,7 @@ func LoadConfig(app string) (FileConfig, error) {
 		return c, err
 	}
 	c.KeyFile = expandHome(c.KeyFile)
+	c.ProvidersFile = expandHome(c.ProvidersFile)
 	c.Classifier.KeyFile = expandHome(c.Classifier.KeyFile)
 	if c.Classifier.Warden != nil {
 		c.Classifier.Warden.CredentialFile = expandHome(c.Classifier.Warden.CredentialFile)

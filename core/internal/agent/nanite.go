@@ -144,14 +144,29 @@ func (a *asks) has(conversation, tool string) bool {
 	return tool != "" && a.by[conversation] == tool
 }
 
+// gatewayOf is the config's model gateway for Nanite's built-in providers, or the zero
+// Gateway (each provider's own endpoint) when it names none.
+func gatewayOf(c FileConfig) nanite.Gateway {
+	if c.GatewayURL == "" || c.KeyFile == "" {
+		return nanite.Gateway{}
+	}
+	return nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"}
+}
+
 // openNanite opens the app's agent as a Nanite agent with the app's tools.
 func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, error) {
 	if s.cfgErr != nil {
 		return nil, fmt.Errorf("agent: config: %w", s.cfgErr)
 	}
 	c := s.cfg
-	if c.Model == "" || c.GatewayURL == "" || c.KeyFile == "" {
-		return nil, fmt.Errorf("agent: the nanite runner needs model, gateway_url and key_file in %s", ConfigPath(s.k.AppName()))
+	providersPath := c.ProvidersPath(s.k.DataDir())
+	providersRaw, chatSelected, err := appProviders(providersPath)
+	if err != nil {
+		// Logged when the agent opened; the gateway, if any, serves meanwhile.
+		providersRaw, chatSelected = nil, false
+	}
+	if !chatSelected && (c.Model == "" || c.GatewayURL == "" || c.KeyFile == "") {
+		return nil, fmt.Errorf("agent: the nanite runner needs model, gateway_url and key_file in %s, or a providers file that selects use.chat (%s)", ConfigPath(s.k.AppName()), providersPath)
 	}
 	dir := c.AgentDir(w.agent)
 	if dir == "" {
@@ -171,7 +186,9 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	// With module profiles the agent opens on a staged directory: the seat, with the active
 	// profile over it, written again before each turn (profiles.go).
 	open := dir
-	if len(s.prof.order) > 0 || len(s.modules) > 0 {
+	// The app's providers file reaches the runner only through the staged directory, so it
+	// turns staging on too.
+	if len(s.prof.order) > 0 || len(s.modules) > 0 || providersRaw != nil {
 		s.prof.seat, s.prof.stage = dir, s.stageDir(w.agent)
 		if err = s.stageProfile(ProfileChoice{Why: "default"}); err != nil {
 			s.prof.stage = ""
@@ -183,7 +200,7 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 	}
 	// Nanite takes the model from host.yaml, or from this variable when the file names
 	// none (the starter names none): the app's agent config stays the one place it is set.
-	if os.Getenv("NANITE_DEFAULT_MODEL") == "" {
+	if os.Getenv("NANITE_DEFAULT_MODEL") == "" && c.Model != "" {
 		_ = os.Setenv("NANITE_DEFAULT_MODEL", c.Model)
 	}
 	compact, keep, effectiveCompact, effectiveKeep, err := naniteCompactionFallback(open)
@@ -208,7 +225,9 @@ func (s *Service) openNanite(ctx context.Context, w *wire) (*chatrunner.Runner, 
 			DataDir:         filepath.Join(s.k.DataDir(), "agents", w.agent),
 			GlobalSkillsDir: "-",
 			// The key is a reference to the file; Nanite reads it when it calls the gateway.
-			Gateway:           nanite.Gateway{BaseURL: c.GatewayURL, KeyRef: "file://" + c.KeyFile, Auth: "bearer"},
+			// Without one, the built-in providers go to their own endpoints; the app's
+			// providers file is what routes chat then.
+			Gateway:           gatewayOf(c),
 			Logger:            s.log.With("part", "nanite"),
 			Builtins:          groups,
 			MaxOutputTokens:   c.MaxTokens,

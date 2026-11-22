@@ -163,7 +163,7 @@ func (s *Service) stageProfile(c ProfileChoice) error {
 	pr := s.prof
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
-	if err := profile.Stage(pr.stage, pr.seat, pr.all[c.ID]); err != nil {
+	if err := profile.StageWith(pr.stage, pr.seat, pr.all[c.ID], s.stagedAppFiles()); err != nil {
 		return err
 	}
 	if pr.staged != c.ID {

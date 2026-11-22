@@ -176,7 +176,15 @@ func NewWith(k kernel.Kernel, o Options) (*Service, error) {
 	}
 	// An unconfigured app remains usable without opening a model.
 	explicitRunner := strings.TrimSpace(os.Getenv("SURFACE_AGENT_RUNNER")) != ""
-	if runner := runnerChoice(); cfg.Tether.URL == "" && (explicitRunner || (cfg.Model != "" && cfg.GatewayURL != "" && cfg.KeyFile != "")) {
+	// The app's providers file can stand in for the gateway: it is read here once to decide
+	// whether the agent opens; after that the runner reads it before every turn.
+	_, providersChat, providersErr := appProviders(cfg.ProvidersPath(k.DataDir()))
+	if providersErr != nil {
+		log.Error("the app's providers file does not check out; it is left out", "err", providersErr)
+		providersChat = false
+	}
+	gatewayConfigured := cfg.Model != "" && cfg.GatewayURL != "" && cfg.KeyFile != ""
+	if runner := runnerChoice(); cfg.Tether.URL == "" && (explicitRunner || gatewayConfigured || providersChat) {
 		if s.wire, err = s.openWire(ctx, runner); err != nil {
 			return nil, err
 		}

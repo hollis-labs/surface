@@ -25,3 +25,5 @@ modules:
   - approvals
   - workbench
   - workflows
+  - align
+  - trackers

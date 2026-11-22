@@ -45,6 +45,10 @@ const ICONS: Record<string, LucideIcon> = {
   "work.item": Target,
   "registry.record": Boxes,
   "ops.workstream": Radar,
+  "align.proposal": Layers,
+  "align.droppad": Folder,
+  "tracker.list": ListChecks,
+  "tracker.item": ListChecks,
   path: FileText,
   "path.relative": FileText,
   url: Link2,
@@ -237,6 +241,36 @@ export function CiteRef({
             mono={Boolean(mono)}
             data-kind={refId.kind}
             aria-label={`${kindLabel(refId.kind)}: ${text}`}
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation()
+              const rawToken =
+                raw ??
+                (refId.kind === "registry.record"
+                  ? `registry:${refId.canonical}`
+                  : refId.kind === "ops.workstream"
+                    ? `ops:${refId.canonical}`
+                    : refId.kind === "align.proposal"
+                      ? `align:${refId.canonical}`
+                      : refId.kind === "align.droppad"
+                        ? `droppad:${refId.canonical}`
+                        : refId.kind === "tracker.list"
+                          ? `tracker:${refId.canonical}`
+                          : refId.kind === "tracker.item"
+                            ? `tracker.item:${refId.canonical}`
+                            : refId.canonical)
+              e.dataTransfer.effectAllowed = "copyMove"
+              e.dataTransfer.setData(
+                "application/x-surface-cite",
+                JSON.stringify({
+                  kind: refId.kind,
+                  canonical: refId.canonical,
+                  raw: rawToken,
+                  label: text,
+                }),
+              )
+              e.dataTransfer.setData("text/plain", rawToken)
+            }}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()

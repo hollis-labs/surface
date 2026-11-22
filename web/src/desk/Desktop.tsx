@@ -432,7 +432,15 @@ export function Desktop({ modules }: DesktopProps) {
               <Icon name="swatch-book" size={15} />
               <span>Cards &amp; Components Preview</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void desk.open("surface.workflows")}>
+            <DropdownMenuItem onClick={() => void desk.open("align")}>
+              <Icon name="git-compare-arrows" size={15} />
+              <span>Visual Alignment &amp; Drop Pad</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("trackers")}>
+              <Icon name="list-checks" size={15} />
+              <span>Native Trackers</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("surface.workflows", { args: { tab: "samples" } })}>
               <Icon name="sparkles" size={15} />
               <span>Workflow Golden Samples</span>
             </DropdownMenuItem>

@@ -12,7 +12,7 @@ import {
 } from "@hollis-labs/surface-cards"
 import { Component, type ComponentType, type ReactNode, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { CardApproval, type CardApprovalChange } from "@/components/ui/card-approval"
+import { CardApproval, type CardApprovalCallout, type CardApprovalChange } from "@/components/ui/card-approval"
 import { CardChoice, type CardChoiceOption } from "@/components/ui/card-choice"
 import { CardConfirm } from "@/components/ui/card-confirm"
 import { CardForm } from "@/components/ui/card-form"
@@ -22,7 +22,9 @@ import { CardNotice } from "@/components/ui/card-notice"
 import { CardPlan, type CardPlanStep } from "@/components/ui/card-plan"
 import { CardProgress } from "@/components/ui/card-progress"
 import { CardPrompt } from "@/components/ui/card-prompt"
+import { AlignProposalCardRenderer } from "../desk/AlignWorkbench"
 import { GenuiCard } from "../genui/card"
+import { EntityCardRenderer } from "./EntityCard"
 import { isLive, isStale, lateOpen, loadDraft, respond, type ServerCard, saveDraft } from "./store"
 
 /** What a renderer is handed: the card, and how to answer it. */
@@ -158,6 +160,22 @@ registerCard("approval", "1", (p) => (
     summary={str(p.card.payload?.summary)}
     risk={p.card.risk || "low"}
     changes={list<CardApprovalChange>(p.card.payload?.changes)}
+    callouts={list<CardApprovalCallout>(p.card.payload?.callouts)}
+    viewMode={
+      str(p.card.payload?.view_mode ?? p.card.payload?.viewMode) as
+        | "diff"
+        | "side-by-side"
+        | "settings"
+        | "config"
+        | "architecture"
+        | undefined
+    }
+    beforeSnapshot={
+      (p.card.payload?.before_snapshot ?? p.card.payload?.beforeSnapshot) as Record<string, unknown> | undefined
+    }
+    afterSnapshot={
+      (p.card.payload?.after_snapshot ?? p.card.payload?.afterSnapshot) as Record<string, unknown> | undefined
+    }
     requestedBy={str(p.card.payload?.requested_by)}
     phrase={str(p.card.payload?.phrase)}
     perChange={p.card.payload?.per_change === true}
@@ -179,6 +197,23 @@ registerCard("plan", "1", ({ card }) => <CardPlan title={card.title} steps={list
 
 // A generated surface is a card too: decoded, checked and driven by @hollis-labs/surface-genui.
 registerCard("genui", "1", GenuiCard)
+
+// Domain-authentic module entity cards (Ops Kanban, Agent session, Fleet host, Registry record, Tracker item).
+for (const kind of [
+  "entity",
+  "ops.workstream",
+  "ops.agent",
+  "ops.host",
+  "ops.followup",
+  "registry.record",
+  "tracker.item",
+]) {
+  registerCard(kind, "1", EntityCardRenderer)
+}
+
+// Visual strategy & alignment proposal cards (Architecture flow, Bucket triage, Phased timeline).
+registerCard("align", "1", AlignProposalCardRenderer)
+registerCard("proposal", "1", AlignProposalCardRenderer)
 
 /** A renderer that throws takes down its own card, not what is around it. */
 class Boundary extends Component<{ card: ServerCard; children: ReactNode }, { error: Error | null }> {

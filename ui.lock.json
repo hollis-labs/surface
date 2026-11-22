@@ -44,7 +44,7 @@
     },
     "card-approval": {
       "files": {
-        "web/src/components/ui/card-approval.tsx": "107789747a1905a74e5028a922f89be461f2f5ca651093467ed6a232ed96d042"
+        "web/src/components/ui/card-approval.tsx": "9f4dbfed202cdec37d576adb9eeaec5ae1c4b348cb7ed59e898897055f6f229e"
       }
     },
     "card-choice": {

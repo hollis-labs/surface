@@ -44,6 +44,142 @@ export function Approval() {
     <>
       <Section
         draft="d_d065599e"
+        title="Approval card: Visual Now vs After Diff, Architecture Topology & Callouts"
+        about="Visual change approvals compare what settings, config, or architecture look like Now (Before) vs After the Change, highlight added/modified/removed items, and surface callouts for concerns, warnings, security, and info."
+      >
+        <Wide label="Side-by-Side Now vs After Settings & Config Diff with Callouts">
+          <CardApproval
+            {...open}
+            title="Promote Surface Agent Bus to Tailscale mTLS"
+            summary="Switches Tachyon transport from loopback-only TCP to mutual-TLS Tailscale mesh and raises card batch hold concurrency."
+            risk="medium"
+            requestedBy="cerberus-ops"
+            viewMode="side-by-side"
+            callouts={[
+              {
+                id: "c1",
+                tone: "security",
+                title: "External Tailnet Listener Enabled",
+                detail: "Exposes :8190 over tailscale0 interface; requires valid node cert from hollis-ca.",
+                target: "transport.listen_addr",
+              },
+              {
+                id: "c2",
+                tone: "concern",
+                title: "Active Session Reconnect",
+                detail: "2 running agent sessions will briefly reconnect (~180ms) when transport reloads.",
+                target: "tachyon.bus_mode",
+              },
+              {
+                id: "c3",
+                tone: "info",
+                title: "Zero-Downtime Rollback",
+                detail: "Previous config snapshot is pinned as rev-041 and can be restored in one click.",
+              },
+            ]}
+            changes={[
+              {
+                id: "ch1",
+                label: "Listen Address",
+                path: "transport.listen_addr",
+                op: "modified",
+                before: "127.0.0.1:8190",
+                after: "100.94.18.12:8190 (tailscale0)",
+                impact: "Reachable by authorized fleet nodes",
+              },
+              {
+                id: "ch2",
+                label: "Mutual TLS Enforcement",
+                path: "transport.mtls_required",
+                op: "added",
+                after: "true (CA: hollis-root-v3.pem)",
+                impact: "Rejects unauthenticated peers",
+              },
+              {
+                id: "ch3",
+                label: "Legacy Insecure WebSocket Fallback",
+                path: "transport.allow_ws_plain",
+                op: "removed",
+                before: "true",
+              },
+              {
+                id: "ch4",
+                label: "Wizard Hold Page Size",
+                path: "surface.wizard_page_size",
+                op: "modified",
+                before: "3",
+                after: "5",
+              },
+            ]}
+          />
+        </Wide>
+        <Wide label="Architecture Topology Now vs After Comparison">
+          <CardApproval
+            {...open}
+            title="Insert Drop Pad & Alignment Store into Cite Pipeline"
+            summary="Adds modules/align and modules/trackers as first-class citeable stores alongside Registry and Ops."
+            risk="low"
+            requestedBy="architect-agent"
+            viewMode="architecture"
+            callouts={[
+              {
+                id: "ca1",
+                tone: "info",
+                title: "Cite Ref Resolution",
+                detail: "All approved architecture diagrams and drop-pad collections become citeable via cite:align/*.",
+                target: "modules/align",
+              },
+            ]}
+            beforeSnapshot={{
+              nodes: [
+                { id: "n1", label: "Agent Chat & CardDock", kind: "UI", status: "unchanged" },
+                { id: "n2", label: "Cite Resolver (/api/cite)", kind: "Core", status: "unchanged" },
+                { id: "n3", label: "Ops & Registry Modules", kind: "Module", status: "unchanged" },
+              ],
+              edges: [
+                { from: "Agent Chat & CardDock", to: "Cite Resolver (/api/cite)", label: "resolve" },
+                { from: "Cite Resolver (/api/cite)", to: "Ops & Registry Modules", label: "lookup" },
+              ],
+            }}
+            afterSnapshot={{
+              nodes: [
+                { id: "n1", label: "Agent Chat & CardDock", kind: "UI", status: "modified" },
+                { id: "n2", label: "Cite Resolver (/api/cite)", kind: "Core", status: "modified" },
+                { id: "n3", label: "Ops & Registry Modules", kind: "Module", status: "unchanged" },
+                { id: "n4", label: "Align & Drop Pad (modules/align)", kind: "Module", status: "added" },
+                { id: "n5", label: "Native Trackers (modules/trackers)", kind: "Module", status: "added" },
+              ],
+              edges: [
+                { from: "Agent Chat & CardDock", to: "Cite Resolver (/api/cite)", label: "entity + align refs" },
+                { from: "Cite Resolver (/api/cite)", to: "Align & Drop Pad (modules/align)", label: "cite:align/*" },
+                {
+                  from: "Cite Resolver (/api/cite)",
+                  to: "Native Trackers (modules/trackers)",
+                  label: "cite:tracker/*",
+                },
+              ],
+            }}
+            changes={[
+              {
+                id: "arch-1",
+                label: "Alignment & Drop Pad Store",
+                path: "modules/align",
+                op: "added",
+                after: "SQLite WAL store + cite:align/* resolver",
+              },
+              {
+                id: "arch-2",
+                label: "Native Trackers Store",
+                path: "modules/trackers",
+                op: "added",
+                after: "Categorized lifecycle items + metadata/extras JSON",
+              },
+            ]}
+          />
+        </Wide>
+      </Section>
+      <Section
+        draft="d_d065599e"
         title="Approval card: risk at a glance"
         about="Proposal for job d_d065599e. Risk shows in the left edge, the icon and the badge. High risk is the only red, and its Approve leads to a second confirm."
       >

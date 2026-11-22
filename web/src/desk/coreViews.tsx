@@ -16,6 +16,7 @@ import { CiteRecordView } from "../cite/record.tsx"
 import { Workflows } from "../gallery/workflows"
 import { Icon, type Mark, type ModuleWeb, replyMark, resolveMark, useEvent, type ViewProps } from "../sdk"
 import { allSettings, call, loadSettings, type SettingEntry, setSetting } from "../sdk/runtime"
+import { AlignWorkbench } from "./AlignWorkbench"
 import { ContextInspector } from "./ContextInspector"
 import {
   MAX_NAV_DEPTH,
@@ -27,6 +28,7 @@ import {
   useNavTree,
 } from "./navGroups"
 import { app, deleteLayout, deskState, type LayoutDef, listLayouts, loadLayout, saveLayout } from "./store"
+import { TrackersWorkbench } from "./TrackersWorkbench"
 
 type SettingsSectionId = "appearance" | "workspace" | "navigation" | "agent" | "connections" | "modules"
 
@@ -889,7 +891,12 @@ export const coreWeb: ModuleWeb = {
     "surface/marks": Marks,
     "surface/cards": CardsWindow,
     "surface/activity": ActivityTimelineWindow,
-    "surface/workflows": () => <Workflows />,
+    "surface/workflows": (props) => <Workflows {...props} />,
+    "surface/align": AlignWorkbench,
+    "surface/droppad": (props) => <AlignWorkbench {...props} initialMode="droppad" />,
+    "surface/trackers": TrackersWorkbench,
+    "align/main": AlignWorkbench,
+    "trackers/main": TrackersWorkbench,
     "surface/context": ContextInspector,
     "surface/cite": CiteRecordView,
   },

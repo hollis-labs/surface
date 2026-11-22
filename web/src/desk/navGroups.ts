@@ -80,6 +80,8 @@ export const DEFAULT_NAV_GROUPS: NavGroupDef[] = [
 const DEFAULT_VIEW_PLACEMENT: Record<string, { groupId: string; order: number }> = {
   // Workspace & Planning (Level 1)
   work: { groupId: "workspace", order: 10 },
+  align: { groupId: "workspace", order: 15 },
+  trackers: { groupId: "workspace", order: 18 },
   "work.content": { groupId: "workspace", order: 20 },
   "work.writer": { groupId: "workspace", order: 30 },
   // Workspace -> Projects & Triage (Level 2)

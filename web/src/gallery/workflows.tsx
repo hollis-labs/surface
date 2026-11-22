@@ -5,12 +5,14 @@
  *   2. Goal-Driven Process ("GitHub Repo & Prior Art Review" — deliberate session queue + evidence synthesis + decision bar)
  *   3. Operations Pipeline ("Fleet Registry Update & Canary Deploy" — staged execution + live verification matrix)
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Markdown } from "@/components/ui/markdown"
-import { Icon } from "../sdk"
+import { AlignWorkbench } from "../desk/AlignWorkbench"
+import { TrackersWorkbench } from "../desk/TrackersWorkbench"
+import { Icon, type ViewProps } from "../sdk"
 import { Section, Specimen } from "./Specimen"
 
 type WorkflowArchetype = "architecture" | "repo-review" | "fleet-ops"
@@ -722,50 +724,135 @@ function FleetOperationsWorkflowMock() {
   )
 }
 
-export function Workflows() {
+export function Workflows(props?: Partial<ViewProps>) {
+  const requestedTab = typeof props?.win?.args?.tab === "string" ? props.win.args.tab : undefined
+  const [topTab, setTopTab] = useState<"align" | "droppad" | "trackers" | "samples">(() => {
+    if (requestedTab === "trackers") return "trackers"
+    if (requestedTab === "droppad") return "droppad"
+    if (requestedTab === "samples") return "samples"
+    return "align"
+  })
   const [active, setActive] = useState<WorkflowArchetype>("architecture")
 
-  return (
-    <div className="flex flex-col gap-5 p-3">
-      <Section
-        title="Workflow & Process Golden Samples"
-        about="Surface prioritizes behavior, guided workflows, and visual 'Show, Don't Tell' deltas over passive CRUD tables or walls of text. Use these golden samples to align on interaction patterns."
-      >
-        <Specimen label="Interactive Workflow Switcher · Pick a workflow archetype to explore" wide>
-          <div className="flex w-full flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2">
-              <Button
-                variant={active === "architecture" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActive("architecture")}
-              >
-                <Icon name="git-compare-arrows" size={13} />
-                01 · Architecture & Topic Explorer (“Show, Don't Tell”)
-              </Button>
-              <Button
-                variant={active === "repo-review" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActive("repo-review")}
-              >
-                <Icon name="compass" size={13} />
-                02 · Guided Process (“GitHub Repo & Prior Art Review”)
-              </Button>
-              <Button
-                variant={active === "fleet-ops" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActive("fleet-ops")}
-              >
-                <Icon name="server" size={13} />
-                03 · Operations Pipeline (“Registry Update & Fleet Deploy”)
-              </Button>
-            </div>
+  useEffect(() => {
+    if (
+      requestedTab === "align" ||
+      requestedTab === "droppad" ||
+      requestedTab === "trackers" ||
+      requestedTab === "samples"
+    ) {
+      setTopTab(requestedTab)
+    }
+  }, [requestedTab])
 
-            {active === "architecture" && <ArchitectureExplorerMock />}
-            {active === "repo-review" && <RepoReviewWorkflowMock />}
-            {active === "fleet-ops" && <FleetOperationsWorkflowMock />}
-          </div>
-        </Specimen>
-      </Section>
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background text-xs">
+      {/* Top Workbench Switcher: Visual Alignment, Drop Pad, Native Trackers, Golden Samples */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card/60 px-3 py-1.5">
+        <div className="flex flex-wrap items-center gap-1">
+          <Button
+            variant={topTab === "align" ? "secondary" : "ghost"}
+            size="xs"
+            className="h-6.5 gap-1.5 px-2.5 text-xs"
+            onClick={() => setTopTab("align")}
+          >
+            <Icon name="git-compare-arrows" size={12} className={topTab === "align" ? "text-primary" : ""} />
+            Visual Alignment Proposals
+          </Button>
+          <Button
+            variant={topTab === "droppad" ? "secondary" : "ghost"}
+            size="xs"
+            className="h-6.5 gap-1.5 px-2.5 text-xs"
+            onClick={() => setTopTab("droppad")}
+          >
+            <Icon name="folder-input" size={12} className={topTab === "droppad" ? "text-primary" : ""} />
+            Drop Pad (Collections &amp; File Staging)
+          </Button>
+          <Button
+            variant={topTab === "trackers" ? "secondary" : "ghost"}
+            size="xs"
+            className="h-6.5 gap-1.5 px-2.5 text-xs"
+            onClick={() => setTopTab("trackers")}
+          >
+            <Icon name="list-checks" size={12} className={topTab === "trackers" ? "text-primary" : ""} />
+            Native Trackers
+          </Button>
+          <Button
+            variant={topTab === "samples" ? "secondary" : "ghost"}
+            size="xs"
+            className="h-6.5 gap-1.5 px-2.5 text-xs"
+            onClick={() => setTopTab("samples")}
+          >
+            <Icon name="sparkles" size={12} className={topTab === "samples" ? "text-primary" : ""} />
+            Golden Samples
+          </Button>
+        </div>
+        <Badge variant="outline" className="font-mono text-[10px] text-primary">
+          Show, Don't Tell · Visual Alignment &amp; Execution
+        </Badge>
+      </div>
+
+      {topTab === "align" && (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <AlignWorkbench key="align-mode" {...props} initialMode="architecture" />
+        </div>
+      )}
+
+      {topTab === "droppad" && (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <AlignWorkbench key="droppad-mode" {...props} initialMode="droppad" />
+        </div>
+      )}
+
+      {topTab === "trackers" && (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <TrackersWorkbench {...props} />
+        </div>
+      )}
+
+      {topTab === "samples" && (
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <Section
+            title="Workflow & Process Golden Samples"
+            about="Surface prioritizes behavior, guided workflows, and visual 'Show, Don't Tell' deltas over passive CRUD tables or walls of text. Use these golden samples to align on interaction patterns."
+          >
+            <Specimen label="Interactive Workflow Switcher · Pick a workflow archetype to explore" wide>
+              <div className="flex w-full flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2">
+                  <Button
+                    variant={active === "architecture" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActive("architecture")}
+                  >
+                    <Icon name="git-compare-arrows" size={13} />
+                    01 · Architecture & Topic Explorer (“Show, Don't Tell”)
+                  </Button>
+                  <Button
+                    variant={active === "repo-review" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActive("repo-review")}
+                  >
+                    <Icon name="compass" size={13} />
+                    02 · Guided Process (“GitHub Repo & Prior Art Review”)
+                  </Button>
+                  <Button
+                    variant={active === "fleet-ops" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActive("fleet-ops")}
+                  >
+                    <Icon name="server" size={13} />
+                    03 · Operations Pipeline (“Registry Update & Fleet Deploy”)
+                  </Button>
+                </div>
+
+                {active === "architecture" && <ArchitectureExplorerMock />}
+                {active === "repo-review" && <RepoReviewWorkflowMock />}
+                {active === "fleet-ops" && <FleetOperationsWorkflowMock />}
+              </div>
+            </Specimen>
+          </Section>
+        </div>
+      )}
     </div>
   )
 }

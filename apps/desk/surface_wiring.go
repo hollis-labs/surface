@@ -22,6 +22,8 @@ import (
 	_ "github.com/hollis-labs/surface/modules/approvals"
 	_ "github.com/hollis-labs/surface/modules/registry"
 	_ "github.com/hollis-labs/surface/modules/ops"
+	_ "github.com/hollis-labs/surface/modules/align"
+	_ "github.com/hollis-labs/surface/modules/trackers"
 )
 
 const (
@@ -31,4 +33,4 @@ const (
 )
 
 // surfaceModules is the start order.
-var surfaceModules = []string{"notes", "files", "scratch", "drafts", "browser", "design", "terminal", "viewer", "diagram", "inbox", "reader", "assist", "projects", "tether", "work", "frag", "approvals", "registry", "ops"}
+var surfaceModules = []string{"notes", "files", "scratch", "drafts", "browser", "design", "terminal", "viewer", "diagram", "inbox", "reader", "assist", "projects", "tether", "work", "frag", "approvals", "registry", "ops", "align", "trackers"}

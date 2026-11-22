@@ -15,6 +15,31 @@ import { createTorqueKinds } from "./kinds/torque.ts"
 import { createUrlKind } from "./kinds/url.ts"
 import { createWorkKind } from "./kinds/work.ts"
 import { createRefRegistry, type RefRegistry } from "./registry.ts"
+import { isWordChar, matches } from "./scan-utils.ts"
+import type { RefHit, RefKind } from "./types.ts"
+
+function createPrefixKind(id: string, label: string, icon: string, prefix: string, re: RegExp): RefKind {
+  return {
+    id,
+    label,
+    icon,
+    priority: 88,
+    chipLabel: (ref) => `${prefix}:${ref.canonical}`,
+    open: () => ({ type: "none" }),
+    scan(text) {
+      const hits: RefHit[] = []
+      for (const m of matches(re, text)) {
+        const before = text[m.index - 1]
+        if (isWordChar(before) || before === "/" || before === "." || before === "-") continue
+        const end = m.index + m[0].length
+        const canonical = text.slice(m.index + prefix.length + 1, end)
+        if (!canonical || isWordChar(text[end]) || text[end] === "/") continue
+        hits.push({ start: m.index, end, canonical })
+      }
+      return hits
+    },
+  }
+}
 
 export { codeRanges, detect, detectRefs, refKey, uniqueRefs } from "./detect.ts"
 export { CASTER_KIND } from "./kinds/caster.ts"
@@ -44,6 +69,22 @@ export function createDefaultRefRegistry(): RefRegistry {
     createWorkKind(),
     createRegistryKind(),
     createOpsKind(),
+    createPrefixKind(
+      "align.proposal",
+      "Alignment proposal",
+      "compass",
+      "align",
+      /align:([A-Za-z0-9][A-Za-z0-9_-]{1,63})/g,
+    ),
+    createPrefixKind("align.droppad", "Drop Pad", "folder", "droppad", /droppad:([A-Za-z0-9][A-Za-z0-9_-]{1,63})/g),
+    createPrefixKind("tracker.list", "Tracker", "list-todo", "tracker", /tracker:([A-Za-z0-9][A-Za-z0-9_-]{1,63})/g),
+    createPrefixKind(
+      "tracker.item",
+      "Tracker item",
+      "list-todo",
+      "tracker.item",
+      /tracker\.item:([A-Za-z0-9][A-Za-z0-9_-]{1,63})/g,
+    ),
     ...createPathKinds(),
   ]) {
     r.register(k)

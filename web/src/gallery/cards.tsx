@@ -9,6 +9,8 @@ import { CardNotice } from "@/components/ui/card-notice"
 import { CardPlan } from "@/components/ui/card-plan"
 import { CardProgress } from "@/components/ui/card-progress"
 import { CardPrompt } from "@/components/ui/card-prompt"
+import { ModuleEntityCardBody } from "../cards/EntityCard"
+import { AlignProposalCardRenderer } from "../desk/AlignWorkbench"
 import { Approval } from "./approval"
 import { Section, Specimen } from "./Specimen"
 
@@ -66,6 +68,114 @@ function AllStates({ name, draw }: { name: string; draw: (p: AnswerableCardProps
 export function Cards() {
   return (
     <>
+      <Section
+        title="Module Entity Cards & Visual Alignment Proposal Cards"
+        about="Agents can embed live domain cards from Ops (Kanban workstreams, Agent sessions, Fleet hosts), Registry records, Native Trackers, and Visual Alignment Proposals directly in chat or the Cards drawer."
+      >
+        <Specimen label="Ops Kanban Workstream Card (ops.workstream)">
+          <div className="w-full">
+            <ModuleEntityCardBody
+              entity={{
+                id: "CW-20261122-0008",
+                entity_kind: "ops.workstream",
+                ref: "cite:ops/workstream/CW-20261122-0008",
+                title: "Module Entity Cards & Live Record Resolution",
+                subtitle: "CW-20261122-0008 · Surface ADE",
+                status: "active",
+                stage: "Implementation",
+                progress: { done: 3, total: 4 },
+                purpose:
+                  "Allow the agent to render and ask questions with live Ops Kanban cards, Agent cards, Fleet host cards, Registry records, and Tracker items.",
+                latest_activity:
+                  "EntityCardRenderer wired for card_show & card_ask with live /api/cite/resolve fallback.",
+                tags: ["surface-next", "cards", "ops"],
+              }}
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Ops Live Agent Session Card (ops.agent)">
+          <div className="w-full">
+            <ModuleEntityCardBody
+              entity={{
+                id: "agt-surface-fe",
+                entity_kind: "ops.agent",
+                ref: "cite:ops/agent/agt-surface-fe",
+                title: "surface-frontend-architect",
+                status: "active",
+                model: "claude-opus-4-6",
+                host: "surface-desk.local",
+                owner: "seat-01 (Primary ADE)",
+                stage: "local · worktree/main",
+                telemetry: { tokens_pct: 42 },
+                summary: "Implementing Slice 14 visual alignment workbench, drop pad, and native trackers.",
+              }}
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Fleet Server Host Card (ops.host)">
+          <div className="w-full">
+            <ModuleEntityCardBody
+              entity={{
+                id: "agent-os",
+                entity_kind: "ops.host",
+                ref: "cite:ops/host/agent-os",
+                title: "agent-os.tailnet",
+                subtitle: "100.64.0.10:8190 · Linux 6.12 NixOS",
+                status: "online",
+                telemetry: {
+                  uptime: "18d 07h",
+                  cpu_pct: 24,
+                  mem_pct: 58,
+                  disk_pct: 41,
+                },
+              }}
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Native Tracker Item Card (tracker.item)">
+          <div className="w-full">
+            <ModuleEntityCardBody
+              entity={{
+                id: "trk-item-01",
+                entity_kind: "tracker.item",
+                title: "Interactive Architecture Flow & Bucket Triage Approval Loop",
+                stage: "Visual Alignment",
+                status: "in_progress",
+                summary: "Co-editable architecture lanes, drag-and-drop triage buckets, and phased timeline itinerary.",
+                tags: ["alignment", "drop-pad", "ux"],
+              }}
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Visual Alignment Proposal Card in Chat (kind='align')" wide>
+          <div className="w-full">
+            <AlignProposalCardRenderer
+              card={{
+                id: "card-align-demo-1",
+                kind: "align",
+                version: "1",
+                title: "Proposal: Surface Visual Alignment & Drop Pad Architecture",
+                status: "pending",
+                payload: {
+                  proposal_id: "prop-arch-01",
+                  mode: "architecture",
+                  question:
+                    "Review or adjust the 3-lane architecture flow in the Alignment Workbench, then approve to save as a citeable reference.",
+                  summary:
+                    "Adds Visual Alignment Proposals, Drop Pad file/ref collections, and Native Trackers with arbitrary agent metadata/extras JSON.",
+                  nodes: [
+                    { id: "n1", label: "Entity Card Renderer", lane: "Frontend", delta: "added" },
+                    { id: "n2", label: "Align & Drop Pad Workbench", lane: "Frontend", delta: "added" },
+                    { id: "n3", label: "Cite & Card Store", lane: "Backend", delta: "modified" },
+                    { id: "n4", label: "Trackers SQLite Store", lane: "Data & Storage", delta: "added" },
+                  ],
+                },
+              }}
+              respond={async () => {}}
+            />
+          </div>
+        </Specimen>
+      </Section>
       <Approval />
       <AllStates
         name="card-confirm"

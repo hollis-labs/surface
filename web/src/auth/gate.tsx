@@ -8,6 +8,8 @@
  * (`/setup#t=setup_…`). Without a link (and without the development-only open setup) the gate
  * says how to make one; it never offers a form that the server would refuse.
  */
+
+import { KeyRound } from "lucide-react"
 import {
   createContext,
   type FormEvent,
@@ -21,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { addPasskey, cancelled, deviceName, passkeysUsable, signInWithPasskey } from "./passkeys"
 import {
   type Account,
   AuthError,
@@ -56,9 +59,10 @@ type GateState =
   | { k: "error"; message: string }
   | { k: "off" }
   | { k: "in"; account: Account }
-  | { k: "setup"; token: string }
+  | { k: "setup"; token: string; passkeys: boolean }
+  | { k: "offer-passkey" }
   | { k: "setup-offline" }
-  | { k: "sign-in"; expired: boolean; notice?: string }
+  | { k: "sign-in"; expired: boolean; notice?: string; passkeys: boolean }
 
 /** Wraps the page: with sign-in, children mount only for a signed-in person. */
 export function AuthGate({ name, title, children }: { name: string; title: string; children: ReactNode }) {
@@ -81,11 +85,15 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
       const st: SetupStatus = await setupStatus()
       const token = setupTokenFromURL()
       if (st.setup_required) {
-        setState(token || st.setup_over_http ? { k: "setup", token } : { k: "setup-offline" })
+        setState(
+          token || st.setup_over_http
+            ? { k: "setup", token, passkeys: passkeysUsable(st.passkeys) }
+            : { k: "setup-offline" },
+        )
         return
       }
       clearSetupURL()
-      setState({ k: "sign-in", expired })
+      setState({ k: "sign-in", expired, passkeys: passkeysUsable(st.passkeys) })
     } catch (err) {
       setState({ k: "error", message: (err as Error).message })
     }
@@ -104,8 +112,8 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
 
   const signedOut = useCallback(() => {
     signedIn.current = false
-    setState({ k: "sign-in", expired: false, notice: "Signed out." })
-  }, [])
+    void check()
+  }, [check])
   const refresh = useCallback(() => void check(), [check])
 
   switch (state.k) {
@@ -129,11 +137,28 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         </AccountContext.Provider>
       )
     case "setup":
-      return <SetupScreen title={title} token={state.token} done={() => void check()} closed={() => void check()} />
+      return (
+        <SetupScreen
+          title={title}
+          token={state.token}
+          done={() => (state.passkeys ? setState({ k: "offer-passkey" }) : void check())}
+          closed={() => void check()}
+        />
+      )
+    case "offer-passkey":
+      return <OfferPasskeyScreen title={title} done={() => void check()} />
     case "setup-offline":
       return <SetupOfflineScreen name={name} title={title} />
     case "sign-in":
-      return <SignInScreen title={title} expired={state.expired} notice={state.notice} done={() => void check()} />
+      return (
+        <SignInScreen
+          title={title}
+          expired={state.expired}
+          notice={state.notice}
+          passkeys={state.passkeys}
+          done={() => void check()}
+        />
+      )
   }
 }
 
@@ -184,11 +209,13 @@ function SignInScreen({
   title,
   expired,
   notice,
+  passkeys,
   done,
 }: {
   title: string
   expired: boolean
   notice?: string
+  passkeys: boolean
   done: () => void
 }) {
   const [username, setUsername] = useState("")
@@ -203,8 +230,24 @@ function SignInScreen({
       await signIn(username.trim(), password)
       done()
     } catch (err) {
-      setError(message(err))
+      setError(
+        err instanceof AuthError && err.code === "passkey_required"
+          ? "This account signs in with a passkey only. Use “Sign in with a passkey”."
+          : message(err),
+      )
       setPassword("")
+    } finally {
+      setBusy(false)
+    }
+  }
+  const withPasskey = async () => {
+    setBusy(true)
+    setError("")
+    try {
+      await signInWithPasskey()
+      done()
+    } catch (err) {
+      if (!cancelled(err)) setError(message(err))
     } finally {
       setBusy(false)
     }
@@ -213,6 +256,16 @@ function SignInScreen({
     <Screen title={title} heading="Sign in">
       {expired && <p className="text-muted-foreground text-sm">Your session ended. Sign in again.</p>}
       {notice && <p className="text-muted-foreground text-sm">{notice}</p>}
+      {passkeys && (
+        <>
+          <Button variant="outline" disabled={busy} onClick={() => void withPasskey()}>
+            <KeyRound /> Sign in with a passkey
+          </Button>
+          <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <span className="h-px flex-1 bg-border" /> or with a password <span className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
       <form onSubmit={(e) => void submit(e)}>
         <FieldGroup>
           <fieldset disabled={busy} className="contents">
@@ -243,6 +296,39 @@ function SignInScreen({
           </Button>
         </FieldGroup>
       </form>
+    </Screen>
+  )
+}
+
+/** Right after setup: offer a passkey, so the next sign-in needs no password. */
+function OfferPasskeyScreen({ title, done }: { title: string; done: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const add = async () => {
+    setBusy(true)
+    setError("")
+    try {
+      await addPasskey(deviceName())
+      done()
+    } catch (err) {
+      if (!cancelled(err)) setError(message(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Screen title={title} heading="Add a passkey">
+      <p className="text-muted-foreground text-sm">
+        Sign in next time with this device's fingerprint, face or screen lock instead of your password. You can add more
+        passkeys, or make your account passkey-only, from the account menu.
+      </p>
+      <ErrorBox text={error} />
+      <Button disabled={busy} onClick={() => void add()}>
+        <KeyRound /> {busy ? "Waiting for your device…" : "Add a passkey"}
+      </Button>
+      <Button variant="ghost" disabled={busy} onClick={done}>
+        Not now
+      </Button>
     </Screen>
   )
 }

@@ -91,6 +91,10 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 	if err != nil {
 		return err
 	}
+	serving, err := readHTTPS(cfg.Name, getenv)
+	if err != nil {
+		return err
+	}
 	started, err := boot.StartWith(ctx, cfg.Name, cfg.SubstrateModules, cfg.SubstrateConfigJSON, boot.Options{
 		AfterConfig: func(_ context.Context, app *smodule.App) error {
 			if mkErr := os.MkdirAll(dataDir, 0o700); mkErr != nil {
@@ -115,6 +119,7 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 					id["key_file"] = filepath.Join(dataDir, p)
 				}
 			}
+			serving.apply(app.Config) // public URL and trusted proxies, for sign-in (https.go)
 			if addr := getenv(envName(cfg.Name) + "_ADDR"); addr != "" {
 				child(app.Config, "httphost")["addr"] = addr
 			}
@@ -132,7 +137,7 @@ func Run(ctx context.Context, cfg Config, getenv func(string) string, args []str
 	}
 	serve := &cobra.Command{
 		Use: "serve", Short: "Serve the app: its page, its API and its MCP endpoint", Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error { return serveApp(ctx, cfg, started.App, dataDir) },
+		RunE: func(*cobra.Command, []string) error { return serveApp(ctx, cfg, started.App, dataDir, serving) },
 	}
 	root.AddCommand(serve)
 	root.AddCommand(clientCommands(cfg, started.App, getenv, dataDir)...)
@@ -161,7 +166,7 @@ func listenAddr(app *smodule.App) string {
 	return addr
 }
 
-func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string) error {
+func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string, serving httpsSettings) error {
 	addr := listenAddr(sapp)
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -176,6 +181,7 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 	if st == nil {
 		return errors.New("the database module must be started")
 	}
+	serving.allowHost()
 	a, err := core.New(ctx, core.Options{
 		Name: cfg.Name, Title: cfg.Title, DataDir: dataDir, DB: st.DB(), Log: slog.Default(),
 		Modules: cfg.Modules, Assets: cfg.Assets,
@@ -205,6 +211,14 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 		mux.Handle("/", a.Handler())
 		handler = mux
 	}
-	slog.Info("surface app serving", "app", cfg.Name, "url", "http://"+addr, "data", dataDir, "modules", cfg.Modules, "auth", cfg.Auth)
-	return httphost.Serve(ctx, sapp, handler, httphost.ServeOptions{Addr: addr, Ready: cfg.Ready})
+	ln, err := serving.tlsListener(addr)
+	if err != nil {
+		return err
+	}
+	scheme := "http"
+	if ln != nil {
+		scheme = "https"
+	}
+	slog.Info("surface app serving", "app", cfg.Name, "url", scheme+"://"+addr, "public_url", serving.publicURL, "data", dataDir, "modules", cfg.Modules, "auth", cfg.Auth)
+	return httphost.Serve(ctx, sapp, handler, httphost.ServeOptions{Addr: addr, Listener: ln, Ready: cfg.Ready})
 }

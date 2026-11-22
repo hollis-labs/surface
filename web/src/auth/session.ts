@@ -24,6 +24,8 @@ export interface SetupStatus {
   setup_required: boolean
   setup_over_http: boolean
   setup_link?: boolean
+  /** Passkeys are on (a secure public_url); the page also needs a secure context. */
+  passkeys?: boolean
 }
 
 /** The page's answer to "who is here". */

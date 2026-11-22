@@ -54,6 +54,27 @@ does the same with no browser.
 "set up on the host", and the desk once signed in, with an account menu in the bar (change password, sign out).
 A 401 on any call returns to sign-in.
 
+## HTTPS and passkeys
+
+Passkeys need a secure context: HTTPS, or `http://localhost`. Three environment settings (an installer or a
+service unit sets them) cover the two ways to get there:
+
+| setting | meaning |
+|---|---|
+| `<APP>_PUBLIC_URL` | where people reach the app, e.g. `https://app.example.com`. Its origin is accepted for sign-in, an https one makes the session cookie `Secure`, its host is the passkey relying party, and the app answers to that host name. |
+| `<APP>_TLS_CERT`, `<APP>_TLS_KEY` | serve HTTPS directly with this certificate and key (PEM). They are read again when the files change, so a renewal needs no restart. |
+| `<APP>_TRUSTED_PROXIES` | comma-separated CIDRs of a TLS-terminating proxy in front (a tunnel, `tailscale serve`, Caddy); only their `X-Forwarded-Proto` is believed. `127.0.0.1/32` for one on the same host. |
+
+- **Serving HTTPS itself**: set the certificate and key, and `PUBLIC_URL` to the certificate's name
+  (`https://app.example.com:8470`).
+- **Behind a proxy**: keep the app on loopback, point the proxy at it, set `PUBLIC_URL` to the proxy's https
+  address and `TRUSTED_PROXIES` to where the proxy connects from.
+
+With a secure `PUBLIC_URL` the page offers **Sign in with a passkey** beside the password form (shown only in a
+secure context), offers to add one right after the owner is created, and the account menu's **Passkeys** adds,
+lists and removes them and turns on **passkey-only** (the password stops working). People can always start with a
+password and move up when they are ready: password, then a passkey, then passkey-only.
+
 ## Not yet
 
-Passkeys and HTTPS (the app serving TLS itself, or behind a TLS proxy), invites and a users page, TOTP.
+Invites and a users page, TOTP.

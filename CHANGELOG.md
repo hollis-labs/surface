@@ -5,6 +5,8 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.19.1] - 2026-11-22
+
 - **The desk on a narrow screen.** Below 720 px wide, the desk shows the focused window full width instead of
   tiling every window side by side, which made each one a few dozen pixels wide on a phone. A switcher in the bar
   lists the open windows and closes the one shown. The agent panel takes the whole screen while it is open. The

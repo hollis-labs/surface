@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-theme",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "Surface's palettes: the shape a Linux theme reduces to, the palettes Surface ships (Blade Runner, Basalisk's, Omarchy's), readers for Omarchy colors.toml, base16 and pywal, a contrast check, and applyPalette, which sets the theme's --p-* properties so every token follows.",
   "license": "MIT",
   "repository": {

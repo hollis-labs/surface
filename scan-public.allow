@@ -6,3 +6,4 @@ internal-ip modules/browser/guard.go CW-20261121-0024: standard reserved CIDR bl
 internal-ip modules/browser/guard_test.go CW-20261121-0024: synthetic reserved-address SSRF fixtures; no deployment addresses
 credentials-in-url modules/browser/guard_test.go CW-20261121-0024: literal user:pass is a synthetic rejection fixture; no real credential
 tailscale-host modules/browser/guard_test.go CW-20261121-0024: invented example-tailnet hostname is expected in denied-host testing; no real host
+secret-assignment modules/registry/web/overlay.ts sample registry data: version_token values are content-hash fixtures for the overlay demo, not credentials

@@ -35,7 +35,7 @@ const Abandoned = "abandoned"
 // question (card_ask) the agent stopped waiting for, because its run ended (abandoned) or
 // its wait ran out (expired), and that has had no late answer yet.
 func LateAnswerable(c module.Card) bool {
-	return c.Source == "agent" && Answerable(c.Kind) && !c.Late && (c.Status == Abandoned || c.Status == "expired")
+	return c.Source == "agent" && AnswerableCard(c) && !c.Late && (c.Status == Abandoned || c.Status == "expired")
 }
 
 // ErrNotFound is returned for an id no card has.
@@ -375,18 +375,19 @@ func (s *Store) LateOpen(ctx context.Context) ([]module.Card, error) {
 // closing them (it was killed): after a start no run can be waiting for them. They become
 // abandoned, so the user can still answer them late.
 func (s *Store) AbandonOrphans(ctx context.Context) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind FROM cards WHERE status='' AND source='agent'`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, blocking, payload FROM cards WHERE status='' AND source='agent'`)
 	if err != nil {
 		return 0, err
 	}
 	var ids []string
 	for rows.Next() {
-		var id, kind string
-		if err := rows.Scan(&id, &kind); err != nil {
+		var id, kind, payload string
+		var blocking int
+		if err := rows.Scan(&id, &kind, &blocking, &payload); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
-		if Answerable(kind) {
+		if blocking != 0 || AnswerableCard(module.Card{Kind: kind, Payload: json.RawMessage(payload)}) {
 			ids = append(ids, id)
 		}
 	}

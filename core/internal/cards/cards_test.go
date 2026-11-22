@@ -106,6 +106,27 @@ func TestAKnownKindWithoutWhatItNeedsIsRefused(t *testing.T) {
 	if _, err := s.Show(ctx, module.Card{Kind: "notes.conflict", Source: "notes", Payload: payload(`{"anything":true}`)}); err != nil {
 		t.Errorf("a module's own kind: %v", err)
 	}
+	// An entity card without a ref, data, or title is refused; with a ref or data it is accepted.
+	if _, err := s.Show(ctx, module.Card{Kind: "entity", Source: "agent", Payload: payload(`{}`)}); err == nil {
+		t.Error("empty entity card was accepted")
+	}
+	if _, err := s.Show(ctx, module.Card{Kind: "entity", Source: "agent", Payload: payload(`{"ref":"ops:phase-1","options":[{"id":"a","label":"A"},{"id":"a","label":"Dup"}]}`)}); err == nil {
+		t.Error("entity card with duplicate option ids was accepted")
+	}
+	entCard, err := s.Show(ctx, module.Card{Kind: "entity", Source: "agent", Payload: payload(`{"ref":"ops:phase-1","entity_kind":"ops.workstream","view":"card","question":"Approve phase 1?","options":[{"id":"approve","label":"Approve"}]}`)})
+	if err != nil {
+		t.Fatalf("entity card with question and option: %v", err)
+	}
+	if !AnswerableCard(entCard) {
+		t.Errorf("entity card with question/options should be answerable: %+v", entCard)
+	}
+	displayOnly, err := s.Show(ctx, module.Card{Kind: "ops.workstream", Source: "agent", Payload: payload(`{"ref":"ops:phase-1","view":"compact"}`)})
+	if err != nil {
+		t.Fatalf("display-only entity card: %v", err)
+	}
+	if AnswerableCard(displayOnly) {
+		t.Errorf("display-only entity card should not be answerable: %+v", displayOnly)
+	}
 }
 
 func TestProgressIsUpdatedInPlaceAndASameSubjectCardReplacesTheOpenOne(t *testing.T) {

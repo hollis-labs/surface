@@ -21,8 +21,10 @@ import (
 //	approval  {summary, changes?: [{label, before?, after?}], requested_by?, phrase?}   with the card's risk
 //	progress  {label?, value?, max?, status?, detail?}      status is "running", "done" or "failed"
 //	plan      {steps: [{id, title, status?, detail?}]}      status is "pending", "active", "done" or "skipped"
+//	entity    {ref?, refs?, entity_kind?, view?, question?, options?: [{id, label}], actions?: [{id, label}], data?, entities?}
 //
-// Answerable are confirm, prompt, choice, form and approval: the sender can wait on them.
+// Answerable are confirm, prompt, choice, form and approval (and entity when it carries a
+// question or selectable options/actions): the sender can wait on them.
 
 // Answerable reports whether a kind of the core's asks the user for something.
 func Answerable(kind string) bool {
@@ -31,6 +33,37 @@ func Answerable(kind string) bool {
 		return true
 	}
 	return false
+}
+
+// IsModuleEntityKind reports whether kind is "entity" or a module-scoped entity card kind.
+func IsModuleEntityKind(kind string) bool {
+	switch kind {
+	case "entity", "ops.workstream", "ops.agent", "ops.host", "ops.followup",
+		"registry.record", "tracker.list", "tracker.item",
+		"align.proposal", "align.droppad", "work.item":
+		return true
+	}
+	return false
+}
+
+// AnswerableCard reports whether a card asks the user for something, including an entity
+// card (or module-scoped entity card) that carries a question, options, or actions.
+func AnswerableCard(c module.Card) bool {
+	if Answerable(c.Kind) {
+		return true
+	}
+	if !IsModuleEntityKind(c.Kind) || len(c.Payload) == 0 {
+		return false
+	}
+	var p struct {
+		Question string   `json:"question"`
+		Options  []option `json:"options"`
+		Actions  []option `json:"actions"`
+	}
+	if json.Unmarshal(c.Payload, &p) != nil {
+		return false
+	}
+	return p.Question != "" || len(p.Options) > 0 || len(p.Actions) > 0
 }
 
 type option struct {
@@ -47,15 +80,22 @@ type step struct {
 // mistake is the sender's error and not a blank card in front of the user.
 func check(c module.Card) error {
 	var p struct {
-		Body     string          `json:"body"`
-		Question string          `json:"question"`
-		Options  []option        `json:"options"`
-		Schema   json.RawMessage `json:"schema"`
-		Summary  string          `json:"summary"`
-		Steps    []step          `json:"steps"`
+		Body       string          `json:"body"`
+		Question   string          `json:"question"`
+		Options    []option        `json:"options"`
+		Actions    []option        `json:"actions"`
+		Schema     json.RawMessage `json:"schema"`
+		Summary    string          `json:"summary"`
+		Steps      []step          `json:"steps"`
+		Ref        string          `json:"ref"`
+		Refs       []string        `json:"refs"`
+		EntityKind string          `json:"entity_kind"`
+		Data       json.RawMessage `json:"data"`
+		Entities   json.RawMessage `json:"entities"`
+		Resolved   json.RawMessage `json:"resolved"`
 	}
-	known := map[string]bool{"info": true, "error": true, "confirm": true, "prompt": true, "choice": true, "form": true, "approval": true, "progress": true, "plan": true}
-	if !known[c.Kind] {
+	known := map[string]bool{"info": true, "error": true, "confirm": true, "prompt": true, "choice": true, "form": true, "approval": true, "progress": true, "plan": true, "entity": true}
+	if !known[c.Kind] && !IsModuleEntityKind(c.Kind) {
 		return nil
 	}
 	if err := json.Unmarshal(c.Payload, &p); err != nil {
@@ -66,6 +106,25 @@ func check(c module.Card) error {
 			return nil
 		}
 		return fmt.Errorf("cards: a %s card needs %s", c.Kind, what)
+	}
+	if IsModuleEntityKind(c.Kind) {
+		hasRef := p.Ref != "" || len(p.Refs) > 0
+		hasData := (len(p.Data) > 0 && string(p.Data) != "null" && string(p.Data) != "{}") ||
+			(len(p.Entities) > 0 && string(p.Entities) != "null" && string(p.Entities) != "[]" && string(p.Entities) != "{}") ||
+			(len(p.Resolved) > 0 && string(p.Resolved) != "null" && string(p.Resolved) != "{}")
+		if err := need(hasRef || hasData || c.Title != "" || p.Body != "" || p.Question != "", "a ref, refs, data, or a title"); err != nil {
+			return err
+		}
+		for _, list := range [][]option{p.Options, p.Actions} {
+			seen := map[string]bool{}
+			for _, o := range list {
+				if o.ID == "" || o.Label == "" || seen[o.ID] {
+					return errors.New("cards: every option or action of an entity card needs an id of its own and a label")
+				}
+				seen[o.ID] = true
+			}
+		}
+		return nil
 	}
 	switch c.Kind {
 	case "info", "error", "confirm":

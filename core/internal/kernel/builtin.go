@@ -443,8 +443,8 @@ func coreTools(a *App) []module.Tool {
 				return out, nil
 			}},
 		{Name: "card_show", Level: module.LevelAct,
-			Description: "Put a card in front of the user, outside the conversation's text: a notice, progress on long work, or a plan. It does not wait for an answer; use card_ask to ask something. kind and payload: info {body, tone?: info|success|warning}; error {body, detail?}; progress {label?, value?, max?, status?: running|done|failed, detail?}; plan {steps: [{id, title, status?: pending|active|done|skipped, detail?}]}. Give a subject (what it is about) to have a later card of the same kind replace this one, and keep the id to update it with card_update.",
-			Input:       schema(`{"type":"object","required":["kind"],"properties":{"kind":{"type":"string","enum":["info","error","progress","plan"]},"title":{"type":"string"},"subject":{"type":"string"},"payload":{"type":"object"}}}`),
+			Description: "Put a card in front of the user, outside the conversation's text: a notice, progress on long work, a plan, or a module entity card. It does not wait for an answer; use card_ask to ask something. kind and payload: info {body, tone?: info|success|warning}; error {body, detail?}; progress {label?, value?, max?, status?: running|done|failed, detail?}; plan {steps: [{id, title, status?: pending|active|done|skipped, detail?}]}; entity (or module-scoped kind such as ops.workstream, ops.agent, ops.host, ops.followup, registry.record, tracker.list, tracker.item, align.proposal, align.droppad) {ref?, refs?: [...], entity_kind?, view?: card|compact|detail, data?}. Give a subject (what it is about) to have a later card of the same kind replace this one, and keep the id to update it with card_update.",
+			Input:       schema(`{"type":"object","required":["kind"],"properties":{"kind":{"type":"string","enum":["info","error","progress","plan","entity","ops.workstream","ops.agent","ops.host","ops.followup","registry.record","tracker.list","tracker.item","align.proposal","align.droppad","work.item"]},"title":{"type":"string"},"subject":{"type":"string"},"payload":{"type":"object"}}}`),
 			Describe:    func(json.RawMessage) string { return "Show a card" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[module.Card](raw)
@@ -454,6 +454,9 @@ func coreTools(a *App) []module.Tool {
 				if cards.Answerable(in.Kind) {
 					return nil, fmt.Errorf("a %s card asks the user something: use card_ask", in.Kind)
 				}
+				if cards.IsModuleEntityKind(in.Kind) {
+					in = a.enrichEntityCard(ctx, in)
+				}
 				in.Source = "agent"
 				c, err := a.cards.Show(ctx, in)
 				if err != nil {
@@ -462,8 +465,8 @@ func coreTools(a *App) []module.Tool {
 				return map[string]any{"id": c.ID}, nil
 			}},
 		{Name: "card_ask", Level: module.LevelAct,
-			Description: "Ask the user something with a card (or a batch of cards in questions) and wait for the answer—or set hold: true (or surface: \"window\") to place the questions in the Cards window and return immediately so the user can keep chatting with you while answering them (wizard style, page_size at a time). Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high. All cards also let the user pick Other and tell you something in their own words. When held or answered later, the answers come to you as a message.",
-			Input:       schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"questions":{"type":"array","description":"Ask several card questions at once in the Cards window wizard.","items":{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"}}}},"hold":{"type":"boolean","description":"Do not block the conversation: hold the question(s) open in the Cards window so the user can chat with you before submitting."},"surface":{"type":"string","enum":["inline","window"],"description":"Where to display the card(s): inline in the chat panel or in the Cards window."},"page_size":{"type":"integer","description":"How many cards to show at a time in the Cards window wizard (e.g. 3)."},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
+			Description: "Ask the user something with a card (or a batch of cards in questions) and wait for the answer—or set hold: true (or surface: \"window\") to place the questions in the Cards window and return immediately so the user can keep chatting with you while answering them (wizard style, page_size at a time). Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high; entity (or module-scoped kind such as ops.workstream, ops.agent, ops.host, ops.followup, registry.record, tracker.list, tracker.item, align.proposal, align.droppad) {ref?, refs?: [...], entity_kind?, view?: card|compact|detail, question?, options?: [{id, label}], actions?: [{id, label}], data?}. All cards also let the user pick Other and tell you something in their own words. When held or answered later, the answers come to you as a message.",
+			Input:       schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval","entity","ops.workstream","ops.agent","ops.host","ops.followup","registry.record","tracker.list","tracker.item","align.proposal","align.droppad","work.item"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"questions":{"type":"array","description":"Ask several card questions at once in the Cards window wizard.","items":{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval","entity","ops.workstream","ops.agent","ops.host","ops.followup","registry.record","tracker.list","tracker.item","align.proposal","align.droppad","work.item"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"}}}},"hold":{"type":"boolean","description":"Do not block the conversation: hold the question(s) open in the Cards window so the user can chat with you before submitting."},"surface":{"type":"string","enum":["inline","window"],"description":"Where to display the card(s): inline in the chat panel or in the Cards window."},"page_size":{"type":"integer","description":"How many cards to show at a time in the Cards window wizard (e.g. 3)."},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
 			Describe:    func(json.RawMessage) string { return "Ask you something" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
 				in, err := decode[struct {
@@ -489,9 +492,12 @@ func coreTools(a *App) []module.Tool {
 				if len(batch) == 0 {
 					batch = []module.Card{in.Card}
 				}
-				for _, item := range batch {
-					if !cards.Answerable(item.Kind) {
+				for i, item := range batch {
+					if !cards.Answerable(item.Kind) && !cards.IsModuleEntityKind(item.Kind) {
 						return nil, fmt.Errorf("a %s card does not ask anything: use card_show", item.Kind)
+					}
+					if cards.IsModuleEntityKind(item.Kind) {
+						batch[i] = a.enrichEntityCard(ctx, item)
 					}
 				}
 				// Check whether the app settings or tool args route these cards to the Cards window (held).
@@ -745,4 +751,183 @@ func (a *App) ownerSetting(full string) bool {
 		}
 	}
 	return false
+}
+
+// enrichEntityCard resolves live module records for an entity card when ref/refs are
+// provided and data/entities are not already pre-populated, attaching
+// "resolved": { "<ref>": { "entity": ..., "record": ... } } to card.Payload.
+func (a *App) enrichEntityCard(ctx context.Context, c module.Card) module.Card {
+	var p map[string]any
+	if len(c.Payload) == 0 || json.Unmarshal(c.Payload, &p) != nil || p == nil {
+		return c
+	}
+	if c.Kind != "entity" && p["entity_kind"] == nil {
+		p["entity_kind"] = c.Kind
+	}
+	var refs []string
+	seen := map[string]bool{}
+	addRef := func(r string) {
+		r = strings.TrimSpace(r)
+		if r != "" && !seen[r] {
+			seen[r] = true
+			refs = append(refs, r)
+		}
+	}
+	if r, ok := p["ref"].(string); ok {
+		addRef(r)
+	}
+	switch list := p["refs"].(type) {
+	case []any:
+		for _, item := range list {
+			if s, ok := item.(string); ok {
+				addRef(s)
+			}
+		}
+	case []string:
+		for _, s := range list {
+			addRef(s)
+		}
+	}
+	hasData := false
+	if d, ok := p["data"].(map[string]any); ok && len(d) > 0 {
+		hasData = true
+	}
+	if e, ok := p["entities"].([]any); ok && len(e) > 0 {
+		hasData = true
+	} else if e, ok := p["entities"].(map[string]any); ok && len(e) > 0 {
+		hasData = true
+	}
+	if r, ok := p["resolved"].(map[string]any); ok && len(r) > 0 {
+		hasData = true
+	}
+	if len(refs) > 0 && !hasData {
+		entityKind, _ := p["entity_kind"].(string)
+		resolved := map[string]any{}
+		for _, rawRef := range refs {
+			kind, id := a.parseEntityRef(rawRef, entityKind)
+			if kind == "" || id == "" {
+				continue
+			}
+			entry := map[string]any{"kind": kind, "id": id}
+			found := false
+			if ents, err := a.ResolveRefs(ctx, kind, []string{id}); err == nil {
+				if ent := ents[id]; ent != nil {
+					entry["entity"] = ent
+					found = true
+				}
+			}
+			if rec, err := a.RecordRef(ctx, kind, id); err == nil {
+				entry["record"] = rec
+				if _, ok := entry["entity"]; !ok {
+					preview := rec
+					preview.Body = ""
+					entry["entity"] = preview
+				}
+				found = true
+			}
+			if found {
+				resolved[rawRef] = entry
+			}
+		}
+		if len(resolved) > 0 {
+			p["resolved"] = resolved
+			if len(refs) == 1 && p["data"] == nil {
+				if first, ok := resolved[refs[0]].(map[string]any); ok {
+					if rec, ok := first["record"]; ok {
+						p["data"] = rec
+					} else if ent, ok := first["entity"]; ok {
+						p["data"] = ent
+					}
+				}
+			}
+		}
+	}
+	if raw, err := json.Marshal(p); err == nil {
+		c.Payload = raw
+	}
+	return c
+}
+
+// parseEntityRef maps a reference string (such as "ops:phase-1", "registry:project:surface",
+// "tracker:trk_1", "tracker.item:ti_1", "align:ap_1", "droppad:dp_1", "CW-20261122-0008")
+// and an optional entityKind hint into a Cite (kind, canonicalID) pair.
+func (a *App) parseEntityRef(rawRef, hintKind string) (string, string) {
+	rawRef = strings.TrimSpace(rawRef)
+	hintKind = strings.TrimSpace(hintKind)
+	if rawRef == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(rawRef, "caster://") {
+		return "caster.doc", rawRef
+	}
+	if strings.HasPrefix(rawRef, "msg://") {
+		return "tether.agent", rawRef
+	}
+	if strings.HasPrefix(rawRef, "/") || strings.HasPrefix(rawRef, "~/") || strings.HasPrefix(rawRef, "remote:") {
+		return "path", rawRef
+	}
+	prefixMap := map[string]string{
+		"ops":            "ops.workstream",
+		"ops.workstream": "ops.workstream",
+		"ops.agent":      "ops.agent",
+		"ops.host":       "ops.host",
+		"ops.followup":   "ops.followup",
+		"registry":       "registry.record",
+		"registry.record": "registry.record",
+		"work":           "work.item",
+		"work.item":      "work.item",
+		"tracker":        "tracker.list",
+		"tracker.list":   "tracker.list",
+		"tracker.item":   "tracker.item",
+		"align":          "align.proposal",
+		"align.proposal": "align.proposal",
+		"droppad":        "align.droppad",
+		"align.droppad":  "align.droppad",
+		"tesseract":      "tesseract.item",
+		"fragment":       "fragments.fragment",
+		"frag":           "fragments.fragment",
+	}
+	if prefix, rest, ok := strings.Cut(rawRef, ":"); ok && rest != "" {
+		if k, mapped := prefixMap[prefix]; mapped {
+			if k == "tesseract.item" && strings.Contains(rest, "#") {
+				return "tesseract.key", rest
+			}
+			if k == "tracker.list" && hintKind == "tracker.item" {
+				return "tracker.item", rest
+			}
+			return k, rest
+		}
+		if _, exists := a.refs[prefix]; exists {
+			return prefix, rest
+		}
+		// Bare registry canonical id like "project:surface" when hint is registry.record.
+		if hintKind == "registry.record" || hintKind == "registry" {
+			return "registry.record", rawRef
+		}
+	}
+	for _, tp := range []struct{ p, k string }{
+		{"CW-", "torque.task"},
+		{"EP-", "torque.epic"},
+		{"PRJ-", "torque.project"},
+		{"SP-", "torque.sprint"},
+		{"PL-", "torque.plan"},
+	} {
+		if strings.HasPrefix(rawRef, tp.p) {
+			return tp.k, rawRef
+		}
+	}
+	if hintKind != "" {
+		if k, mapped := prefixMap[hintKind]; mapped {
+			return k, rawRef
+		}
+		if _, exists := a.refs[hintKind]; exists {
+			return hintKind, rawRef
+		}
+	}
+	for k, r := range a.refs {
+		if r.ID != nil && r.ID.MatchString(rawRef) {
+			return k, rawRef
+		}
+	}
+	return hintKind, rawRef
 }

@@ -25,7 +25,12 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 		}
 		return "http://" + addr
 	}
+	// callFor is call with a client timeout (0: none).
+	var callFor func(c *cobra.Command, timeout time.Duration, method, path string, body any) error
 	call := func(c *cobra.Command, method, path string, body any) error {
+		return callFor(c, 60*time.Second, method, path, body)
+	}
+	callFor = func(c *cobra.Command, timeout time.Duration, method, path string, body any) error {
 		var rd io.Reader
 		if body != nil {
 			raw, err := json.Marshal(body)
@@ -39,7 +44,7 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		res, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+		res, err := (&http.Client{Timeout: timeout}).Do(req)
 		if err != nil {
 			return fmt.Errorf("%s is not running at %s (start it with `%s serve`): %w", cfg.Name, base(), cfg.Name, err)
 		}
@@ -95,8 +100,12 @@ func clientCommands(cfg Config, sapp *smodule.App, getenv func(string) string) [
 			if err != nil {
 				return err
 			}
-			return call(c, "POST", "/api/tools/"+args[0], a)
+			// A tool may wait on purpose (an agent's turn, a long job): no client timeout unless
+			// one is asked for. Ctrl-C still cancels.
+			timeout, _ := c.Flags().GetDuration("timeout")
+			return callFor(c, timeout, "POST", "/api/tools/"+args[0], a)
 		}}
+	tool.Flags().Duration("timeout", 0, "give up after this long (e.g. 90s, 10m); 0 waits as long as the tool takes")
 	settings := &cobra.Command{Use: "settings [key] [value-json]", Short: "Show the live settings, or change one", Args: cobra.MaximumNArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) < 2 {

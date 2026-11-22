@@ -81,7 +81,14 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 		fail(w, http.StatusNotFound, fmt.Errorf("no route %s %s", r.Method, r.URL.Path))
 	})
 	mux.Handle("/", spa(assets))
-	return guard(mux)
+	return guard(mux, a)
+}
+
+// publicHosts are host names modules added (module.PublicHosts), answered for public module
+// routes only.
+type publicHosts interface {
+	PublicRoute(r *http.Request) bool
+	PublicHostAllowed(hostport string) bool
 }
 
 type server struct{ a *kernel.App }
@@ -114,10 +121,18 @@ func read(r *http.Request, v any) error {
 // with no Origin (a CLI, an agent) pass; a page must be the app's own. And the app answers only
 // to a name that cannot be rebound (allowedHost): a page whose own name is made to point at this
 // machine (DNS rebinding) passes an origin check, since its origin and host agree.
-func guard(next http.Handler) http.Handler {
+func guard(next http.Handler, more ...publicHosts) http.Handler {
 	extra := allowedHostsFromEnv()
+	moduleHost := func(r *http.Request) bool {
+		for _, m := range more {
+			if m != nil && m.PublicHostAllowed(r.Host) && m.PublicRoute(r) {
+				return true
+			}
+		}
+		return false
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !allowedHost(r.Host, extra) {
+		if !allowedHost(r.Host, extra) && !moduleHost(r) {
 			fail(w, http.StatusMisdirectedRequest, fmt.Errorf("host %q is not this app's: reach it at 127.0.0.1 or localhost, or add the name to SURFACE_ALLOWED_HOSTS", r.Host))
 			return
 		}

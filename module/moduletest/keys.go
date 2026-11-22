@@ -103,3 +103,24 @@ func (h *Host) Keys() module.Keys {
 	}
 	return boundKeys{k: h.KeyStore, app: h.man.ID}
 }
+
+// testPublicHosts records the names a module sets (Host.PublicHostNames).
+type testPublicHosts struct{ h *Host }
+
+func (p testPublicHosts) Set(names []string) []string {
+	var keep, skipped []string
+	for _, n := range names {
+		if h, ok := module.NormalHostName(n); ok {
+			keep = append(keep, h)
+		} else {
+			skipped = append(skipped, n)
+		}
+	}
+	p.h.mu.Lock()
+	p.h.PublicHostNames = keep
+	p.h.mu.Unlock()
+	return skipped
+}
+
+// PublicHosts records the host names the module adds (module.PublicHostsOf) in PublicHostNames.
+func (h *Host) PublicHosts() module.PublicHosts { return testPublicHosts{h} }

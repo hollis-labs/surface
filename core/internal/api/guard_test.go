@@ -78,3 +78,34 @@ func TestAllowedHostsFromEnv(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+type fakePublicHosts struct{ host, prefix string }
+
+func (f fakePublicHosts) PublicHostAllowed(h string) bool { return h == f.host }
+func (f fakePublicHosts) PublicRoute(r *http.Request) bool {
+	return len(r.URL.Path) >= len(f.prefix) && r.URL.Path[:len(f.prefix)] == f.prefix
+}
+
+// A host name a module added (module.PublicHosts) is answered for its public routes only.
+func TestGuardAnswersAModuleHostOnPublicRoutesOnly(t *testing.T) {
+	h := guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }),
+		fakePublicHosts{host: "old.example:8470", prefix: "/api/m/hub/connect"})
+	for _, c := range []struct {
+		host, path string
+		want       int
+	}{
+		{"old.example:8470", "/api/m/hub/connect", 200},
+		{"old.example:8470", "/api/m/hub/machines", http.StatusMisdirectedRequest},
+		{"old.example:8470", "/", http.StatusMisdirectedRequest},
+		{"old.example:8470", "/api/identity/profile", http.StatusMisdirectedRequest},
+		{"other.example:8470", "/api/m/hub/connect", http.StatusMisdirectedRequest},
+	} {
+		req := httptest.NewRequest("GET", c.path, nil)
+		req.Host = c.host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s %s: %d, want %d", c.host, c.path, rec.Code, c.want)
+		}
+	}
+}

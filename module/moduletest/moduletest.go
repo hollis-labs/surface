@@ -38,6 +38,8 @@ import (
 type Host struct {
 	// KeyStore, when set, gives the module sign-in keys (module.KeysOf); see NewKeys.
 	KeyStore *Keys
+	// PublicHostNames are the host names the module last set (module.PublicHostsOf), normalized.
+	PublicHostNames []string
 
 	t   testing.TB
 	m   module.Module

@@ -46,7 +46,9 @@ does the same with no browser.
 
 `module.UserOf(ctx)` is the signed-in caller (`ID`, `Kind` user or service, `Username`, `DisplayName`, `Role`,
 `Scopes`, `HasScope`). Stamp what a person creates with their id; gate admin actions on
-`HasScope("<app>.admin")`. See writing-a-module.md, "Routes, events, marks".
+`HasScope("<app>.admin")`. See writing-a-module.md, "Routes, events, marks". A module that gives an outside process a
+credential mints an identity API key with `module.KeysOf` (create, revoke, verify), never a token store of its
+own.
 
 ## In the page
 

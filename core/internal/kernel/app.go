@@ -39,6 +39,8 @@ type Options struct {
 	Log *slog.Logger
 	// Modules are the ids to start, in order. Nil starts every registered module.
 	Modules []string
+	// Keys mints identity API keys for modules (module.KeysOf); nil without sign-in.
+	Keys module.Keys
 }
 
 // App is the assembled app: the Kernel the core's services are given.
@@ -70,6 +72,7 @@ type App struct {
 	gateway      atomic.Pointer[func(context.Context) (module.Gateway, error)]
 	routes       *http.ServeMux
 	public       *http.ServeMux // the module routes marked module.Public, by the same patterns
+	keys         module.Keys    // nil without sign-in
 	started      bool
 	mu           sync.RWMutex
 }
@@ -106,7 +109,7 @@ func New(ctx context.Context, o Options) (*App, error) {
 	if err := os.MkdirAll(o.DataDir, 0o700); err != nil {
 		return nil, err
 	}
-	a := &App{name: o.Name, title: o.Title, dataDir: o.DataDir, db: o.DB, log: o.Log,
+	a := &App{name: o.Name, title: o.Title, dataDir: o.DataDir, db: o.DB, log: o.Log, keys: o.Keys,
 		bus: events.New(), byModule: map[string]*host{}, commands: map[string]boundCommand{}, routes: http.NewServeMux(), public: http.NewServeMux(),
 		palette: map[string]boundPalette{}, paletteSlots: make(chan struct{}, 6), refs: map[string]*boundRef{}, cite: citeCache{m: map[string]citeEntry{}}}
 	if a.title == "" {
@@ -575,6 +578,36 @@ func (h *host) Handle(pattern string, handler http.Handler) {
 	if module.IsPublic(handler) {
 		h.app.public.Handle(full, handler)
 	}
+}
+
+// Keys is the app's key service, scoped for this module: it refuses scopes that are not the
+// app's own and records the module as the creator when no user is named (module.KeysOf).
+func (h *host) Keys() module.Keys {
+	if h.app.keys == nil {
+		return nil
+	}
+	return moduleKeys{inner: h.app.keys, app: h.app.name, module: h.id}
+}
+
+type moduleKeys struct {
+	inner       module.Keys
+	app, module string
+}
+
+func (k moduleKeys) Create(ctx context.Context, r module.KeyRequest) (module.Key, error) {
+	if err := module.CheckKeyScopes(k.app, r.Scopes); err != nil {
+		return module.Key{}, err
+	}
+	if r.CreatedBy == "" {
+		r.CreatedBy = "module:" + k.module
+	}
+	return k.inner.Create(ctx, r)
+}
+
+func (k moduleKeys) Revoke(ctx context.Context, id string) error { return k.inner.Revoke(ctx, id) }
+
+func (k moduleKeys) Verify(ctx context.Context, token string) (module.Caller, error) {
+	return k.inner.Verify(ctx, token)
 }
 
 // PublicRoute reports whether r is for a module route marked module.Public: one an app

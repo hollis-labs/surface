@@ -36,6 +36,9 @@ import (
 
 // Host is the module's Host in a test, and what the test reads back.
 type Host struct {
+	// KeyStore, when set, gives the module sign-in keys (module.KeysOf); see NewKeys.
+	KeyStore *Keys
+
 	t   testing.TB
 	m   module.Module
 	man module.Manifest

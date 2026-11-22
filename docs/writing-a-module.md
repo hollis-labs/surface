@@ -213,6 +213,12 @@ check out is left out at boot, with the reason in the log; the app still starts.
   records with it and check `HasScope("<app>.admin")` for admin-only actions. A route the module authenticates
   itself (a device token, a single-use code) or serves to anyone is wrapped: `h.Handle("POST /enroll",
   module.Public(handler))`. With sign-in off there is no user and `Public` changes nothing.
+- A module that hands a credential to something outside the page (an agent it launches, a device, a webhook)
+  mints an identity API key instead of keeping tokens of its own: `keys, ok := module.KeysOf(h)` (false with
+  sign-in off), then `keys.Create(ctx, module.KeyRequest{Name, Scopes, TTL, CreatedBy})` (only the app's own
+  `<app>.…` scopes), `keys.Revoke(ctx, id)` when it is done, and `keys.Verify(ctx, bearer)` on its
+  `module.Public` route. The keys show in the app's key list and the owner can revoke them. In tests, set
+  `moduletest.Host.KeyStore = moduletest.NewKeys()`.
 - After any write, `h.Events().Publish("<id>.changed", …)`. Views listen and refresh; that is how a window
   learns the agent changed its data.
 - `h.Marks()` pins notes to a part of something (`Ref`, `Quote`, `Anchor`). Do not build your own comments.

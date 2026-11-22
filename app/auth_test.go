@@ -34,6 +34,39 @@ func (authProbe) Start(_ context.Context, h module.Host) error {
 	}
 	h.Handle("GET /who", http.HandlerFunc(who))
 	h.Handle("POST /who", http.HandlerFunc(who))
+	// Keys: mint one for a "device", refuse "*", revoke by id.
+	h.Handle("POST /mint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys, ok := module.KeysOf(h)
+		if !ok {
+			http.Error(w, "no keys", http.StatusNotImplemented)
+			return
+		}
+		if _, err := keys.Create(r.Context(), module.KeyRequest{Name: "too much", Scopes: []string{"*"}}); err == nil {
+			http.Error(w, "minted *", http.StatusInternalServerError)
+			return
+		}
+		k, err := keys.Create(r.Context(), module.KeyRequest{Name: "device", Scopes: []string{"authapp.read"}})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": k.ID, "secret": k.Secret})
+	}))
+	h.Handle("POST /revoke/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys, _ := module.KeysOf(h)
+		if err := keys.Revoke(r.Context(), r.PathValue("id")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	h.Handle("GET /check", module.Public(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys, _ := module.KeysOf(h)
+		c, err := keys.Verify(r.Context(), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(c)
+	})))
 	h.Handle("POST /hook", module.Public(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, signed := module.UserOf(r.Context())
 		_ = json.NewEncoder(w).Encode(map[string]any{"public": true, "signed": signed})
@@ -144,20 +177,20 @@ func TestSignInGuardsTheApp(t *testing.T) {
 	page := map[string]string{"X-Requested-With": "XMLHttpRequest", "Origin": e.base}
 
 	// Signed out: the API is closed, a public module route and the identity routes are open.
-	if r := e.do("GET", "/api/m/authprobe/who", nil, nil); r.code != 401 {
-		t.Fatalf("signed out: %d %s", r.code, r.body)
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, nil); rr.code != 401 {
+		t.Fatalf("signed out: %d %s", rr.code, rr.body)
 	}
-	if r := e.do("GET", "/api/desk", nil, nil); r.code != 401 {
-		t.Fatalf("desk signed out: %d", r.code)
+	if rr := e.do("GET", "/api/desk", nil, nil); rr.code != 401 {
+		t.Fatalf("desk signed out: %d", rr.code)
 	}
-	if r := e.do("POST", "/mcp", map[string]any{}, nil); r.code != 401 {
-		t.Fatalf("mcp signed out: %d", r.code)
+	if rr := e.do("POST", "/mcp", map[string]any{}, nil); rr.code != 401 {
+		t.Fatalf("mcp signed out: %d", rr.code)
 	}
-	if r := e.do("POST", "/api/m/authprobe/hook", map[string]any{}, nil); r.code != 200 || !strings.Contains(r.body, `"signed":false`) {
-		t.Fatalf("public route: %d %s", r.code, r.body)
+	if rr := e.do("POST", "/api/m/authprobe/hook", map[string]any{}, nil); rr.code != 200 || !strings.Contains(rr.body, `"signed":false`) {
+		t.Fatalf("public route: %d %s", rr.code, rr.body)
 	}
-	if r := e.do("GET", "/api/setup", nil, nil); r.code != 200 || !strings.Contains(r.body, `"setup_required":true`) {
-		t.Fatalf("setup status: %d %s", r.code, r.body)
+	if rr := e.do("GET", "/api/setup", nil, nil); rr.code != 200 || !strings.Contains(rr.body, `"setup_required":true`) {
+		t.Fatalf("setup status: %d %s", rr.code, rr.body)
 	}
 
 	// The owner signs up (setup: http in this test) and is let in with their role.
@@ -170,46 +203,70 @@ func TestSignInGuardsTheApp(t *testing.T) {
 	if r.code != 200 || !strings.Contains(r.body, `"role":"owner"`) || !strings.Contains(r.body, `"username":"owner"`) || !strings.Contains(r.body, `"kind":"user"`) {
 		t.Fatalf("owner who: %d %s", r.code, r.body)
 	}
-	if r := e.do("GET", "/api/desk", nil, nil, own); r.code != 200 {
-		t.Fatalf("owner desk: %d %s", r.code, r.body)
+	if rr := e.do("GET", "/api/desk", nil, nil, own); rr.code != 200 {
+		t.Fatalf("owner desk: %d %s", rr.code, rr.body)
 	}
 	// A cookie write needs the page's header and origin (identity.Middleware).
-	if r := e.do("POST", "/api/m/authprobe/who", map[string]any{}, nil, own); r.code != 403 {
-		t.Fatalf("cookie write without X-Requested-With: %d", r.code)
+	if rr := e.do("POST", "/api/m/authprobe/who", map[string]any{}, nil, own); rr.code != 403 {
+		t.Fatalf("cookie write without X-Requested-With: %d", rr.code)
 	}
-	if r := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, own); r.code != 200 {
-		t.Fatalf("owner write: %d %s", r.code, r.body)
+	if rr := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, own); rr.code != 200 {
+		t.Fatalf("owner write: %d %s", rr.code, rr.body)
 	}
 	// A WebSocket handshake with the cookie from another site is refused.
 	ws := map[string]string{"Upgrade": "websocket", "Connection": "Upgrade", "Origin": "http://evil.example"}
-	if r := e.do("GET", "/api/m/authprobe/who", nil, ws, own); r.code != 403 {
-		t.Fatalf("cross-site upgrade: %d", r.code)
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, ws, own); rr.code != 403 {
+		t.Fatalf("cross-site upgrade: %d", rr.code)
 	}
 
 	// A guest reads, but cannot change anything; a member can.
 	for _, u := range []struct{ name, role string }{{"guest", "guest"}, {"member", "member"}} {
-		if r := e.do("POST", "/api/identity/users", map[string]string{"username": u.name, "password": "correct horse battery", "role": u.role}, page, own); r.code != 201 {
-			t.Fatalf("create %s: %d %s", u.name, r.code, r.body)
+		if rr := e.do("POST", "/api/identity/users", map[string]string{"username": u.name, "password": "correct horse battery", "role": u.role}, page, own); rr.code != 201 {
+			t.Fatalf("create %s: %d %s", u.name, rr.code, rr.body)
 		}
 	}
 	guest := sessionCookie(t, e.do("POST", "/api/login", map[string]string{"username": "guest", "password": "correct horse battery"}, page))
 	member := sessionCookie(t, e.do("POST", "/api/login", map[string]string{"username": "member", "password": "correct horse battery"}, page))
-	if r := e.do("GET", "/api/m/authprobe/who", nil, nil, guest); r.code != 200 {
-		t.Fatalf("guest read: %d", r.code)
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, nil, guest); rr.code != 200 {
+		t.Fatalf("guest read: %d", rr.code)
 	}
-	if r := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, guest); r.code != 403 {
-		t.Fatalf("guest write: %d %s", r.code, r.body)
+	if rr := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, guest); rr.code != 403 {
+		t.Fatalf("guest write: %d %s", rr.code, rr.body)
 	}
-	if r := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, member); r.code != 200 || !strings.Contains(r.body, `"role":"member"`) {
-		t.Fatalf("member write: %d %s", r.code, r.body)
+	if rr := e.do("POST", "/api/m/authprobe/who", map[string]any{}, page, member); rr.code != 200 || !strings.Contains(rr.body, `"role":"member"`) {
+		t.Fatalf("member write: %d %s", rr.code, rr.body)
+	}
+
+	// A module mints a key: it works as a bearer (read only), Verify names it, revoke ends it.
+	r = e.do("POST", "/api/m/authprobe/mint", map[string]any{}, page, member)
+	if r.code != 200 {
+		t.Fatalf("mint: %d %s", r.code, r.body)
+	}
+	var minted struct{ ID, Secret string }
+	_ = json.Unmarshal([]byte(r.body), &minted)
+	bearer := map[string]string{"Authorization": "Bearer " + minted.Secret}
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, bearer); rr.code != 200 || !strings.Contains(rr.body, `"kind":"service"`) {
+		t.Fatalf("minted key read: %d %s", rr.code, rr.body)
+	}
+	if rr := e.do("POST", "/api/m/authprobe/who", map[string]any{}, bearer); rr.code != 403 {
+		t.Fatalf("minted read-only key wrote: %d", rr.code)
+	}
+	if rr := e.do("GET", "/api/m/authprobe/check", nil, bearer); rr.code != 200 || !strings.Contains(rr.body, "authapp.read") {
+		t.Fatalf("verify: %d %s", rr.code, rr.body)
+	}
+	if rr := e.do("POST", "/api/m/authprobe/revoke/"+minted.ID, map[string]any{}, page, member); rr.code != 200 {
+		t.Fatalf("revoke: %d %s", rr.code, rr.body)
+	}
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, bearer); rr.code != 401 {
+		t.Fatalf("revoked key: %d", rr.code)
 	}
 
 	// Signed out again, the cookie stops working.
-	if r := e.do("POST", "/api/logout", map[string]any{}, page, member); r.code >= 300 {
-		t.Fatalf("logout: %d %s", r.code, r.body)
+	if rr := e.do("POST", "/api/logout", map[string]any{}, page, member); rr.code >= 300 {
+		t.Fatalf("logout: %d %s", rr.code, rr.body)
 	}
-	if r := e.do("GET", "/api/m/authprobe/who", nil, nil, member); r.code != 401 {
-		t.Fatalf("after logout: %d", r.code)
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, nil, member); rr.code != 401 {
+		t.Fatalf("after logout: %d", rr.code)
 	}
 
 	// The CLI signs with the operator key it keeps (0600) in the data directory.

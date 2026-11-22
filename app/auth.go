@@ -141,3 +141,39 @@ func operatorKey(ctx context.Context, sapp *smodule.App, dataDir string) (string
 	}
 	return key, f.Close()
 }
+
+// identityKeys is module.Keys over Substrate's identity module.
+type identityKeys struct {
+	sapp *smodule.App
+	svc  *identity.Service
+}
+
+func (k identityKeys) Create(ctx context.Context, r module.KeyRequest) (module.Key, error) {
+	secret, cred, err := k.svc.CreateKey(ctx, identity.KeyInput{Name: r.Name, Scopes: r.Scopes, TTL: r.TTL, CreatedBy: r.CreatedBy})
+	if err != nil {
+		return module.Key{}, err
+	}
+	return module.Key{ID: cred.ID, Secret: secret}, nil
+}
+
+func (k identityKeys) Revoke(ctx context.Context, id string) error {
+	err := k.svc.RevokeKey(ctx, id)
+	if errors.Is(err, identity.ErrNotFound) {
+		return module.ErrKeyNotFound
+	}
+	return err
+}
+
+func (k identityKeys) Verify(ctx context.Context, token string) (module.Caller, error) {
+	p, err := auth.Verify(ctx, k.sapp, strings.TrimSpace(token))
+	if err != nil || !p.Verified {
+		return module.Caller{}, module.ErrBadKey
+	}
+	kind := p.Kind
+	if strings.HasPrefix(p.ID, "user:") {
+		kind = "user"
+	} else if kind == "" {
+		kind = "service"
+	}
+	return module.Caller{ID: p.ID, Kind: kind, Name: p.Display, Scopes: p.Scopes}, nil
+}

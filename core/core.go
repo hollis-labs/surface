@@ -13,6 +13,8 @@
 package core
 
 import (
+	"github.com/hollis-labs/surface/module"
+
 	"context"
 	"database/sql"
 	"io/fs"
@@ -39,6 +41,8 @@ type Options struct {
 	Modules []string
 	// Assets is the built page. Nil serves the API only.
 	Assets fs.FS
+	// Keys mints identity API keys for modules (module.KeysOf); nil without sign-in.
+	Keys module.Keys
 }
 
 // App is a running Surface app.
@@ -56,7 +60,7 @@ type service interface {
 
 // New assembles the app. Nothing is served and no module is started until Start.
 func New(ctx context.Context, o Options) (*App, error) {
-	k, err := kernel.New(ctx, kernel.Options{Name: o.Name, Title: o.Title, DataDir: o.DataDir, DB: o.DB, Log: o.Log, Modules: o.Modules})
+	k, err := kernel.New(ctx, kernel.Options{Name: o.Name, Title: o.Title, DataDir: o.DataDir, DB: o.DB, Log: o.Log, Modules: o.Modules, Keys: o.Keys})
 	if err != nil {
 		return nil, err
 	}

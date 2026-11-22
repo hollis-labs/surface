@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,9 +73,12 @@ type App struct {
 	gateway      atomic.Pointer[func(context.Context) (module.Gateway, error)]
 	routes       *http.ServeMux
 	public       *http.ServeMux // the module routes marked module.Public, by the same patterns
-	keys         module.Keys    // nil without sign-in
-	started      bool
-	mu           sync.RWMutex
+
+	hostsMu     sync.RWMutex
+	publicHosts map[string]map[string]bool // module id -> host names it added (module.PublicHosts)
+	keys        module.Keys                // nil without sign-in
+	started     bool
+	mu          sync.RWMutex
 }
 
 type boundCommand struct {
@@ -608,6 +612,58 @@ func (k moduleKeys) Revoke(ctx context.Context, id string) error { return k.inne
 
 func (k moduleKeys) Verify(ctx context.Context, token string) (module.Caller, error) {
 	return k.inner.Verify(ctx, token)
+}
+
+// PublicHosts lets the module add host names the app answers at for public routes.
+func (h *host) PublicHosts() module.PublicHosts { return modulePublicHosts{app: h.app, id: h.id} }
+
+type modulePublicHosts struct {
+	app *App
+	id  string
+}
+
+func (p modulePublicHosts) Set(names []string) []string {
+	set := map[string]bool{}
+	var skipped []string
+	for _, n := range names {
+		if h, ok := module.NormalHostName(n); ok {
+			set[h] = true
+		} else {
+			skipped = append(skipped, n)
+		}
+	}
+	p.app.hostsMu.Lock()
+	defer p.app.hostsMu.Unlock()
+	if p.app.publicHosts == nil {
+		p.app.publicHosts = map[string]map[string]bool{}
+	}
+	if len(set) == 0 {
+		delete(p.app.publicHosts, p.id)
+	} else {
+		p.app.publicHosts[p.id] = set
+	}
+	return skipped
+}
+
+// PublicHostAllowed reports whether a module added the request's host name (hostport, as in
+// r.Host) through module.PublicHosts. The caller checks the route is public (PublicRoute).
+func (a *App) PublicHostAllowed(hostport string) bool {
+	h := hostport
+	if name, _, err := net.SplitHostPort(hostport); err == nil {
+		h = name
+	}
+	h, ok := module.NormalHostName(h)
+	if !ok {
+		return false
+	}
+	a.hostsMu.RLock()
+	defer a.hostsMu.RUnlock()
+	for _, set := range a.publicHosts {
+		if set[h] {
+			return true
+		}
+	}
+	return false
 }
 
 // PublicRoute reports whether r is for a module route marked module.Public: one an app

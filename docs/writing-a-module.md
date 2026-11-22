@@ -219,6 +219,12 @@ check out is left out at boot, with the reason in the log; the app still starts.
   `<app>.…` scopes), `keys.Revoke(ctx, id)` when it is done, and `keys.Verify(ctx, bearer)` on its
   `module.Public` route. The keys show in the app's key list and the owner can revoke them. In tests, set
   `moduletest.Host.KeyStore = moduletest.NewKeys()`.
+- The app answers only at IPs, `localhost` and the names in `SURFACE_ALLOWED_HOSTS` (a guard against DNS
+  rebinding). A module whose own clients still dial a name the app no longer serves can add names for its
+  `module.Public` routes only: `ph, ok := module.PublicHostsOf(h)`, then `ph.Set([]string{"old.example.net"})`.
+  It takes effect at once, and `ph.Set(nil)` removes them. A hub whose public URL changed uses it so its runners
+  can reach it at the old name until they have moved. Only add names the operator configured, never one taken
+  from a request. In tests, `moduletest.Host.PublicHostNames` records the last set.
 - After any write, `h.Events().Publish("<id>.changed", …)`. Views listen and refresh; that is how a window
   learns the agent changed its data.
 - `h.Marks()` pins notes to a part of something (`Ref`, `Quote`, `Anchor`). Do not build your own comments.

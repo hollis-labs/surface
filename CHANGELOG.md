@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Modules can add host names for their public routes (`module.PublicHosts`).** The host guard answers only
+  at IPs, localhost and `SURFACE_ALLOWED_HOSTS`, read once at start. A module can now add names live with
+  `module.PublicHostsOf(h)`, then `Set(names)` (nil removes them). They are answered for that app's
+  `module.Public` routes only, never the page, sign-in or other routes. IPs, ports and wildcards are refused.
+  The use case is a hub whose public URL changed: it keeps taking its runners at the old name until they have
+  moved. `moduletest.Host.PublicHostNames` records the names in tests. Additive: the `Host` interface is
+  unchanged.
 - **Icons lucide 1.x renamed draw again.** `<Icon name>` names lucide dropped as aliases drew a dot: the account
   menu's Passkeys (`fingerprint`), and `trash-2`, `alert-triangle`/`triangle-alert`, `square-arrow-out-up-right`,
   `file-plus-2`, `history`, `code-2`, `building-2`, `shield-alert`, `check-circle-2`, `pause-circle`, `list-ul`,

@@ -49,6 +49,15 @@ Browser was opened from. The plain case still lands where the owner expects: the
 opened Browser, and the owner closed it, so Notes is both the newest owner's window and the opener. The opener
 is what is left when every window the owner had in front is gone.
 
+## On a narrow screen
+
+Below 720 CSS pixels wide (a phone, or a slim browser window), the desk shows one window at a time: the focused
+window, full width. The bar trades its tab strip for a switcher. It names the window shown and the number open,
+lists every window to switch to, and can close the one shown. The layout toggle, the theme picker and the clock
+leave the bar, and the agent panel takes the whole canvas while it is open. Dialogs are unchanged. The saved
+arrangement (tiles, tabs, floats) is neither shown nor changed there. Widen the screen and it is back as it was.
+The rules above still decide which window has the focus.
+
 ## For the agent
 
 `desk_windows` shows `opened_by`, `opener`, `reason`, `retention` and `kept` for every window. `desk_open` takes

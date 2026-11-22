@@ -88,7 +88,7 @@ func (g *gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		authFail(w, http.StatusForbidden, "scope_required", "this needs "+need)
 		return
 	}
-	u := module.User{ID: p.ID, Kind: p.Kind, DisplayName: p.Display, Scopes: p.Scopes}
+	u := module.User{ID: p.ID, Kind: p.Kind, DisplayName: p.Display, Scopes: p.Scopes, For: p.Parent}
 	if id, ok := strings.CutPrefix(p.ID, "user:"); ok {
 		u.ID, u.Kind = id, "user"
 		if pu, err := g.svc.User(r.Context(), id); err == nil {

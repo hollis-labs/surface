@@ -277,6 +277,11 @@ func TestSignInGuardsTheApp(t *testing.T) {
 		!strings.Contains(rr.body, `"For":"`+mine.Credential.CreatedBy+`"`) || !strings.HasPrefix(mine.Credential.CreatedBy, "user:") {
 		t.Fatalf("my key verify: %d %s (%+v)", rr.code, rr.body, mine.Credential)
 	}
+	// On the app's own routes the same key is a service caller acting for the member (User.For).
+	if rr := e.do("GET", "/api/m/authprobe/who", nil, map[string]string{"Authorization": "Bearer " + mine.Key}); rr.code != 200 ||
+		!strings.Contains(rr.body, `"for":"`+mine.Credential.CreatedBy+`"`) {
+		t.Fatalf("my key as a user: %d %s", rr.code, rr.body)
+	}
 
 	// Signed out again, the cookie stops working.
 	if rr := e.do("POST", "/api/logout", map[string]any{}, page, member); rr.code >= 300 {

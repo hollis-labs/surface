@@ -142,7 +142,7 @@ func TestSteeringSidecarAppliesInEval(t *testing.T) {
 }
 
 func TestOpenAIProviderUsesGatewayAndResolvesKeyPerRequest(t *testing.T) {
-	key := filepath.Join(t.TempDir(), "key")
+	key := filepath.Join(realTempDir(t), "key")
 	values := []string{"fixture-first-value", "fixture-second-value"}
 	var seen []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

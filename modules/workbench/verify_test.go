@@ -160,7 +160,7 @@ func TestRunsAreLimited(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Cleanup(func() { close(release) })
-	key := filepath.Join(t.TempDir(), "key")
+	key := filepath.Join(realTempDir(t), "key")
 	_ = os.WriteFile(key, []byte("k"), 0o600)
 	h.AgentState.GW = &module.Gateway{Model: "claude-test-1", URL: srv.URL, KeyFile: key}
 	if _, err := m.create("busy", "", "embedded", "owner"); err != nil {
@@ -173,7 +173,11 @@ func TestRunsAreLimited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-asked
+	select {
+	case <-asked:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first run never reached the gateway")
+	}
 	if _, err := m.run.Start(t.Context(), "busy", "loop", "live", Caps{}, ""); err == nil || !strings.Contains(err.Error(), "one live run at a time") {
 		t.Fatalf("a second live run: %v", err)
 	}
@@ -212,7 +216,7 @@ func TestRunTemporaryFilesAreRemoved(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Cleanup(func() { close(release) })
-	key := filepath.Join(t.TempDir(), "key")
+	key := filepath.Join(realTempDir(t), "key")
 	_ = os.WriteFile(key, []byte("k"), 0o600)
 	h.AgentState.GW = &module.Gateway{Model: "claude-test-1", URL: srv.URL, KeyFile: key}
 	if _, err := m.create("tmp", "", "embedded", "owner"); err != nil {

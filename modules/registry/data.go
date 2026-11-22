@@ -167,7 +167,7 @@ type Overview struct {
 }
 
 // countPages bounds the sweep that counts records per kind (200 a page).
-const countPages = 5
+const countPages = 12
 
 // nonRecordKinds are schemas of values, not records: no record has them as its kind.
 var nonRecordKinds = map[string]bool{"relation": true, "classification": true}

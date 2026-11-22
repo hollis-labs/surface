@@ -39,42 +39,42 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
     <>
       {w.settled_at ? (
         <Button
-          size="xs"
+          size="icon-xs"
           variant="ghost"
-          className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+          className="size-6 text-muted-foreground hover:text-foreground"
           disabled={busy}
           title="Unsettle workstream"
+          aria-label={`Unsettle ${w.title}`}
           onClick={(e) => {
             e.stopPropagation()
             void run(() => ops.unsettle(w.id, w.rev))
           }}
         >
           <Icon name="rotate-ccw" size={11} />
-          Unsettle
         </Button>
       ) : (
         w.stage === "complete" && (
           <Button
-            size="xs"
+            size="icon-xs"
             variant="ghost"
-            className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-success hover:text-success"
+            className="size-6 text-success hover:text-success"
             disabled={busy}
             title="Settle completed workstream"
+            aria-label={`Settle ${w.title}`}
             onClick={(e) => {
               e.stopPropagation()
               void run(() => ops.settle(w.id, w.rev))
             }}
           >
             <Icon name="check-circle-2" size={11} />
-            Settle
           </Button>
         )
       )}
       {canSend && (
         <Button
-          size="xs"
+          size="icon-xs"
           variant="ghost"
-          className={`h-6 gap-1 px-1.5 font-mono text-[10.5px] ${
+          className={`size-6 ${
             alreadySent
               ? "text-primary hover:text-primary"
               : pending
@@ -98,7 +98,6 @@ export function WorkstreamActions({ w, ops, refresh }: { w: Workstream; ops: Ops
           }}
         >
           <Icon name="send" size={11} />
-          <span>{alreadySent ? "Sent" : pending ? "Retry" : "Orchestrate"}</span>
         </Button>
       )}
       {!open && error && (

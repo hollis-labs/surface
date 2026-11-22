@@ -290,93 +290,183 @@ export function Board({ win, desk, api }: ViewProps) {
     )
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
-        <Icon name="radar" className="size-4" />
-        <nav aria-label="Level" className="flex min-w-0 items-center gap-1 text-sm">
-          <Button size="xs" variant={parent ? "ghost" : "secondary"} onClick={() => go({ parent: "" })}>
-            Operations
+  const layoutLabel =
+    layout === "fleet"
+      ? "Fleet"
+      : layout === "usage"
+        ? "Usage"
+        : layout === "agents"
+          ? "Agents"
+          : layout === "followups"
+            ? "Follow-ups"
+            : layout === "activity"
+              ? "Activity"
+              : layout === "cards"
+                ? "Cards"
+                : "Kanban"
+
+  const isBoardView = layout === "kanban" || layout === "cards"
+  const inFlightCount = (data?.workstreams ?? []).filter((w) => w.stage === "in_flight").length
+
+  const workstreamsToolbar = (
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 rounded-md border border-border/80 bg-card/80 px-3.5 py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-primary/30 bg-primary/10 text-primary">
+          <Icon name={layout === "cards" ? "layout-grid" : "columns-3"} size={14} />
+        </span>
+        <nav aria-label="Level" className="flex min-w-0 flex-wrap items-center gap-1 text-xs">
+          <Button
+            size="xs"
+            variant={parent ? "ghost" : "secondary"}
+            className="h-6 px-2 font-mono text-[11px]"
+            onClick={() => go({ parent: "" })}
+          >
+            All Workstreams
           </Button>
           {path.map((p) => (
             <span key={p.id} className="flex items-center gap-1">
               <Icon name="chevron-right" size={12} className="text-muted-foreground" />
-              <Button size="xs" variant={p.id === parent ? "secondary" : "ghost"} onClick={() => go({ parent: p.id })}>
+              <Button
+                size="xs"
+                variant={p.id === parent ? "secondary" : "ghost"}
+                className="h-6 px-2 font-mono text-[11px]"
+                onClick={() => go({ parent: p.id })}
+              >
                 {p.title}
               </Button>
             </span>
           ))}
           {parent && (
-            <Button size="xs" variant="ghost" onClick={() => open(parent)} title="Open this workstream">
-              <Icon name="external-link" />
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="size-6"
+              onClick={() => open(parent)}
+              title="Open this workstream"
+              aria-label="Open this workstream"
+            >
+              <Icon name="external-link" size={12} />
             </Button>
           )}
         </nav>
-        <span className="ml-auto" />
-        <EventBusHeaderMonitor activeCount={(data?.workstreams ?? []).filter((w) => w.stage === "in_flight").length} />
-        <ToggleGroup
-          size="sm"
-          spacing={0}
-          value={[layout]}
-          onValueChange={(v: string[]) => v[0] && go({ layout: v[0] })}
-          aria-label="Layout"
+        <div className="hidden items-center gap-1.5 sm:flex">
+          <Badge
+            variant="outline"
+            className="h-4 border-primary/40 bg-primary/10 px-1.5 font-mono text-[10px] text-primary"
+          >
+            {inFlightCount} in flight
+          </Badge>
+          <Badge variant="secondary" className="h-4 px-1.5 font-mono text-[10px]">
+            {level.length} shown
+          </Badge>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+          <Switch checked={showSettled} onCheckedChange={(c) => go({ show_settled: c })} aria-label="Show settled" />
+          Show settled
+        </Label>
+        <Label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+          <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
+          Dropped
+        </Label>
+        <div className="h-4 w-px bg-border/70" />
+        <Button
+          size="xs"
+          variant={making ? "secondary" : "outline"}
+          className="h-6 gap-1 px-2 font-mono text-[11px]"
+          onClick={() => setMaking((v) => !v)}
         >
-          <ToggleGroupItem value="kanban">Kanban</ToggleGroupItem>
-          <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
-          <ToggleGroupItem value="activity">Activity</ToggleGroupItem>
-          <ToggleGroupItem value="fleet">Fleet</ToggleGroupItem>
-          <ToggleGroupItem value="agents">Agents</ToggleGroupItem>
-          <ToggleGroupItem value="usage">Usage</ToggleGroupItem>
-          <ToggleGroupItem value="followups">
-            Follow-ups{(data?.followups.length ?? 0) > 0 ? ` (${data?.followups.length})` : ""}
-          </ToggleGroupItem>
-        </ToggleGroup>
-        {layout !== "activity" &&
-          layout !== "fleet" &&
-          layout !== "usage" &&
-          layout !== "agents" &&
-          layout !== "followups" && (
-            <>
-              <Label className="flex items-center gap-1.5 text-xs">
-                <Switch
-                  checked={showSettled}
-                  onCheckedChange={(c) => go({ show_settled: c })}
-                  aria-label="Show settled"
-                />
-                Show settled
-              </Label>
-              <Label className="flex items-center gap-1.5 text-xs">
-                <Switch checked={dropped} onCheckedChange={(c) => go({ dropped: c })} aria-label="Dropped" />
-                Dropped
-              </Label>
-            </>
-          )}
-        <Button size="sm" variant="ghost" onClick={() => setMaking((v) => !v)}>
-          <Icon name="plus" />
+          <Icon name="plus" size={12} />
           New
         </Button>
         <Button
-          size="sm"
-          variant="ghost"
+          size="xs"
+          variant="outline"
+          className="h-6 gap-1 px-2 font-mono text-[11px]"
           onClick={(e) => {
             if (e.metaKey || e.ctrlKey || e.shiftKey) void desk.run("ops.seed")
             else go({ seed: true })
           }}
           title="Seed Operations from the tracker (⌘-click for new window)"
         >
-          <Icon name="sprout" />
+          <Icon name="sprout" size={12} />
           Seed
         </Button>
-        {layout !== "agents" && (
-          <Button size="sm" variant="ghost" aria-label="Refresh" onClick={() => void load(true)} disabled={busy}>
-            {busy ? <Spinner /> : <Icon name="refresh-cw" />}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      {/* Invariant Top Subnav Bar — fixed layout across all views so tabs never jump */}
+      <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b bg-card/30 px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon name="radar" className="size-4 shrink-0 text-primary" />
+          <span className="font-semibold text-sm tracking-tight">Operations</span>
+          <span className="text-border">/</span>
+          <Badge variant="outline" className="h-5 px-2 font-mono text-[11px] text-muted-foreground">
+            {layoutLabel}
+          </Badge>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <EventBusHeaderMonitor activeCount={inFlightCount} />
+          <ToggleGroup
+            size="sm"
+            spacing={0}
+            value={[layout]}
+            onValueChange={(v: string[]) => v[0] && go({ layout: v[0] })}
+            aria-label="Layout"
+          >
+            <ToggleGroupItem value="kanban" aria-label="Kanban" title="Kanban Board" className="size-7 p-0">
+              <Icon name="columns-3" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="cards" aria-label="Cards" title="Cards Grid" className="size-7 p-0">
+              <Icon name="layout-grid" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="activity" aria-label="Activity" title="Activity Stream" className="size-7 p-0">
+              <Icon name="activity" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="fleet" aria-label="Fleet" title="Fleet Telemetry" className="size-7 p-0">
+              <Icon name="server" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="agents" aria-label="Agents" title="Agents & Sessions" className="size-7 p-0">
+              <Icon name="bot" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="usage" aria-label="Usage" title="Provider Usage & Quotas" className="size-7 p-0">
+              <Icon name="gauge" size={14} />
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="followups"
+              aria-label="Follow-ups"
+              title={`Follow-ups${(data?.followups.length ?? 0) > 0 ? ` (${data?.followups.length})` : ""}`}
+              className="relative size-7 p-0"
+            >
+              <Icon name="bookmark-check" size={14} />
+              {(data?.followups.length ?? 0) > 0 && (
+                <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+              )}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            className="size-7"
+            aria-label="Refresh"
+            title="Refresh"
+            onClick={() => void load(true)}
+            disabled={busy}
+          >
+            {busy ? <Spinner /> : <Icon name="refresh-cw" size={14} />}
           </Button>
-        )}
+        </div>
       </div>
       {error && layout !== "agents" && (
         <p className="shrink-0 border-b px-3 py-1.5 text-destructive text-xs">{error}</p>
       )}
-      {making && (
+      {making && isBoardView && (
         <NewForm
           parent={parent}
           done={() => setMaking(false)}
@@ -403,25 +493,30 @@ export function Board({ win, desk, api }: ViewProps) {
         />
       ) : layout === "activity" ? (
         <BoardActivity win={win} desk={desk} api={api} workstreams={data.workstreams} onOpenWorkstream={open} />
-      ) : level.length === 0 ? (
-        <Empty className="flex-1">
-          <EmptyHeader>
-            <EmptyTitle>{parent ? "Nothing inside yet" : "No workstreams yet"}</EmptyTitle>
-            <EmptyDescription>
-              Add one with New, ask the agent, or seed the board from the tracker (a preview first; nothing is written
-              until you apply it).
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : layout === "kanban" ? (
-        <div className="flex min-h-0 flex-1 items-start gap-2 overflow-auto p-2">
-          {lanes.map((s) => lane(s))}
-          {unknownLane}
-        </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-2">
-          {lanes.map((s) => lane(s, true))}
-          {unknownLane}
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
+          {workstreamsToolbar}
+          {level.length === 0 ? (
+            <Empty className="flex-1">
+              <EmptyHeader>
+                <EmptyTitle>{parent ? "Nothing inside yet" : "No workstreams yet"}</EmptyTitle>
+                <EmptyDescription>
+                  Add one with New, ask the agent, or seed the board from the tracker (a preview first; nothing is
+                  written until you apply it).
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : layout === "kanban" ? (
+            <div className="flex min-h-0 flex-1 items-start gap-2 overflow-auto">
+              {lanes.map((s) => lane(s))}
+              {unknownLane}
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+              {lanes.map((s) => lane(s, true))}
+              {unknownLane}
+            </div>
+          )}
         </div>
       )}
 

@@ -11,6 +11,7 @@ export interface SessionRow {
   last_activity_at?: string
   last_activity?: string
   workstream_id?: string
+  task_id?: string
   stale: boolean
   warning?: string
 }

@@ -785,21 +785,21 @@ export function WorkstreamCard({
         </div>
       )}
 
-      {/* 6. Dedicated Card Footer Line: Expand/Children on Left, Orchestration & Detail Modal Actions on Right */}
+      {/* 6. Dedicated Card Footer Line: Icon-only Expand/Children on Left, Orchestration/Status/Detail Icons on Right */}
       <div
         className="mt-auto flex items-center justify-between gap-1 border-t border-border/55 pt-1.5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <Button
-            size="xs"
+            size="icon-xs"
             variant="ghost"
-            className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+            className="size-6 text-muted-foreground hover:text-foreground"
             onClick={() => setExpanded((v) => !v)}
-            title={expanded ? "Collapse inline breakdown" : "Expand inline work units and notes"}
+            title={expanded ? "Collapse inline work units and notes" : "Expand inline work units and notes"}
+            aria-label={expanded ? "Collapse inline work units" : "Expand inline work units"}
           >
-            <Icon name={expanded ? "chevron-up" : "chevron-down"} size={11} />
-            <span>{expanded ? "Less" : "Units"}</span>
+            <Icon name={expanded ? "chevron-up" : "chevron-down"} size={12} />
           </Button>
           {w.children.length > 0 && (
             <Button
@@ -830,9 +830,9 @@ export function WorkstreamCard({
             <Icon name="radio" size={11} />
           </Button>
           <Button
-            size="xs"
+            size="icon-xs"
             variant="ghost"
-            className="h-6 gap-1 px-1.5 font-mono text-[10.5px] text-primary hover:bg-primary/12 hover:text-primary"
+            className="size-6 text-primary hover:bg-primary/12 hover:text-primary"
             title="Open full workstream detail modal (⌘-click for separate window)"
             aria-label={`Open ${w.title} detail view`}
             onClick={(e) => {
@@ -845,7 +845,6 @@ export function WorkstreamCard({
             }}
           >
             <Icon name="maximize-2" size={11} />
-            <span>Detail</span>
           </Button>
         </div>
       </div>

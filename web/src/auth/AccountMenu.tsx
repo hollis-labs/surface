@@ -1,6 +1,6 @@
 /**
  * The bar's account menu, for an app with sign-in: who is signed in (and their role), passkeys,
- * two-step sign-in, change the password, sign out. Absent when the app has no sign-in.
+ * two-step sign-in, API keys, change the password, sign out. Absent when the app has no sign-in.
  */
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Icon } from "../sdk/icon"
 import { PASSKEY_SAVE_HINT, useAccount } from "./gate"
+import { KeysDialog } from "./KeysDialog"
 import {
   addPasskey,
   cancelled,
@@ -224,11 +225,12 @@ function PasskeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 }
 
 export function AccountMenu() {
-  const { account, signedOut, refresh } = useAccount()
+  const { account, app, signedOut, refresh } = useAccount()
   const [pw, setPw] = useState(false)
   const [pk, setPk] = useState(false)
   const [people, setPeople] = useState(false)
   const [two, setTwo] = useState(false)
+  const [keys, setKeys] = useState(false)
   if (!account) return null
   const out = () => void signOut().finally(signedOut)
   return (
@@ -269,6 +271,9 @@ export function AccountMenu() {
           <DropdownMenuItem onClick={() => setTwo(true)}>
             <Icon name="smartphone" /> Two-step sign-in
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setKeys(true)}>
+            <Icon name="key-square" /> API keys
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPw(true)}>
             <Icon name="key-round" /> Change password
           </DropdownMenuItem>
@@ -280,6 +285,7 @@ export function AccountMenu() {
       <PasswordDialog open={pw} onOpenChange={setPw} />
       <PasskeysDialog open={pk} onOpenChange={setPk} />
       <TwoStepDialog open={two} onOpenChange={setTwo} onChanged={refresh} />
+      <KeysDialog me={account} app={app} open={keys} onOpenChange={setKeys} />
       {isAdmin(account) && <UsersDialog me={account} open={people} onOpenChange={setPeople} />}
     </>
   )

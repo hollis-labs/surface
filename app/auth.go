@@ -175,5 +175,5 @@ func (k identityKeys) Verify(ctx context.Context, token string) (module.Caller, 
 	} else if kind == "" {
 		kind = "service"
 	}
-	return module.Caller{ID: p.ID, Kind: kind, Name: p.Display, Scopes: p.Scopes}, nil
+	return module.Caller{ID: p.ID, Kind: kind, Name: p.Display, Scopes: p.Scopes, For: p.Parent}, nil
 }

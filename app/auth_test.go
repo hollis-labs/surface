@@ -261,6 +261,23 @@ func TestSignInGuardsTheApp(t *testing.T) {
 		t.Fatalf("revoked key: %d", rr.code)
 	}
 
+	// A person's own key (the account menu's API keys) acts for them: Verify says For.
+	r = e.do("POST", "/api/identity/me/keys", map[string]any{"name": "my agent", "scopes": []string{"authapp.read"}}, page, member)
+	if r.code != 201 {
+		t.Fatalf("my key: %d %s", r.code, r.body)
+	}
+	var mine struct {
+		Key        string `json:"key"`
+		Credential struct {
+			CreatedBy string `json:"created_by"`
+		} `json:"credential"`
+	}
+	_ = json.Unmarshal([]byte(r.body), &mine)
+	if rr := e.do("GET", "/api/m/authprobe/check", nil, map[string]string{"Authorization": "Bearer " + mine.Key}); rr.code != 200 ||
+		!strings.Contains(rr.body, `"For":"`+mine.Credential.CreatedBy+`"`) || !strings.HasPrefix(mine.Credential.CreatedBy, "user:") {
+		t.Fatalf("my key verify: %d %s (%+v)", rr.code, rr.body, mine.Credential)
+	}
+
 	// Signed out again, the cookie stops working.
 	if rr := e.do("POST", "/api/logout", map[string]any{}, page, member); rr.code >= 300 {
 		t.Fatalf("logout: %d %s", rr.code, rr.body)

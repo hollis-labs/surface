@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **API keys in the account menu.** Everyone signed in can make keys for their own agents and scripts. Each key
+  has a name, Read and act or Read only access to this app, and an expiry of 30 or 90 days, a year, or never.
+  The secret is shown once to copy. You can see when each key was last used and revoke it. Administrators also
+  see and revoke everyone's keys. A key acts as its maker and never with more than the maker holds (Substrate
+  4576546).
+- **`module.Caller.For`.** For an API key a person made, this is that person (`user:<id>`), so a module can
+  attribute the key's work to them.
 ## [0.18.1] - 2026-11-22
 
 - **Recovering a locked-out account.** A recovery link (`<app> identity recover --user <name> --url …`, made on the

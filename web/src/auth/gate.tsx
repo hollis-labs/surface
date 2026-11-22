@@ -54,13 +54,15 @@ import { CodeInput, TotpEnroll } from "./TwoStep"
 interface AccountState {
   /** The signed-in account; null when the app has no sign-in. */
   account: Account | null
+  /** The app's name (its scopes are "<app>.read", "<app>.use", "<app>.admin"). */
+  app: string
   /** Re-reads the account (after a profile change). */
   refresh: () => void
   /** Back to the sign-in screen (after signing out). */
   signedOut: () => void
 }
 
-const AccountContext = createContext<AccountState>({ account: null, refresh: () => {}, signedOut: () => {} })
+const AccountContext = createContext<AccountState>({ account: null, app: "", refresh: () => {}, signedOut: () => {} })
 
 /** The signed-in account and the gate's controls; account is null when sign-in is off. */
 export function useAccount(): AccountState {
@@ -179,10 +181,14 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         </Screen>
       )
     case "off":
-      return <AccountContext.Provider value={{ account: null, refresh, signedOut }}>{children}</AccountContext.Provider>
+      return (
+        <AccountContext.Provider value={{ account: null, app: name, refresh, signedOut }}>
+          {children}
+        </AccountContext.Provider>
+      )
     case "in":
       return (
-        <AccountContext.Provider value={{ account: state.account, refresh, signedOut }}>
+        <AccountContext.Provider value={{ account: state.account, app: name, refresh, signedOut }}>
           {children}
         </AccountContext.Provider>
       )

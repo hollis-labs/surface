@@ -67,6 +67,29 @@ Surface reserves 2,000 tokens for its per-turn context block, plus room for the 
 - For a development run, `SURFACE_AGENT_GATEWAY`, `SURFACE_AGENT_MODEL` and `SURFACE_AGENT_KEY_FILE` override
   single fields.
 
+**The app's providers file.** Instead of a gateway, or beside it, the agent can take its model providers from a
+file the app keeps: Nanite's `providers.yaml` format (named providers on the `anthropic`, `openai-chat` or
+`openai-responses` wire, each with `base_url`, `key_ref` and optional `headers`, and a `use` section choosing a
+provider and model per use). It lives at `<app data dir>/agent/providers.yaml`, or where `providers_file` in
+`agent.json` (or `SURFACE_AGENT_PROVIDERS_FILE`) says. A module's settings page may write it; keep keys in files
+named by `key_ref: file://...` (0600, not through a symlink), never in the file itself.
+
+```yaml
+providers:
+  local:
+    wire: openai-chat
+    base_url: http://127.0.0.1:11434/v1
+    auth: none
+use:
+  chat: {provider: local, model: llama-3.1-8b-instruct}
+```
+
+The Nanite runner stages the file into its agent directory before each turn, so an edit applies on the next
+message. When it selects `use.chat`, `model`, `gateway_url` and `key_file` are optional: the agent opens without a
+gateway. A file that does not check out (Nanite's own validation) is logged and left out; the app still starts. The
+agent opens only at start, so a providers file written after an app started without any agent configuration takes
+a restart; edits after that do not.
+
 The file is read at start. With no file the app runs normally: the panel shows a setup card with the path and the
 example above, and a message is refused with `503` and the same path.
 

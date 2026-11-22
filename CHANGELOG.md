@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **The app's providers file.** The embedded agent can take its model providers from a Nanite `providers.yaml`
+  the app keeps outside the agent directory: `<app data dir>/agent/providers.yaml`, or `providers_file` in
+  `agent.json` (`SURFACE_AGENT_PROVIDERS_FILE`). It is staged into the agent directory before each turn, so an
+  edit applies on the next message, and when it selects `use.chat` the agent needs no `gateway_url`, `key_file` or
+  `model`. A module's settings page can offer Anthropic, OpenAI-compatible and gateway providers this way. An
+  existing gateway configuration works as before (`docs/agent.md`).
+- **`<app> call` waits as long as the tool does.** It had a 60 s client timeout, so a tool that waits on purpose
+  printed nothing; `--timeout` sets one when wanted. The other client commands keep 60 s.
+
 ## [0.16.0] - 2026-11-21
 
 - **Ops: "assigned, no live agent".** A workstream's tasks that are assigned or claimed by nobody live are flagged

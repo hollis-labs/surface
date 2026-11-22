@@ -29,8 +29,10 @@ import (
 	"github.com/hollis-labs/substrate/modules/cli"
 	"github.com/hollis-labs/substrate/modules/database"
 	"github.com/hollis-labs/substrate/modules/httphost"
+	"github.com/hollis-labs/substrate/modules/identity"
 
 	"github.com/hollis-labs/surface/core"
+	"github.com/hollis-labs/surface/module"
 )
 
 // Config is what the generated wiring gives Main.
@@ -182,9 +184,15 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 		return errors.New("the database module must be started")
 	}
 	serving.allowHost()
+	var keys module.Keys
+	if cfg.Auth == AuthIdentity {
+		if svc := identity.From(sapp); svc != nil {
+			keys = identityKeys{sapp: sapp, svc: svc}
+		}
+	}
 	a, err := core.New(ctx, core.Options{
 		Name: cfg.Name, Title: cfg.Title, DataDir: dataDir, DB: st.DB(), Log: slog.Default(),
-		Modules: cfg.Modules, Assets: cfg.Assets,
+		Modules: cfg.Modules, Assets: cfg.Assets, Keys: keys,
 	})
 	if err != nil {
 		return err

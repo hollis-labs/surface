@@ -129,3 +129,71 @@ export function clearSetupURL(): void {
     window.history.replaceState(null, "", "/")
   }
 }
+
+// ---- invites and users (administrators) ----
+
+/** The invite code an invite link carries in its fragment (`/invite#c=invite_…`), or "". */
+export function inviteCodeFromURL(): string {
+  const m = /(?:^#|&)c=(invite_[A-Za-z0-9_-]+)/.exec(window.location.hash)
+  return m ? m[1] : ""
+}
+
+/** Drops the invite link from the address bar. */
+export function clearInviteURL(): void {
+  if (window.location.pathname === "/invite" || window.location.hash.includes("c=invite_")) {
+    window.history.replaceState(null, "", "/")
+  }
+}
+
+export interface InviteInfo {
+  role: string
+  label?: string
+  app: string
+  expires_at: string
+}
+
+export const checkInvite = (code: string) => post<InviteInfo>("/api/invite/check", { code })
+
+export const acceptInvite = (input: { code: string; username: string; display_name: string; password: string }) =>
+  post<Account>("/api/invite/accept", input)
+
+export interface UserRow {
+  id: string
+  username: string
+  display_name: string
+  role?: string
+  disabled: boolean
+}
+
+export interface PendingInvite {
+  id: string
+  role: string
+  label?: string
+  expires_at: string
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(path)
+  if (!res.ok) throw new AuthError(`${res.status} ${res.statusText}`, "", res.status)
+  return (await res.json()) as T
+}
+
+export const listUsers = () => get<{ users: UserRow[] | null }>("/api/identity/users").then((r) => r.users ?? [])
+
+export const updateUser = (id: string, patch: { role?: string; disabled?: boolean }) =>
+  post<UserRow>(`/api/identity/users/${encodeURIComponent(id)}`, patch, "PUT")
+
+export const listInvites = () =>
+  get<{ invites: PendingInvite[] | null }>("/api/identity/invites").then((r) => r.invites ?? [])
+
+export const createInvite = (role: string, label: string) =>
+  post<{ id: string; code: string; role: string; expires_at: string }>("/api/identity/invites", { role, label })
+
+export const revokeInvite = (id: string) =>
+  post<unknown>(`/api/identity/invites/${encodeURIComponent(id)}`, {}, "DELETE")
+
+/** The invite link for a code, on this page's origin. */
+export const inviteLink = (code: string) => `${window.location.origin}/invite#c=${code}`
+
+/** Whether the account administers this app (manages users and invites). */
+export const isAdmin = (a: Account | null) => Boolean(a?.scopes?.some((s) => s === "*" || s.endsWith(".admin")))

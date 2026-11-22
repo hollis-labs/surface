@@ -25,7 +25,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Icon } from "../sdk/icon"
-import { useAccount } from "./gate"
+import { PASSKEY_SAVE_HINT, useAccount } from "./gate"
 import {
   addPasskey,
   cancelled,
@@ -192,6 +192,7 @@ function PasskeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
             <Button variant="outline" disabled={busy} onClick={() => void run(() => addPasskey(deviceName()))}>
               <Icon name="plus" /> {busy ? "Waiting for your device…" : "Add a passkey"}
             </Button>
+            <p className="text-muted-foreground text-xs">{PASSKEY_SAVE_HINT}</p>
             {(st?.passkeys ?? []).length > 0 && (
               <div className="mt-1 flex items-start gap-2 text-sm">
                 <Switch

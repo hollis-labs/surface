@@ -21,6 +21,7 @@ import {
   useState,
 } from "react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { addPasskey, cancelled, deviceName, passkeysUsable, signInWithPasskey } from "./passkeys"
@@ -29,12 +30,17 @@ import {
   AuthError,
   acceptInvite,
   checkInvite,
+  checkRecovery,
   clearInviteURL,
+  clearRecoverURL,
   clearSetupURL,
   type InviteInfo,
   installAuthFetch,
   inviteCodeFromURL,
   onSignedOut,
+  type RecoveryInfo,
+  recoverAccount,
+  recoverTokenFromURL,
   type SetupStatus,
   setUp,
   setupStatus,
@@ -71,6 +77,8 @@ type GateState =
   | { k: "offer-passkey" }
   | { k: "invite"; code: string; info: InviteInfo; passkeys: boolean }
   | { k: "invite-invalid"; message: string }
+  | { k: "recover"; token: string; info: RecoveryInfo }
+  | { k: "recover-invalid"; message: string }
   | { k: "setup-offline" }
   | { k: "sign-in"; expired: boolean; notice?: string; passkeys: boolean }
 
@@ -90,6 +98,7 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         signedIn.current = true
         clearSetupURL()
         clearInviteURL()
+        clearRecoverURL()
         if (who.account.second_factor_required) {
           const st = await setupStatus().catch(() => ({ passkeys: false }) as Partial<SetupStatus>)
           setState({ k: "second-factor", account: who.account, passkeys: passkeysUsable(st.passkeys) })
@@ -99,6 +108,16 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
         return
       }
       const st: SetupStatus = await setupStatus()
+      const recovery = recoverTokenFromURL()
+      if (recovery) {
+        try {
+          setState({ k: "recover", token: recovery, info: await checkRecovery(recovery) })
+        } catch (err) {
+          clearRecoverURL()
+          setState({ k: "recover-invalid", message: (err as Error).message })
+        }
+        return
+      }
       const invite = inviteCodeFromURL()
       if (invite && !st.setup_required) {
         try {
@@ -198,6 +217,17 @@ export function AuthGate({ name, title, children }: { name: string; title: strin
     case "invite-invalid":
       return (
         <Screen title={title} heading="This invite does not work">
+          <p className="text-muted-foreground text-sm">{state.message}</p>
+          <Button variant="outline" onClick={() => void check()}>
+            Go to sign in
+          </Button>
+        </Screen>
+      )
+    case "recover":
+      return <RecoverScreen title={title} token={state.token} info={state.info} done={() => void check()} />
+    case "recover-invalid":
+      return (
+        <Screen title={title} heading="This recovery link does not work">
           <p className="text-muted-foreground text-sm">{state.message}</p>
           <Button variant="outline" onClick={() => void check()}>
             Go to sign in
@@ -348,7 +378,14 @@ function SignInScreen({
       await signInWithPasskey()
       done()
     } catch (err) {
-      if (!cancelled(err)) setError(message(err))
+      if (cancelled(err)) return
+      if (err instanceof AuthError && err.code === "passkey_unknown") {
+        setError(PASSKEY_UNKNOWN)
+      } else if (err instanceof AuthError && err.code === "invalid_login") {
+        setError("That passkey did not sign you in. Try again, or sign in with your password below.")
+      } else {
+        setError(message(err))
+      }
     } finally {
       setBusy(false)
     }
@@ -443,6 +480,7 @@ function SecondFactorScreen({
           <Button variant="outline" disabled={busy} onClick={() => void withPasskey()}>
             <KeyRound /> {busy ? "Waiting for your device…" : "Add a passkey"}
           </Button>
+          <p className="text-muted-foreground text-xs">{PASSKEY_SAVE_HINT}</p>
           <ErrorBox text={error} />
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
             <span className="h-px flex-1 bg-border" /> or an authenticator app{" "}
@@ -454,6 +492,149 @@ function SecondFactorScreen({
       <Button variant="ghost" size="sm" onClick={() => void signOut().finally(signedOut)}>
         Sign out
       </Button>
+    </Screen>
+  )
+}
+
+const PASSKEY_UNKNOWN =
+  "This passkey isn't registered here. Sign in with your password below, then add it again from the account menu's Passkeys."
+
+/** The hint for saving a new passkey: one item per account in a password manager. */
+export const PASSKEY_SAVE_HINT = "Using a password manager? Save the passkey to the same item as your password."
+
+/**
+ * A recovery link (`<app> identity recover`): signed in as that person, choose what to reset (a new
+ * password; remove the passkeys; turn off two-step sign-in).
+ */
+function RecoverScreen({
+  title,
+  token,
+  info,
+  done,
+}: {
+  title: string
+  token: string
+  info: RecoveryInfo
+  done: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const [again, setAgain] = useState("")
+  const [clearPasskeys, setClearPasskeys] = useState(info.passkeys > 0)
+  const [clearTotp, setClearTotp] = useState(info.totp)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const mismatch = again !== "" && again !== password
+  // Leaving with nothing that signs in again: a passkey-only account keeping its passkeys is
+  // fine; otherwise a password is needed.
+  const needsPassword = info.passkey_only ? clearPasskeys : false
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (password !== again) return
+    setBusy(true)
+    setError("")
+    try {
+      await recoverAccount({
+        token,
+        new_password: password || undefined,
+        clear_passkeys: clearPasskeys,
+        clear_totp: clearTotp,
+      })
+      clearRecoverURL()
+      done()
+    } catch (err) {
+      setError(message(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Screen title={title} heading={`Recover ${info.display_name || info.username}`}>
+      <p className="text-muted-foreground text-sm">
+        This link signs you in as <span className="font-medium text-foreground">{info.username}</span> once. Reset what
+        no longer works. Your other sessions are signed out.
+      </p>
+      <form onSubmit={(e) => void submit(e)}>
+        <FieldGroup>
+          <fieldset disabled={busy} className="contents">
+            <Field>
+              <FieldLabel htmlFor="rec-password">New password</FieldLabel>
+              <Input
+                id="rec-password"
+                type="password"
+                autoComplete="new-password"
+                autoFocus
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <FieldDescription>At least 12 characters. Leave empty to keep your password.</FieldDescription>
+            </Field>
+            {password && (
+              <Field>
+                <FieldLabel htmlFor="rec-again">Repeat the new password</FieldLabel>
+                <Input
+                  id="rec-again"
+                  type="password"
+                  autoComplete="new-password"
+                  value={again}
+                  onChange={(e) => setAgain(e.target.value)}
+                  aria-invalid={mismatch}
+                />
+                {mismatch && (
+                  <FieldDescription className="text-destructive">The passwords do not match.</FieldDescription>
+                )}
+              </Field>
+            )}
+            {info.passkeys > 0 && (
+              <div className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  id="rec-passkeys"
+                  className="mt-0.5"
+                  checked={clearPasskeys}
+                  onCheckedChange={(c: boolean) => setClearPasskeys(c)}
+                />
+                <label htmlFor="rec-passkeys">
+                  Remove my {info.passkeys} passkey{info.passkeys === 1 ? "" : "s"}
+                  <span className="block text-muted-foreground text-xs">
+                    Add {info.passkeys === 1 ? "it" : "them"} again afterwards from the account menu.
+                  </span>
+                </label>
+              </div>
+            )}
+            {info.totp && (
+              <div className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  id="rec-totp"
+                  className="mt-0.5"
+                  checked={clearTotp}
+                  onCheckedChange={(c: boolean) => setClearTotp(c)}
+                />
+                <label htmlFor="rec-totp">
+                  Turn off two-step sign-in
+                  <span className="block text-muted-foreground text-xs">
+                    Your authenticator app and recovery codes stop working. Set it up again afterwards.
+                  </span>
+                </label>
+              </div>
+            )}
+          </fieldset>
+          <ErrorBox text={error} />
+          <Button
+            type="submit"
+            disabled={
+              busy ||
+              (password !== "" && (password.length < 12 || password !== again)) ||
+              (needsPassword && password === "")
+            }
+          >
+            {busy ? "Saving…" : "Reset and sign in"}
+          </Button>
+          {needsPassword && password === "" && (
+            <p className="text-muted-foreground text-xs">
+              Your account is passkey-only: set a password to remove its passkeys.
+            </p>
+          )}
+        </FieldGroup>
+      </form>
     </Screen>
   )
 }
@@ -480,6 +661,7 @@ function OfferPasskeyScreen({ title, done }: { title: string; done: () => void }
         Sign in next time with this device's fingerprint, face or screen lock instead of your password. You can add more
         passkeys, or make your account passkey-only, from the account menu.
       </p>
+      <p className="text-muted-foreground text-xs">{PASSKEY_SAVE_HINT}</p>
       <ErrorBox text={error} />
       <Button disabled={busy} onClick={() => void add()}>
         <KeyRound /> {busy ? "Waiting for your device…" : "Add a passkey"}

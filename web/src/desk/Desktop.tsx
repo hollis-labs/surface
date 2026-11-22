@@ -38,6 +38,7 @@ import { GhostCursor } from "./GhostCursor"
 import { InboxBadge } from "./InboxBadge"
 import { matches, parseKeys, showKeys } from "./keys"
 import { moduleApi } from "./moduleApi"
+import { narrowProjection, useNarrow } from "./narrow"
 import { type NavItemDef, type NavTreeNode, useNavTree } from "./navGroups"
 import { Palette } from "./Palette"
 import {
@@ -193,6 +194,8 @@ export function Desktop({ modules }: DesktopProps) {
   const manifest = app()
   const [palette, setPalette] = useState(false)
   const [menu, setMenu] = useState(false)
+  // A phone or a slim window: one window at a time, with a switcher in the bar (narrow.ts).
+  const narrow = useNarrow()
   const [agentOpen, setAgentOpen] = useState(() => {
     // Sidebars start hidden; the agent panel opens when the person opens it, and stays as they left it.
     try {
@@ -344,8 +347,11 @@ export function Desktop({ modules }: DesktopProps) {
     [state.wins],
   )
   const { projectedTree, visibleIds, backgroundIds } = useMemo(
-    () => projectActiveModuleTree(state.tree, state.wins, state.focus, state.layout),
-    [state.tree, state.wins, state.focus, state.layout],
+    () =>
+      narrow
+        ? narrowProjection(state.wins, state.focus)
+        : projectActiveModuleTree(state.tree, state.wins, state.focus, state.layout),
+    [narrow, state.tree, state.wins, state.focus, state.layout],
   )
   const visibleWindows = useMemo(() => windows.filter((w) => visibleIds.has(w.id)), [windows, visibleIds])
 
@@ -353,6 +359,10 @@ export function Desktop({ modules }: DesktopProps) {
   // background module windows so the server's state keeps them alive for module switching & trail return.
   const arrange = useCallback(
     (nextTree: WindowTree, focus: string | undefined, grabbed?: string) => {
+      // Narrow: the one window shown is not an arrangement to save; only a change of focus counts.
+      if (narrow) {
+        return focus && focus !== state.focus ? act({ type: "focus", id: focus }) : Promise.resolve(undefined)
+      }
       if (backgroundIds.length === 0) {
         return act({ type: "tree", tree: nextTree, focus, id: grabbed })
       }
@@ -372,7 +382,7 @@ export function Desktop({ modules }: DesktopProps) {
         : { root: mergedRoot }
       return act({ type: "tree", tree: fullTree, focus, id: grabbed })
     },
-    [backgroundIds],
+    [backgroundIds, narrow, state.focus],
   )
   const menuViews = manifest.views.filter((v) => v.menu)
   const navTree = useNavTree(menuViews)
@@ -449,37 +459,41 @@ export function Desktop({ modules }: DesktopProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden">
-          {state.wins.map((w) => {
-            const active = w.id === state.focus
-            return (
-              <Button
-                key={w.id}
-                variant="ghost"
-                size="xs"
-                className={`relative h-5.5 min-w-0 max-w-44 shrink gap-1.5 rounded-sm px-2 font-mono text-xs ${
-                  active
-                    ? "text-foreground hover:bg-accent"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                }`}
-                title={w.title}
-                aria-pressed={active}
-                data-task-active={active || undefined}
-                onClick={() => void act({ type: "focus", id: w.id })}
-                onAuxClick={(e) => {
-                  if (e.button === 1) void closeWindow(w.id)
-                }}
-              >
-                <Icon
-                  name={viewById(w.view)?.icon}
-                  size={13}
-                  className={active ? "text-primary" : "text-muted-foreground"}
-                />
-                <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
-              </Button>
-            )
-          })}
-        </div>
+        {narrow ? (
+          <WindowSwitcher />
+        ) : (
+          <div className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden">
+            {state.wins.map((w) => {
+              const active = w.id === state.focus
+              return (
+                <Button
+                  key={w.id}
+                  variant="ghost"
+                  size="xs"
+                  className={`relative h-5.5 min-w-0 max-w-44 shrink gap-1.5 rounded-sm px-2 font-mono text-xs ${
+                    active
+                      ? "text-foreground hover:bg-accent"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                  title={w.title}
+                  aria-pressed={active}
+                  data-task-active={active || undefined}
+                  onClick={() => void act({ type: "focus", id: w.id })}
+                  onAuxClick={(e) => {
+                    if (e.button === 1) void closeWindow(w.id)
+                  }}
+                >
+                  <Icon
+                    name={viewById(w.view)?.icon}
+                    size={13}
+                    className={active ? "text-primary" : "text-muted-foreground"}
+                  />
+                  <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
+                </Button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex h-full shrink-0 items-center gap-1.5">
@@ -498,7 +512,7 @@ export function Desktop({ modules }: DesktopProps) {
 
         {hasInbox && <InboxBadge />}
 
-        {state.active && (
+        {!narrow && state.active && (
           <Button
             variant="ghost"
             size="xs"
@@ -511,25 +525,27 @@ export function Desktop({ modules }: DesktopProps) {
           </Button>
         )}
 
-        {state.mode && (
+        {!narrow && state.mode && (
           <Badge variant="secondary" title="Your mode">
             {state.mode}
           </Badge>
         )}
 
-        <Button
-          variant="ghost"
-          size="xs"
-          className={barBtn}
-          title={`${state.layout === "tile" ? "Tiling" : "Floating"} layout (⌃⌥T)`}
-          onClick={() => void runCommand("layout.toggle")}
-        >
-          <Icon name={state.layout === "tile" ? "columns-2" : "app-window"} size={14} />
-          <span>{state.layout}</span>
-        </Button>
+        {!narrow && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className={barBtn}
+            title={`${state.layout === "tile" ? "Tiling" : "Floating"} layout (⌃⌥T)`}
+            onClick={() => void runCommand("layout.toggle")}
+          >
+            <Icon name={state.layout === "tile" ? "columns-2" : "app-window"} size={14} />
+            <span>{state.layout}</span>
+          </Button>
+        )}
 
         <AccountMenu />
-        <ThemePicker />
+        {!narrow && <ThemePicker />}
 
         <Button
           variant="ghost"
@@ -548,7 +564,7 @@ export function Desktop({ modules }: DesktopProps) {
           <Icon name="bot" size={14} />
         </Button>
 
-        <Clock />
+        {!narrow && <Clock />}
 
         <span
           className={`mx-1 size-1.5 rounded-full ${up ? "bg-success" : "bg-warning"}`}
@@ -564,11 +580,17 @@ export function Desktop({ modules }: DesktopProps) {
         className="fixed inset-0 text-sm"
         data-layout={state.layout}
         bar={bar}
-        side={<PanelComposer />}
-        showSide={agentOpen}
+        side={narrow ? undefined : <PanelComposer />}
+        showSide={agentOpen && !narrow}
         sideSize={panelWidth}
         onSideResize={keepPanelWidth}
       >
+        {/* Narrow: the agent panel takes the whole canvas while it is open. */}
+        {narrow && agentOpen && (
+          <div className="absolute inset-0 z-10 flex flex-col bg-background">
+            <PanelComposer />
+          </div>
+        )}
         {/* isolate: the windows' stacking order stays inside the canvas, under the bar and the overlays. */}
         <div
           className="relative isolate size-full overflow-hidden bg-desk"
@@ -701,4 +723,45 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
     }
     return this.props.children
   }
+}
+
+/** The narrow desk's window switcher: the window shown, and the others to switch to. */
+function WindowSwitcher() {
+  const state = useDeskState()
+  const shown = state.wins.find((w) => w.id === state.focus) ?? state.wins[state.wins.length - 1]
+  if (!shown) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="xs"
+            className="ml-1 h-5.5 min-w-0 max-w-56 shrink gap-1.5 rounded-sm px-2 font-mono text-foreground text-xs hover:bg-accent"
+            title="Windows"
+            aria-label={`Window: ${shown.title}. Switch windows`}
+          >
+            <Icon name={viewById(shown.view)?.icon} size={13} className="text-primary" />
+            <span className="truncate">{shown.dirty ? `● ${shown.title}` : shown.title}</span>
+            {state.wins.length > 1 && <span className="text-muted-foreground">{state.wins.length}</span>}
+            <Icon name="chevron-down" size={12} className="text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent className="min-w-56 max-w-[calc(100vw-1rem)]" sideOffset={8} align="start">
+        {state.wins.map((w) => (
+          <DropdownMenuItem key={w.id} onClick={() => void act({ type: "focus", id: w.id })}>
+            <Icon name={viewById(w.view)?.icon} size={15} />
+            <span className="truncate">{w.dirty ? `● ${w.title}` : w.title}</span>
+            {w.id === shown.id && <Icon name="check" size={14} className="ml-auto" />}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void closeWindow(shown.id)}>
+          <Icon name="x" size={15} />
+          <span>Close {shown.title}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }

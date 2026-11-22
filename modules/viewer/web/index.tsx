@@ -156,7 +156,7 @@ function Picker({ onPick }: { onPick: (place: string, path: string, newWindow?: 
                         onPick(place, e.path, true)
                       }}
                     >
-                      <Icon name="square-arrow-out-up-right" />
+                      <Icon name="external-link" />
                     </Button>
                   )}
                 </ItemTitle>
@@ -310,7 +310,7 @@ function Artifact({ place, path, win, desk }: { place: string; path: string } & 
               })
             }
           >
-            <Icon name="square-arrow-out-up-right" />
+            <Icon name="external-link" />
           </Button>
           {media !== "image" && (
             <Button

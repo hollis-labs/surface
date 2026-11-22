@@ -131,7 +131,7 @@ export function FieldsInspectorModal({
               Record Envelope & Metadata
             </TabsTrigger>
             <TabsTrigger value="raw-json">
-              <Icon name="code-2" className="size-3.5" />
+              <Icon name="code-xml" className="size-3.5" />
               Raw JSON
             </TabsTrigger>
           </TabsList>
@@ -533,7 +533,7 @@ export function HistoryAndGovernanceModal({
           <TabsList variant="line" className="w-full justify-start border-b border-border/60">
             {detail ? (
               <TabsTrigger value="history">
-                <Icon name="history" className="size-3.5" />
+                <Icon name="rotate-ccw-clock" className="size-3.5" />
                 Revisions & Diff ({revisions.length})
               </TabsTrigger>
             ) : null}

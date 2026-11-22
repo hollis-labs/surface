@@ -242,7 +242,7 @@ function Jobs({ desk, api, win }: ViewProps) {
                         open(j, true)
                       }}
                     >
-                      <Icon name="square-arrow-out-up-right" />
+                      <Icon name="external-link" />
                     </Button>
                   </Tip>
                   {closable(j.status) && (
@@ -436,7 +436,7 @@ function JobPane({ win, desk, api, onBack }: ViewProps & { onBack?: () => void }
                   void desk.open("design.job", { key: job.id, title: `Design: ${job.title}`, args: { id: job.id } })
                 }
               >
-                <Icon name="square-arrow-out-up-right" />
+                <Icon name="external-link" />
               </Button>
             </Tip>
           )}

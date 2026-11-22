@@ -213,7 +213,7 @@ function Inbox({ win, desk, api }: ViewProps) {
                       )
                     }
                   >
-                    <Icon name={box === "archived" ? "archive-restore" : "archive"} />
+                    <Icon name={box === "archived" ? "archive-arrow-up" : "archive"} />
                     {box === "archived" ? "Unarchive" : "Archive"}
                   </Button>
                   <Button size="sm" onClick={() => setReplying(true)}>

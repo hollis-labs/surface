@@ -355,7 +355,7 @@ function Outbox({ win, desk, api, onBackToCapture }: ViewProps & { onBackToCaptu
               aria-label="Open Outbox in new window"
               onClick={() => void desk.open("frag.outbox")}
             >
-              <Icon name="square-arrow-out-up-right" />
+              <Icon name="external-link" />
             </Button>
           )}
         </div>
@@ -416,7 +416,7 @@ function Outbox({ win, desk, api, onBackToCapture }: ViewProps & { onBackToCaptu
                 )}
                 {waiting && (
                   <Button variant="ghost" size="icon-xs" title="Discard" onClick={() => void discard(c)}>
-                    <Icon name="trash-2" />
+                    <Icon name="trash" />
                   </Button>
                 )}
               </ItemActions>

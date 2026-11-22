@@ -111,7 +111,7 @@ function visualForEntry(e: Entry): ActionVisual {
     }
     if (st === "blocked" || st === "failed") {
       return {
-        icon: "triangle-alert",
+        icon: "triangle-exclamation-point",
         spineIcon: "octagon-pause",
         circleClass: "bg-destructive/15 text-destructive border border-destructive/30",
         spineColorClass: "text-destructive",

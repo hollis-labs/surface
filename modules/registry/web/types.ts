@@ -183,7 +183,7 @@ export const DOMAIN_CLUSTERS: DomainClusterMeta[] = [
     id: "portfolio",
     title: "Portfolio & Governance",
     subtitle: "Agencies, codebases, frameworks, ownership & Torque project bindings",
-    icon: "building-2",
+    icon: "building",
     accentClass: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10",
     badgeClass: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
     kinds: ["agency", "project"],
@@ -224,7 +224,7 @@ export const KIND_META: Record<
   agency: {
     label: "Agency",
     plural: "Agencies",
-    icon: "building-2",
+    icon: "building",
     tone: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10",
     description: "Organizational root owning projects, agents, and operational charters.",
     defaultSchema: "agency/1",

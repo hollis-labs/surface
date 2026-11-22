@@ -205,7 +205,7 @@ function categoryStyle(cat: ActivityCategory, status: TimelineEntry["status"]) {
     return {
       dot: "border-destructive/50 bg-destructive/15 text-destructive",
       badge: "border-destructive/30 bg-destructive/15 text-destructive",
-      icon: "triangle-alert",
+      icon: "triangle-exclamation-point",
     }
   }
   switch (cat) {

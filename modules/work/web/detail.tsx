@@ -113,7 +113,7 @@ export function Detail({
             title="Open item in new window"
             aria-label="Open item in new window"
           >
-            <Icon name="square-arrow-out-up-right" />
+            <Icon name="external-link" />
           </Button>
         )}
         <Button variant="ghost" size="icon-xs" onClick={close} title="Close" aria-label="Close">

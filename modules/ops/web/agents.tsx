@@ -223,7 +223,7 @@ export function BoardAgents({ win, desk, api }: ViewProps) {
           role="alert"
           className="flex items-center gap-2 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
-          <Icon name="alert-triangle" size={14} />
+          <Icon name="triangle-exclamation-point" size={14} />
           <span>
             {result ? "Showing the previous observation. " : ""}
             {error}

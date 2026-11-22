@@ -632,7 +632,7 @@ export function WorkstreamCard({
         )}
         {w.settled_at && (
           <span className="inline-flex items-center gap-1 rounded-xs border border-success/35 bg-success/10 px-1.5 py-0.5 text-success">
-            <Icon name="check-circle-2" size={10} />
+            <Icon name="circle-check" size={10} />
             Settled
           </span>
         )}
@@ -641,7 +641,7 @@ export function WorkstreamCard({
             className="inline-flex items-center gap-1 rounded-xs border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive"
             title={`Held: ${w.held.reason}`}
           >
-            <Icon name="pause-circle" size={10} />
+            <Icon name="circle-pause" size={10} />
             Held
           </span>
         )}
@@ -678,7 +678,7 @@ export function WorkstreamCard({
         <div className="flex flex-col gap-1 text-xs">
           {(w.held || w.problem) && (
             <div className="flex items-start gap-1.5 rounded-xs border border-destructive/35 bg-destructive/8 px-2 py-1 text-[11px] text-destructive">
-              <Icon name="alert-triangle" size={11} className="mt-0.5 shrink-0" />
+              <Icon name="triangle-exclamation-point" size={11} className="mt-0.5 shrink-0" />
               <span className="line-clamp-1">{w.held?.reason || w.problem}</span>
             </div>
           )}

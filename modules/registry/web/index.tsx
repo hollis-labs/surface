@@ -727,7 +727,7 @@ function WikiDossierView({
               title={`Revision History, Diff & Review Governance (${detail.revisions.length} revisions)`}
               aria-label="Revision History & Governance"
             >
-              <Icon name="history" className="size-3.5" />
+              <Icon name="rotate-ccw-clock" className="size-3.5" />
             </Button>
 
             <ObjectActionsMenu

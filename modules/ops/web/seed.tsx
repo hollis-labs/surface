@@ -155,7 +155,7 @@ export function SeedView({ win, desk, api, onBack }: ViewProps & { onBack?: () =
             aria-label="Open Seed in new window"
             onClick={() => void desk.run("ops.seed", { plan: plan.id })}
           >
-            <Icon name="square-arrow-out-up-right" />
+            <Icon name="external-link" />
           </Button>
         )}
       </div>
@@ -438,7 +438,7 @@ function Source({
             aria-label="Open Seed in new window"
             onClick={onOpenNewWindow}
           >
-            <Icon name="square-arrow-out-up-right" />
+            <Icon name="external-link" />
           </Button>
         )}
       </div>

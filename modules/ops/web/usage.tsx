@@ -391,7 +391,7 @@ function SpendDetail({ d }: { d: Detail }) {
           role="status"
           className="flex items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
         >
-          <Icon name="alert-triangle" size={14} />
+          <Icon name="triangle-exclamation-point" size={14} />
           <span>{w}</span>
         </div>
       ))}
@@ -505,7 +505,7 @@ function RouterDetail({ d }: { d: Detail }) {
           role="status"
           className="flex items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
         >
-          <Icon name="alert-triangle" size={14} />
+          <Icon name="triangle-exclamation-point" size={14} />
           <span>{w}</span>
         </div>
       ))}
@@ -898,7 +898,7 @@ export function Usage({ win, desk, api }: ViewProps) {
           role="alert"
           className="flex items-center gap-2 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
-          <Icon name="alert-triangle" size={14} />
+          <Icon name="triangle-exclamation-point" size={14} />
           <span>{error} Displayed usage may be out of date.</span>
         </div>
       )}

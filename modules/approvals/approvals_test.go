@@ -500,3 +500,37 @@ func TestAnApprovalComesBackAfterGatecrasherWasDown(t *testing.T) {
 		t.Fatalf("restored card: %+v, found=%v, err=%v", card, ok, err)
 	}
 }
+
+func TestVisualApprovalSnapshotsDiffsAndCallouts(t *testing.T) {
+	f := newFake(t)
+	h, _ := start(t, f)
+	f.submit("apr_vis", "approve", "elevated", map[string]any{
+		"view_mode":       "architecture",
+		"before_snapshot": map[string]any{"nodes": []map[string]any{{"id": "n1", "label": "API"}}, "edges": []any{}},
+		"after_snapshot":  map[string]any{"nodes": []map[string]any{{"id": "n1", "label": "API"}, {"id": "n2", "label": "Worker"}}, "edges": []map[string]any{{"from": "n1", "to": "n2"}}},
+		"changes": []map[string]any{
+			{"id": "ch1", "label": "Add worker node", "path": "nodes.n2", "op": "added", "after": "Worker", "impact": "Spawns background worker"},
+		},
+		"callouts": []map[string]any{
+			{"id": "co1", "tone": "security", "title": "New network edge", "detail": "API connects to Worker", "target": "n2"},
+		},
+	})
+	eventually(t, "the visual approval card shows", func() bool { return len(openCards(h)) == 1 })
+	c := openCards(h)[0]
+	var p map[string]any
+	if err := json.Unmarshal(c.Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p["view_mode"] != "architecture" || p["before_snapshot"] == nil || p["after_snapshot"] == nil {
+		t.Fatalf("visual approval snapshots missing: %+v", p)
+	}
+	callouts, _ := p["callouts"].([]any)
+	if len(callouts) != 1 {
+		t.Fatalf("expected 1 callout, got %+v", p["callouts"])
+	}
+	changes, _ := p["changes"].([]any)
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %+v", p["changes"])
+	}
+}
+

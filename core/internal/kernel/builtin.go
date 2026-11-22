@@ -465,7 +465,7 @@ func coreTools(a *App) []module.Tool {
 				return map[string]any{"id": c.ID}, nil
 			}},
 		{Name: "card_ask", Level: module.LevelAct,
-			Description: "Ask the user something with a card (or a batch of cards in questions) and wait for the answer—or set hold: true (or surface: \"window\") to place the questions in the Cards window and return immediately so the user can keep chatting with you while answering them (wizard style, page_size at a time). Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, changes?: [{label, before?, after?}]} with risk low|medium|high; entity (or module-scoped kind such as ops.workstream, ops.agent, ops.host, ops.followup, registry.record, tracker.list, tracker.item, align.proposal, align.droppad) {ref?, refs?: [...], entity_kind?, view?: card|compact|detail, question?, options?: [{id, label}], actions?: [{id, label}], data?}. All cards also let the user pick Other and tell you something in their own words. When held or answered later, the answers come to you as a message.",
+			Description: "Ask the user something with a card (or a batch of cards in questions) and wait for the answer—or set hold: true (or surface: \"window\") to place the questions in the Cards window and return immediately so the user can keep chatting with you while answering them (wizard style, page_size at a time). Use it when you need a decision, a choice between options, a few fields filled in, or approval for something consequential, instead of asking in prose. kind and payload: confirm {body, confirm_label?, cancel_label?, danger?}; prompt {question, body?, placeholder?, multiline?}; choice {question, options: [{id, label, description?}], multiple?, allow_other?}; form {schema: a JSON Schema object with properties (string, number, integer, boolean, enum; title, description, default), body?, values?, submit_label?}; approval {summary, view_mode?: diff|settings|config|architecture|json, before_snapshot?, after_snapshot?, settings_keys?: string[], changes?: [{id?, label, path?, op?: added|removed|modified, before?, after?, impact?}], callouts?: [{id?, tone: concern|warning|info|security, title, detail?, target?}]} with risk low|medium|high; entity (or module-scoped kind such as ops.workstream, ops.agent, ops.host, ops.followup, registry.record, tracker.list, tracker.item, align.proposal, align.droppad) {ref?, refs?: [...], entity_kind?, view?: card|compact|detail, question?, options?: [{id, label}], actions?: [{id, label}], data?}. All cards also let the user pick Other and tell you something in their own words. When held or answered later, the answers come to you as a message.",
 			Input:       schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval","entity","ops.workstream","ops.agent","ops.host","ops.followup","registry.record","tracker.list","tracker.item","align.proposal","align.droppad","work.item"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"},"questions":{"type":"array","description":"Ask several card questions at once in the Cards window wizard.","items":{"type":"object","required":["kind","payload"],"properties":{"kind":{"type":"string","enum":["confirm","prompt","choice","form","approval","entity","ops.workstream","ops.agent","ops.host","ops.followup","registry.record","tracker.list","tracker.item","align.proposal","align.droppad","work.item"]},"title":{"type":"string"},"subject":{"type":"string"},"risk":{"type":"string","enum":["low","medium","high"]},"payload":{"type":"object"}}}},"hold":{"type":"boolean","description":"Do not block the conversation: hold the question(s) open in the Cards window so the user can chat with you before submitting."},"surface":{"type":"string","enum":["inline","window"],"description":"Where to display the card(s): inline in the chat panel or in the Cards window."},"page_size":{"type":"integer","description":"How many cards to show at a time in the Cards window wizard (e.g. 3)."},"timeout_seconds":{"type":"integer","description":"How long to wait for the answer. Default 600, at most 3600."}}}`),
 			Describe:    func(json.RawMessage) string { return "Ask you something" },
 			Run: func(ctx context.Context, _ module.Host, raw json.RawMessage) (any, error) {
@@ -498,6 +498,8 @@ func coreTools(a *App) []module.Tool {
 					}
 					if cards.IsModuleEntityKind(item.Kind) {
 						batch[i] = a.enrichEntityCard(ctx, item)
+					} else if item.Kind == "approval" {
+						batch[i] = a.enrichApprovalCard(item)
 					}
 				}
 				// Check whether the app settings or tool args route these cards to the Cards window (held).
@@ -930,4 +932,133 @@ func (a *App) parseEntityRef(rawRef, hintKind string) (string, string) {
 		}
 	}
 	return hintKind, rawRef
+}
+
+// enrichApprovalCard populates before_snapshot (and after_snapshot / change.before) from live
+// app settings (a.cfg.Entries()) when an approval card targets live Surface settings via
+// settings_keys or changes matching live setting keys and before_snapshot is omitted.
+func (a *App) enrichApprovalCard(c module.Card) module.Card {
+	if a.cfg == nil || len(c.Payload) == 0 {
+		return c
+	}
+	var p map[string]any
+	if json.Unmarshal(c.Payload, &p) != nil || p == nil {
+		return c
+	}
+	entries := a.cfg.Entries()
+	byFullKey := make(map[string]any, len(entries))
+	byShortKey := make(map[string]string, len(entries))
+	for _, e := range entries {
+		byFullKey[e.FullKey] = e.Value
+		if e.Scope == CoreScope {
+			byShortKey[e.Key] = e.FullKey
+		}
+	}
+	resolveSettingKey := func(k string) (string, any, bool) {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			return "", nil, false
+		}
+		if v, ok := byFullKey[k]; ok {
+			return k, v, true
+		}
+		if fk, ok := byShortKey[k]; ok {
+			return fk, byFullKey[fk], true
+		}
+		return "", nil, false
+	}
+
+	var matchedKeys []string
+	seenKey := map[string]bool{}
+	addKey := func(k string) {
+		if fk, _, ok := resolveSettingKey(k); ok && !seenKey[fk] {
+			seenKey[fk] = true
+			matchedKeys = append(matchedKeys, fk)
+		}
+	}
+
+	switch sk := p["settings_keys"].(type) {
+	case []any:
+		for _, item := range sk {
+			if s, ok := item.(string); ok {
+				addKey(s)
+			}
+		}
+	case []string:
+		for _, s := range sk {
+			addKey(s)
+		}
+	}
+
+	afterOverrides := map[string]any{}
+	if rawChanges, ok := p["changes"].([]any); ok {
+		for i, rawCh := range rawChanges {
+			ch, ok := rawCh.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id, _ := ch["id"].(string); id == "" {
+				ch["id"] = fmt.Sprintf("change:%d", i)
+			}
+			pathStr, _ := ch["path"].(string)
+			labelStr, _ := ch["label"].(string)
+			candidate := pathStr
+			if candidate == "" {
+				candidate = labelStr
+			}
+			if fk, curVal, ok := resolveSettingKey(candidate); ok {
+				if !seenKey[fk] {
+					seenKey[fk] = true
+					matchedKeys = append(matchedKeys, fk)
+				}
+				if ch["path"] == nil || ch["path"] == "" {
+					ch["path"] = fk
+				}
+				if ch["before"] == nil || ch["before"] == "" {
+					ch["before"] = fmt.Sprint(curVal)
+				}
+				if ch["op"] == nil || ch["op"] == "" {
+					ch["op"] = "modified"
+				}
+				if afterVal, hasAfter := ch["after"]; hasAfter && afterVal != nil {
+					afterOverrides[fk] = afterVal
+				}
+			}
+		}
+	}
+
+	viewMode, _ := p["view_mode"].(string)
+	if len(matchedKeys) > 0 || viewMode == "settings" {
+		if viewMode == "" {
+			p["view_mode"] = "settings"
+		}
+		if p["before_snapshot"] == nil {
+			before := map[string]any{}
+			if len(matchedKeys) > 0 {
+				for _, fk := range matchedKeys {
+					before[fk] = byFullKey[fk]
+				}
+			} else {
+				for _, e := range entries {
+					before[e.FullKey] = e.Value
+				}
+			}
+			p["before_snapshot"] = before
+			if p["after_snapshot"] == nil && len(afterOverrides) > 0 {
+				after := make(map[string]any, len(before))
+				for k, v := range before {
+					after[k] = v
+				}
+				for k, v := range afterOverrides {
+					after[k] = v
+				}
+				p["after_snapshot"] = after
+			}
+		}
+	}
+
+	if raw, err := json.Marshal(p); err == nil {
+		c.Payload = raw
+	}
+	return c
 }

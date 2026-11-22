@@ -79,6 +79,25 @@ type gateCard struct {
 		ExpiresAt time.Time `json:"expires_at"`
 		WriteOnly bool      `json:"write_only"`
 	} `json:"secret,omitempty"`
+	ViewMode       string `json:"view_mode,omitempty"`
+	BeforeSnapshot any    `json:"before_snapshot,omitempty"`
+	AfterSnapshot  any    `json:"after_snapshot,omitempty"`
+	Changes        []struct {
+		ID     string `json:"id,omitempty"`
+		Label  string `json:"label"`
+		Path   string `json:"path,omitempty"`
+		Op     string `json:"op,omitempty"`
+		Before string `json:"before,omitempty"`
+		After  string `json:"after,omitempty"`
+		Impact string `json:"impact,omitempty"`
+	} `json:"changes,omitempty"`
+	Callouts []struct {
+		ID     string `json:"id,omitempty"`
+		Tone   string `json:"tone"`
+		Title  string `json:"title"`
+		Detail string `json:"detail,omitempty"`
+		Target string `json:"target,omitempty"`
+	} `json:"callouts,omitempty"`
 }
 
 // decideRequest is the body of POST /approvals/{id}/decide.

@@ -207,3 +207,71 @@ func TestEntityCardAskWithMultipleRefsAndHold(t *testing.T) {
 		t.Fatalf("expected held entity card to accept late answer, got: %+v err=%v", answered, err)
 	}
 }
+
+func TestApprovalCardAutoPopulatesBeforeSnapshotFromLiveSettings(t *testing.T) {
+	ctx := context.Background()
+	a := newTestAppWithRefs(t)
+	ask := findTool(t, a, "card_ask")
+
+	out, err := ask.Call(ctx, json.RawMessage(`{
+		"kind": "approval",
+		"title": "Switch theme and palette",
+		"risk": "low",
+		"hold": true,
+		"payload": {
+			"summary": "Update desk appearance settings",
+			"settings_keys": ["surface.theme", "surface.gap"],
+			"changes": [
+				{"label": "surface.theme", "after": "light", "impact": "Changes UI theme to light mode"},
+				{"label": "Window gap", "path": "surface.gap", "after": "16"}
+			],
+			"callouts": [
+				{"id": "c1", "tone": "info", "title": "Live apply", "detail": "Takes effect immediately without restart", "target": "surface.theme"}
+			]
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("card_ask approval failed: %v", err)
+	}
+	resMap, _ := out.(map[string]any)
+	ids, _ := resMap["ids"].([]string)
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 held approval card id, got %+v", out)
+	}
+
+	c, ok, err := a.Cards().Get(ctx, ids[0])
+	if err != nil || !ok {
+		t.Fatalf("get approval card: ok=%v err=%v", ok, err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(c.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["view_mode"] != "settings" {
+		t.Errorf("expected view_mode defaulted to settings, got %v", payload["view_mode"])
+	}
+	before, ok := payload["before_snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected before_snapshot object, got %T: %+v", payload["before_snapshot"], payload["before_snapshot"])
+	}
+	if before["surface.theme"] != "dark" || before["surface.gap"] != float64(10) {
+		t.Errorf("unexpected before_snapshot values: %+v", before)
+	}
+	after, ok := payload["after_snapshot"].(map[string]any)
+	if !ok || after["surface.theme"] != "light" || after["surface.gap"] != "16" {
+		t.Errorf("unexpected after_snapshot values: %+v", after)
+	}
+	changes, _ := payload["changes"].([]any)
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes, got %+v", changes)
+	}
+	ch0, _ := changes[0].(map[string]any)
+	if ch0["before"] != "dark" || ch0["path"] != "surface.theme" || ch0["op"] != "modified" {
+		t.Errorf("expected change[0] auto-enriched with before/path/op, got %+v", ch0)
+	}
+	callouts, _ := payload["callouts"].([]any)
+	if len(callouts) != 1 {
+		t.Errorf("expected 1 callout preserved, got %+v", callouts)
+	}
+}
+

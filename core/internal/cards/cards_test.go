@@ -94,8 +94,12 @@ func TestAKnownKindWithoutWhatItNeedsIsRefused(t *testing.T) {
 		"choice, no options":   {Kind: "choice", Payload: payload(`{"question":"q"}`)},
 		"choice, repeated ids": {Kind: "choice", Payload: payload(`{"question":"q","options":[{"id":"a","label":"A"},{"id":"a","label":"B"}]}`)},
 		"form, no schema":      {Kind: "form", Payload: payload(`{"body":"fill in"}`)},
-		"approval, odd risk":   {Kind: "approval", Risk: "extreme", Payload: payload(`{"summary":"s"}`)},
-		"plan, no steps":       {Kind: "plan", Payload: payload(`{"steps":[]}`)},
+		"approval, odd risk":         {Kind: "approval", Risk: "extreme", Payload: payload(`{"summary":"s"}`)},
+		"approval, bad view_mode":    {Kind: "approval", Payload: payload(`{"summary":"s","view_mode":"unknown"}`)},
+		"approval, bad change op":    {Kind: "approval", Payload: payload(`{"summary":"s","changes":[{"label":"theme","op":"deleted"}]}`)},
+		"approval, callout no title": {Kind: "approval", Payload: payload(`{"summary":"s","callouts":[{"tone":"warning"}]}`)},
+		"approval, bad callout tone": {Kind: "approval", Payload: payload(`{"summary":"s","callouts":[{"tone":"critical","title":"Watch out"}]}`)},
+		"plan, no steps":             {Kind: "plan", Payload: payload(`{"steps":[]}`)},
 		"payload not json":     {Kind: "info", Payload: payload(`{`)},
 	} {
 		if _, err := s.Show(ctx, c); err == nil {

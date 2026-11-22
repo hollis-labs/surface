@@ -79,17 +79,58 @@ func surfaceCard(c gateCard) (shownCard, error) {
 		var changes []map[string]string
 		if r := c.Requested; r != nil {
 			summary += fmt.Sprintf("\n\n%s. Audience %s, for %s.", head, r.Audience, ttl(r.TTLSeconds))
-			for _, s := range r.Scopes {
-				changes = append(changes, map[string]string{"label": "scope", "after": s})
+			for i, s := range r.Scopes {
+				changes = append(changes, map[string]string{
+					"id":    fmt.Sprintf("change:%d", i),
+					"label": "scope",
+					"path":  "scopes",
+					"op":    "added",
+					"after": s,
+				})
 			}
 			out.scopes = append([]string(nil), r.Scopes...)
 		} else {
 			summary += "\n\n" + head + "."
 		}
+		for i, ch := range c.Changes {
+			id := ch.ID
+			if id == "" {
+				id = fmt.Sprintf("change:%d", len(changes)+i)
+			}
+			entry := map[string]string{"id": id, "label": ch.Label}
+			if ch.Path != "" {
+				entry["path"] = ch.Path
+			}
+			if ch.Op != "" {
+				entry["op"] = ch.Op
+			}
+			if ch.Before != "" {
+				entry["before"] = ch.Before
+			}
+			if ch.After != "" {
+				entry["after"] = ch.After
+			}
+			if ch.Impact != "" {
+				entry["impact"] = ch.Impact
+			}
+			changes = append(changes, entry)
+		}
 		if ev := evidence(c.Evidence); ev != "" {
 			summary += " Evidence: " + ev + "."
 		}
-		payload = map[string]any{"summary": summary, "requested_by": who, "changes": changes, "per_change": len(changes) > 1}
+		payload = map[string]any{"summary": summary, "requested_by": who, "changes": changes, "per_change": len(out.scopes) > 1}
+		if c.ViewMode != "" {
+			payload["view_mode"] = c.ViewMode
+		}
+		if c.BeforeSnapshot != nil {
+			payload["before_snapshot"] = c.BeforeSnapshot
+		}
+		if c.AfterSnapshot != nil {
+			payload["after_snapshot"] = c.AfterSnapshot
+		}
+		if len(c.Callouts) > 0 {
+			payload["callouts"] = c.Callouts
+		}
 		if c.Tier == "critical" {
 			payload["phrase"] = phrase
 		}

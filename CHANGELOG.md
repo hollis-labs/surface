@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **Recovering a locked-out account.** A recovery link (`<app> identity recover --user <name> --url …`, made on the
+  host) opens a page that signs that person in once. There they set a new password, remove their passkeys and
+  turn off two-step sign-in, as needed. Needs Substrate 195cd13.
+- **A passkey the app doesn't know is explained.** Signing in with a passkey that isn't registered here (removed,
+  or saved for another install) now says so and points to the password form below it, instead of a generic
+  failure. The steps that add a passkey suggest saving it to the same password-manager item as the password.
 ## [0.18.0] - 2026-11-22
 
 - **Modules can add host names for their public routes (`module.PublicHosts`).** The host guard answers only

@@ -143,6 +143,38 @@ export function clearSetupURL(): void {
   }
 }
 
+// ---- recovery links (<app> identity recover) ----
+
+/** The token a recovery link carries in its fragment (`/recover#r=recover_…`), or "". */
+export function recoverTokenFromURL(): string {
+  const m = /(?:^#|&)r=(recover_[A-Za-z0-9_-]+)/.exec(window.location.hash)
+  return m ? m[1] : ""
+}
+
+/** Drops the recovery link from the address bar. */
+export function clearRecoverURL(): void {
+  if (window.location.pathname === "/recover" || window.location.hash.includes("r=recover_")) {
+    window.history.replaceState(null, "", "/")
+  }
+}
+
+export interface RecoveryInfo {
+  username: string
+  display_name: string
+  totp: boolean
+  passkeys: number
+  passkey_only: boolean
+}
+
+export const checkRecovery = (token: string) => post<RecoveryInfo>("/api/recover/check", { token })
+
+export const recoverAccount = (input: {
+  token: string
+  new_password?: string
+  clear_passkeys: boolean
+  clear_totp: boolean
+}) => post<Account>("/api/recover", input)
+
 // ---- invites and users (administrators) ----
 
 /** The invite code an invite link carries in its fragment (`/invite#c=invite_…`), or "". */

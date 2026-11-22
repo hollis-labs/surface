@@ -15,7 +15,7 @@ require (
 	github.com/hollis-labs/libs/security/redact v0.2.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/nanite v0.16.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261121043943-b123217072c4
+	github.com/hollis-labs/substrate v0.1.1-0.20261122190322-d56447a9fd27
 	github.com/spf13/cobra v1.10.2
 	github.com/tdewolff/parse/v2 v2.25.0
 	golang.org/x/net v0.62.0
@@ -93,8 +93,10 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect

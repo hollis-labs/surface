@@ -5,11 +5,70 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.20.0] - 2026-11-22
+
 - **API key events.** Every key made or revoked (a person's, an admin's, a module's) is published to modules
   as `identity.key.created` / `identity.key.revoked` with a `module.KeyEvent` (no secret), for an activity
   feed or audit log. `identity.*` events are not streamed to the page. Needs Substrate's `WatchKeys`.
 - **`GET /readyz`.** A public readiness probe: the worst status of the modules that implement `module.Readier`,
   `{"status"}` only, 503 when down. `/healthz` stays the liveness probe.
+- **Native Trackers (`modules/trackers`).** Lists of categorized work.
+  - A tracker has a unique slug, a title, a summary, a category, de-duplicated tags, a lifecycle (active,
+    paused, completed, archived) and free-form metadata and extras.
+  - Its items have their own lifecycle (todo, in_progress, blocked, review, done, parked), plus category, tags,
+    position and assignee.
+  - Agent tools: `tracker_list` (by category, lifecycle, tag or text), `tracker_get`, `tracker_create`,
+    `tracker_update`, `tracker_item_add`, `tracker_item_update`, and `tracker_item_delete` (asks for
+    confirmation).
+  - Also adds routes under `/api/m/trackers/` (lists, items, reorder), the event `trackers.changed`, the refs
+    `tracker.list` and `tracker.item`, and the command `trackers.open`.
+  - A Trackers window groups items by category, status or tag. In this release it reads the lists from the
+    module, but item edits made in the window stay on screen.
+- **Visual Alignment & Drop Pad (`modules/align`) and its workbench.**
+  - **Proposals** come in three kinds: architecture (nodes, edges, groups, callouts), triage (buckets) and
+    timeline (phases). Each is draft, proposed, approved, changes_requested or parked, and every edit is kept
+    as a revision.
+  - **Drop Pads** collect files or references for a copy, move or reference.
+  - Agent tools: `align_list`, `align_get`, `align_propose` (`open: true` shows it), `align_update`,
+    `align_decide`, `droppad_list`, `droppad_get`, `droppad_create`, `droppad_update` and
+    `droppad_stage_files`.
+  - No tool moves files. Only `POST /api/m/align/droppads/{id}/execute` does, and it really copies or moves
+    local files.
+  - The workbench window (Architecture, Triage, Timeline, Drop Pad; opened with the command `align.open` or the
+    menu) lists proposals from the module. In this release its decisions and Execute buttons change only the
+    screen.
+  - Trackers and align are both part of the `desk` and `studio` apps.
+- **Module entity cards, with live records, in `card_show` and `card_ask`.**
+  - The new card kinds are `entity` and module kinds such as `ops.workstream`, `ops.agent`, `ops.host`,
+    `registry.record`, `tracker.item` and `work.item`.
+  - The payload holds `ref`/`refs`, an optional view (card, compact or detail), and an optional question with
+    options. A card with a question or options is answered like any other.
+  - With refs and no data, the server fills each record in through the module's ref resolver.
+  - Refs can be module refs (`ops:`, `registry:`, `tracker:`, `align:`, …), Torque ids (`CW-`, `EP-`, …),
+    `caster://`, `msg://` and file paths.
+  - The card shows agent, host, registry and tracker-item layouts and has an "Open in Module" button.
+  - Cite chips understand `align:`, `droppad:`, `tracker:` and `tracker.item:`, and can be dragged
+    (`application/x-surface-cite`).
+- **Visual change approvals.**
+  - An approval card can carry `before_snapshot` and `after_snapshot`, a list of `changes` (label, path,
+    added/removed/modified, before, after, impact) and `callouts` (concern, warning, info or security), with a
+    `view_mode`.
+  - `card_ask` fills the "before" side from live settings when the changes name settings keys.
+  - The card shows callouts and Diff, Now vs After, and Topology (architecture) tabs. `modules/approvals`
+    passes these fields through its gate.
+  - Per-change approval of a scope request now depends on asking for more than one scope.
+- **Surface's own Folio preset pack (`scaffolding/`).**
+  - It's a separate Go module, `github.com/hollis-labs/surface/scaffolding`, on `substrate/folio`. It is not an
+    npm package and the root build doesn't import it.
+  - It holds the `surface-app`, `surface-desk` and `surface-ui` presets (`folio --preset-pack …`).
+  - Cross-framework conformance tests check the generated files byte for byte against their output before the
+    move, and check the shared `agent-dir` dependency.
+  - It has its own CI workflow (`scaffolding.yml`: vet, race tests, lint, public scan). Its source history was
+    imported from `tools/folio`.
+- **Demo data uses neutral host names, paths and addresses** (`example-host`, `/workspace/example…`,
+  `192.0.2.x`). The few remaining matches are allowlisted per commit in `scan-public.allow`.
+- **Lint and formatting fixes.** A failure to list trackers now surfaces as an error to the agent, instead of
+  "no lists yet". The studio wiring now includes trackers and align.
 
 ## [0.19.1] - 2026-11-22
 

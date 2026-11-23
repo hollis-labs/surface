@@ -2,9 +2,9 @@ name: scaffolding
 on:
   push:
     branches: [main]
-    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml"]
+    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml", "scan-public.allow"]
   pull_request:
-    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml"]
+    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml", "scan-public.allow"]
 permissions:
   contents: read
 concurrency:

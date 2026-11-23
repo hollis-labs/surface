@@ -84,7 +84,7 @@ export function Approval() {
                 path: "transport.listen_addr",
                 op: "modified",
                 before: "127.0.0.1:8190",
-                after: "100.94.18.12:8190 (tailscale0)",
+                after: "192.0.2.12:8190 (tailscale0)",
                 impact: "Reachable by authorized fleet nodes",
               },
               {

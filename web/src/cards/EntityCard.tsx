@@ -199,7 +199,7 @@ export function ModuleEntityCardBody({
           </div>
           <div className="rounded-sm border border-border/60 bg-background/60 px-2 py-1">
             <span className="text-[9px] text-muted-foreground uppercase">Placement</span>
-            <p className="truncate font-medium text-foreground">{entity.host ?? "agent-os"}</p>
+            <p className="truncate font-medium text-foreground">{entity.host ?? "example-host"}</p>
           </div>
           <div className="rounded-sm border border-border/60 bg-background/60 px-2 py-1">
             <span className="text-[9px] text-muted-foreground uppercase">Context Load</span>

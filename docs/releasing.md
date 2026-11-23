@@ -17,23 +17,18 @@ So "which Surface is this app on" has one answer. Releases are run by the releas
 2. **Tag the merge commit.** On a clean `main`: `git tag -a vX.Y.Z -m "Surface vX.Y.Z"`, then
    `git push origin refs/tags/vX.Y.Z`. A pushed tag is never moved or reused. Check the registry answers at it:
    `curl -sf https://raw.githubusercontent.com/hollis-labs/surface/vX.Y.Z/registry/r/button.json`.
-3. **Publish to npm.** Publishing runs only in `hollis-labs/frontend-support`, whose `npm-release` environment
-   holds the portfolio's one npm token. Its `release-surface` workflow checks out this repository at the tag,
-   checks the versions match it, builds, and publishes the packages in dependency order, skipping any version
-   already on npm. Its list (`PACKAGES` in the workflow) must name every package here, `theme` before `page`.
-   v0.2.0 shipped `page` before the list had `theme`, so installing it failed until a re-run published `theme`:
+3. **Publish to npm.** The local `release-surface` workflow checks a release tag on main with successful CI, resolves its immutable commit, checks package versions, builds and pack-checks all six packages, then publishes in dependency order. `RELEASE_ACTORS` gates the dispatcher and re-run actor. Dry run is the default and requires no npm credential; it checks every package even when its version is already published.
 
    ```sh
-   gh workflow run release-surface -R hollis-labs/frontend-support -f ref=vX.Y.Z -f dry_run=false
+   gh workflow run release-surface -R hollis-labs/surface -f ref=vX.Y.Z -f dry_run=true
+   gh workflow run release-surface -R hollis-labs/surface -f ref=vX.Y.Z -f dry_run=false
    ```
 
-   There is no approval click: the workflow's gate job refuses a dispatcher not in frontend-support's
-   `RELEASE_ACTORS` variable, a tag that is not on this repository's `main`, or a commit whose `ci` did not
-   pass. Dry run is the default.
+   **Credential migration pending:** configure Surface's `npm-release` environment with `NPM_TOKEN` before a real publish. The workflow fails closed without it. GitHub secrets cannot be read back or copied from frontend-support. Keep frontend-support's existing publisher available until the new credential is installed and validated; use its existing release command if a release is needed before cutover. Never dispatch both publishers for one release.
+
 4. **Verify.** `npm view @hollis-labs/surface-page version` answers `X.Y.Z` (a new name can 404 for a minute),
    and `go get github.com/hollis-labs/surface@vX.Y.Z` resolves from an empty module.
 
 npm names and versions are permanent. A mistake is fixed with a new patch version, never by republishing.
 
-The packages are published without npm provenance: provenance requires the package's repository to be the
-repository whose workflow publishes, and the token lives in frontend-support while the source is here.
+The packages currently publish without npm provenance. Publisher relocation keeps that behavior; provenance can be enabled separately after credential migration.

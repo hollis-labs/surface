@@ -1,0 +1,54 @@
+name: verify-npm-access
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-surface
+  cancel-in-progress: false
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: authorize operator on main
+        env:
+          ALLOWED: ${{ vars.RELEASE_ACTORS }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING: ${{ github.triggering_actor }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [ "$REF" = refs/heads/main ]
+          for who in "$ACTOR" "$TRIGGERING"; do
+            case " $ALLOWED " in *" $who "*) ;; *) echo "Operator is not authorized"; exit 1 ;; esac
+          done
+  verify:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: npm-release
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      # No repository checkout, install, build, lifecycle scripts or publication.
+      - name: verify identity and reported package permissions
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$NODE_AUTH_TOKEN" || { echo "Organization publishing credential is missing"; exit 1; }
+          identity=$(npm whoami --registry=https://registry.npmjs.org)
+          npm access list packages "$identity" --json --registry=https://registry.npmjs.org > "$RUNNER_TEMP/npm-access.json"
+          node - "$RUNNER_TEMP/npm-access.json" <<'JS'
+          const fs = require('node:fs');
+          const permissions = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          for (const suffix of ['chat', 'cards', 'genui', 'theme', 'page', 'ui']) {
+            const name = '@hollis-labs/surface-' + suffix;
+            if (permissions[name] !== 'read-write') {
+              throw new Error('Write access not confirmed for ' + name);
+            }
+            console.log(name + ': reported read-write');
+          }
+          JS
+          echo "Authentication and account package permissions verified; no publication attempted."

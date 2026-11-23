@@ -3,7 +3,7 @@ module github.com/hollis-labs/surface/scaffolding
 go 1.26.11
 
 require (
-	github.com/hollis-labs/substrate/folio v0.0.0-20261123003947-77b5e58212a2
+	github.com/hollis-labs/substrate/folio v0.0.0-20261123005837-e7a9f8a12d2f
 	gopkg.in/yaml.v3 v3.0.1
 )
 

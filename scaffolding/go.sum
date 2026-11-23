@@ -8,8 +8,8 @@ github.com/hollis-labs/go-materialize v0.0.0-20260918203624-4190b433a343 h1:A5oI
 github.com/hollis-labs/go-materialize v0.0.0-20260918203624-4190b433a343/go.mod h1:kruujE9juXWTgF3NnDTVw48K5KdikmPCOcaJRF+7n60=
 github.com/hollis-labs/substrate v0.1.1-0.20261119145946-6a4bb696c942 h1:tPWdq9/ncYvIhlN7vJbDITVuEqhKmZ+/UaFilJxCXJA=
 github.com/hollis-labs/substrate v0.1.1-0.20261119145946-6a4bb696c942/go.mod h1:B6O28XyurEMy9ZdmOV/FlljGqqxrlzbHp8zpEBxpdGY=
-github.com/hollis-labs/substrate/folio v0.0.0-20261123003947-77b5e58212a2 h1:v928LjN/9OcrTYCGyRZ64lSpkjjZ/OCul/UMwb+bNac=
-github.com/hollis-labs/substrate/folio v0.0.0-20261123003947-77b5e58212a2/go.mod h1:2tkKjB6zq8ucDhDc0XkfyejCJ+OlIUiFQw5gx88sCWQ=
+github.com/hollis-labs/substrate/folio v0.0.0-20261123005837-e7a9f8a12d2f h1:WZ0voasmcw5GK4BPbd7VB1OkCSnJC+vBjZfgruf3Guo=
+github.com/hollis-labs/substrate/folio v0.0.0-20261123005837-e7a9f8a12d2f/go.mod h1:2tkKjB6zq8ucDhDc0XkfyejCJ+OlIUiFQw5gx88sCWQ=
 github.com/modelcontextprotocol/go-sdk v1.8.0 h1:KIvahhYqwtbeniWVPs3TcXEA7b8jEtwfBpOTAI+Urx4=
 github.com/modelcontextprotocol/go-sdk v1.8.0/go.mod h1:dL7u98E/zjJTGzEq+j30jQ8K2k1mb6LeAH4inEcSGts=
 github.com/segmentio/asm v1.2.1 h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0=

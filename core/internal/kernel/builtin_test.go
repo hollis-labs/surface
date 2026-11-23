@@ -129,8 +129,8 @@ func TestEntityCardShowResolvesLiveRecord(t *testing.T) {
 		t.Fatalf("get card %s: ok=%v err=%v", cardID, ok, err)
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(c.Payload, &payload); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal(c.Payload, &payload); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
 	resolved, ok := payload["resolved"].(map[string]any)
 	if !ok {
@@ -187,8 +187,8 @@ func TestEntityCardAskWithMultipleRefsAndHold(t *testing.T) {
 		t.Fatalf("get card: ok=%v err=%v", ok, err)
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(c.Payload, &payload); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal(c.Payload, &payload); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
 	if payload["entity_kind"] != "ops.workstream" {
 		t.Errorf("expected entity_kind defaulted from card kind, got %v", payload["entity_kind"])
@@ -244,8 +244,8 @@ func TestApprovalCardAutoPopulatesBeforeSnapshotFromLiveSettings(t *testing.T) {
 		t.Fatalf("get approval card: ok=%v err=%v", ok, err)
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(c.Payload, &payload); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal(c.Payload, &payload); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
 	if payload["view_mode"] != "settings" {
 		t.Errorf("expected view_mode defaulted to settings, got %v", payload["view_mode"])
@@ -274,4 +274,3 @@ func TestApprovalCardAutoPopulatesBeforeSnapshotFromLiveSettings(t *testing.T) {
 		t.Errorf("expected 1 callout preserved, got %+v", callouts)
 	}
 }
-

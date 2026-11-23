@@ -21,9 +21,9 @@ var migrations embed.FS
 func init() { module.Register(&mod{}) }
 
 const (
-	viewID          = "trackers"
-	citeListKind    = "tracker.list"
-	citeItemKind    = "tracker.item"
+	viewID       = "trackers"
+	citeListKind = "tracker.list"
+	citeItemKind = "tracker.item"
 )
 
 var (
@@ -106,7 +106,10 @@ func (m *mod) knowledge(ctx context.Context, _ module.Host, _ module.Situation) 
 		return "", nil
 	}
 	list, err := m.st.listTrackers(ctx, trackerFilter{})
-	if err != nil || len(list) == 0 {
+	if err != nil {
+		return "", fmt.Errorf("list trackers for knowledge: %w", err)
+	}
+	if len(list) == 0 {
 		return "Trackers has no lists yet.", nil
 	}
 	var b strings.Builder
@@ -134,7 +137,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("POST /lists", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in trackerInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		t, err := m.st.createTracker(r.Context(), in)
@@ -150,7 +153,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("PUT /lists/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var patch trackerPatch
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		t, err := m.st.updateTracker(r.Context(), r.PathValue("id"), patch)
@@ -182,7 +185,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("POST /items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in itemInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		it, err := m.st.createItem(r.Context(), in)
@@ -198,7 +201,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("PUT /items/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var patch itemPatch
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		it, err := m.st.updateItem(r.Context(), r.PathValue("id"), patch)
@@ -221,7 +224,7 @@ func (m *mod) routes(h module.Host) {
 			ItemIDs   []string `json:"item_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		items, err := m.st.reorderItems(r.Context(), in.TrackerID, in.ItemIDs)

@@ -3,9 +3,11 @@ package trackers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
+	"github.com/hollis-labs/surface/module"
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
@@ -138,5 +140,20 @@ func TestTrackersAndItemsLifecycleTagsReorderAndCite(t *testing.T) {
 	code, _ = h.Do("GET", "/items/"+it2.ID, "")
 	if code != http.StatusNotFound {
 		t.Fatalf("expected 404 for deleted item, got %d", code)
+	}
+}
+
+func TestKnowledgeDistinguishesEmptyListsFromStoreFailure(t *testing.T) {
+	m := &mod{}
+	h := moduletest.Start(t, m)
+	empty, err := m.knowledge(context.Background(), h, module.Situation{})
+	if err != nil || empty != "Trackers has no lists yet." {
+		t.Fatalf("healthy empty store: text=%q err=%v", empty, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	text, storeErr := m.knowledge(ctx, h, module.Situation{})
+	if !errors.Is(storeErr, context.Canceled) || text != "" {
+		t.Fatalf("failed store reported healthy data: text=%q err=%v", text, storeErr)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,6 +68,17 @@ func (authProbe) Start(_ context.Context, h module.Host) error {
 		}
 		_ = json.NewEncoder(w).Encode(c)
 	})))
+	// Key events the module saw (module.KeyEventTopic), for TestKeyEventsReachModules.
+	h.Events().Subscribe(module.KeyEventTopic, func(ev module.Event) {
+		keySeen.Lock()
+		keySeen.topics = append(keySeen.topics, ev.Topic+" "+string(ev.Data))
+		keySeen.Unlock()
+	})
+	h.Handle("GET /keyevents", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		keySeen.Lock()
+		defer keySeen.Unlock()
+		_ = json.NewEncoder(w).Encode(keySeen.topics)
+	}))
 	h.Handle("POST /hook", module.Public(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, signed := module.UserOf(r.Context())
 		_ = json.NewEncoder(w).Encode(map[string]any{"public": true, "signed": signed})
@@ -75,6 +87,11 @@ func (authProbe) Start(_ context.Context, h module.Host) error {
 }
 
 func init() { module.Register(authProbe{}) }
+
+var keySeen struct {
+	sync.Mutex
+	topics []string
+}
 
 type authEnv struct {
 	t    *testing.T

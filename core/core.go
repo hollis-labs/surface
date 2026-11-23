@@ -72,6 +72,9 @@ func New(ctx context.Context, o Options) (*App, error) {
 	return a, nil
 }
 
+// Publish puts an event on the app's bus (what modules see through Host.Events).
+func (a *App) Publish(topic string, data any) { a.k.Events().Publish(topic, data) }
+
 // Start starts the modules.
 func (a *App) Start(ctx context.Context) error { return a.k.Start(ctx) }
 

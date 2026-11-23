@@ -18,6 +18,7 @@ import (
 
 	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/desk"
+	"github.com/hollis-labs/surface/core/internal/events"
 	"github.com/hollis-labs/surface/core/internal/kernel"
 	"github.com/hollis-labs/surface/module"
 )
@@ -37,6 +38,7 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("POST /api/desk/actions", s.deskAction)
 	mux.HandleFunc("GET /api/context", s.context)
 	mux.HandleFunc("GET /api/events", s.events)
+	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.HandleFunc("POST /api/events", s.publish)
 
 	mux.HandleFunc("GET /api/palette/providers", s.paletteProviders)
@@ -274,6 +276,22 @@ func (s *server) context(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"context": wc, "situation": s.a.Situation(r.Context())})
 }
 
+// serverOnly is the topic prefix never streamed to the page: who made or revoked which key
+// is for the modules that keep a record (module.KeyEventTopic), not for every viewer.
+const serverOnly = "identity"
+
+// readyz is the readiness probe: public, the status only (the worst module's, module.Readier),
+// 503 when down. Modules serve their own detailed reports behind sign-in.
+func (s *server) readyz(w http.ResponseWriter, r *http.Request) {
+	st := s.a.Ready(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if st.Status == module.ReadyDown {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": st.Status})
+}
+
 // events streams the bus to the page as server-sent events. The desk's state is sent first,
 // so a page that connects (or reconnects) starts from the truth.
 func (s *server) events(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +305,9 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	ch := make(chan module.Event, 256)
 	stop := s.a.Bus().Subscribe("", func(ev module.Event) {
+		if events.Match(serverOnly, ev.Topic) {
+			return
+		}
 		select {
 		case ch <- ev:
 		default: // A page that cannot keep up misses events; it re-reads state on reconnect.

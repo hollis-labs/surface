@@ -185,9 +185,10 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 	}
 	serving.allowHost()
 	var keys module.Keys
+	var idsvc *identity.Service
 	if cfg.Auth == AuthIdentity {
-		if svc := identity.From(sapp); svc != nil {
-			keys = identityKeys{sapp: sapp, svc: svc}
+		if idsvc = identity.From(sapp); idsvc != nil {
+			keys = identityKeys{sapp: sapp, svc: idsvc}
 		}
 	}
 	a, err := core.New(ctx, core.Options{
@@ -198,6 +199,10 @@ func serveApp(ctx context.Context, cfg Config, sapp *smodule.App, dataDir string
 		return err
 	}
 	defer func() { _ = a.Stop(context.Background()) }()
+	// Keys made or revoked, by any route or module, reach modules as identity.key.* events.
+	if idsvc != nil {
+		defer idsvc.WatchKeys(func(e identity.KeyEvent) { a.Publish(module.KeyEventTopic+"."+e.Action, keyEvent(e)) })()
+	}
 	if err = a.Start(ctx); err != nil {
 		return err
 	}

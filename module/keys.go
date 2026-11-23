@@ -92,3 +92,22 @@ func CheckKeyScopes(app string, scopes []string) error {
 	}
 	return nil
 }
+
+// KeyEventTopic is the topic prefix of API key events: "identity.key.created" and
+// "identity.key.revoked", published on the app's event bus (Host.Events) when sign-in is on,
+// for any key: a person's, an admin's, a module's. Their data is a KeyEvent. identity.* events
+// stay in the process: they are not streamed to the page.
+const KeyEventTopic = "identity.key"
+
+// KeyEvent is an API key made or revoked. It never carries the secret.
+type KeyEvent struct {
+	Action    string     `json:"action"` // created | revoked
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Scopes    []string   `json:"scopes"`
+	CreatedBy string     `json:"created_by"`           // "user:<id>", or the module or CLI that made it
+	ExpiresAt *time.Time `json:"expires_at,omitempty"` // nil: no expiry
+	// By is who did it ("user:<id>", "key:<id>"), "" when not known.
+	By string    `json:"by,omitempty"`
+	At time.Time `json:"at"`
+}

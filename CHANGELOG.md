@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+- **API key events.** Every key made or revoked (a person's, an admin's, a module's) is published to modules
+  as `identity.key.created` / `identity.key.revoked` with a `module.KeyEvent` (no secret), for an activity
+  feed or audit log. `identity.*` events are not streamed to the page. Needs Substrate's `WatchKeys`.
+- **`GET /readyz`.** A public readiness probe: the worst status of the modules that implement `module.Readier`,
+  `{"status"}` only, 503 when down. `/healthz` stays the liveness probe.
+
 ## [0.19.1] - 2026-11-22
 
 - **The desk on a narrow screen.** Below 720 px wide, the desk shows the focused window full width instead of

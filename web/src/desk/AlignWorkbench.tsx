@@ -370,7 +370,8 @@ const SEED_PROPOSALS: AlignProposal[] = [
       {
         id: "ts-4",
         title: "Adopt Surface Core in Personal macOS Basalisk App",
-        summary: "Use example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122 as reference for OS integration.",
+        summary:
+          "Use example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122 as reference for OS integration.",
         phaseId: "phase-3",
         status: "planned",
         owner: "Chrispian",

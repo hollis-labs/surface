@@ -1,0 +1,252 @@
+{
+  "surface-app": [
+    {
+      "Path": ".github/workflows/ci.yml",
+      "Bytes": 701,
+      "Digest": "sha256:56e4f17ad2e27c1b6acd6813d6e40ba500cc55d3c8b1fac5050907cb02334437",
+      "IsTemplate": true
+    },
+    {
+      "Path": ".gitignore",
+      "Bytes": 36,
+      "Digest": "sha256:bfa5f8365a7772ac194672c136ef9187d729bc5008ae858106307be49d390578",
+      "IsTemplate": true
+    },
+    {
+      "Path": "AGENTS.md",
+      "Bytes": 2713,
+      "Digest": "sha256:38b56782d1cdd2e4fd82b2ae2f96d8d1192e1bba88156aedaa94cfba63497f1f",
+      "IsTemplate": true
+    },
+    {
+      "Path": "Makefile",
+      "Bytes": 1025,
+      "Digest": "sha256:6cd562dbb5a2efa70333cdc980e717aea414d6a0882157a32cb15eb0ce53da59",
+      "IsTemplate": true
+    },
+    {
+      "Path": "README.md",
+      "Bytes": 781,
+      "Digest": "sha256:896d529d43e90594e402b9f6c6601e5d35191daa7c4c6ea94d9a5665f95ba0d8",
+      "IsTemplate": true
+    },
+    {
+      "Path": "biome.json",
+      "Bytes": 1583,
+      "Digest": "sha256:1878146b1bfddb381d6f953e6b26116ddbe709a264de7c4047398e6ec6a3dd02",
+      "IsTemplate": false
+    },
+    {
+      "Path": "index.html",
+      "Bytes": 297,
+      "Digest": "sha256:082df09d689dcd0b65dbb619b3fe7f5b321536114582d717de31959780f47cd1",
+      "IsTemplate": true
+    },
+    {
+      "Path": "package.json",
+      "Bytes": 924,
+      "Digest": "sha256:7cfa8c1dfcb2739e9b7c9c6c17a28d40f5be07548673d924957ef38279474d2c",
+      "IsTemplate": true
+    },
+    {
+      "Path": "src/index.css",
+      "Bytes": 613,
+      "Digest": "sha256:bb0cb7140e080a5d6b433e56a4f547da2f9d7138085f6e2c88f5bba936fadc8c",
+      "IsTemplate": true
+    },
+    {
+      "Path": "tsconfig.json",
+      "Bytes": 478,
+      "Digest": "sha256:dd268ad77d1c81b3c806cbb638898df88ee0a5f7702e19ee64f945e6258d9267",
+      "IsTemplate": false
+    },
+    {
+      "Path": "ui.lock.json",
+      "Bytes": 169,
+      "Digest": "sha256:511e2d96c5425a752c971a47121106f09fbddff3956e3e7bdf96fb25378755e9",
+      "IsTemplate": true
+    },
+    {
+      "Path": "vite.config.ts",
+      "Bytes": 752,
+      "Digest": "sha256:eac36435641761f6c2b6e3569c997efdcad785807988de06ccca0068baec2061",
+      "IsTemplate": true
+    },
+    {
+      "Path": "src/App.tsx",
+      "Bytes": 657,
+      "Digest": "sha256:393755f1f27758e2bdb14ffd591a389e97fb280e5316fa354a6ffd2b78010308",
+      "IsTemplate": false
+    },
+    {
+      "Path": "src/gallery/gallery.tsx",
+      "Bytes": 3859,
+      "Digest": "sha256:d6cda821c065f063f131f2ffe277b65b08c152af6b16893255f7580f9bdb9269",
+      "IsTemplate": false
+    },
+    {
+      "Path": "src/main.tsx",
+      "Bytes": 1053,
+      "Digest": "sha256:7d07a7d87a8f9a3d88763949cab8e4d6d3e061ebd78f3ccd98b28e7a742ce925",
+      "IsTemplate": false
+    },
+    {
+      "Path": "src/views/home.tsx",
+      "Bytes": 1952,
+      "Digest": "sha256:2dde15374f182554d5e7ba8100ba9608e6b6d80546fa9e5b89b262bb70a0ee0d",
+      "IsTemplate": false
+    }
+  ],
+  "surface-desk": [
+    {
+      "Path": ".github/workflows/ci.yml",
+      "Bytes": 940,
+      "Digest": "sha256:48aaae5cc7b70dbed5b7685897d2f4ab66085fea6f2ed82373c17944941a85b8",
+      "IsTemplate": true
+    },
+    {
+      "Path": ".gitignore",
+      "Bytes": 82,
+      "Digest": "sha256:d7293d8eef6643e3907f56ffe7a2a8c1792cfbe2f0e5ce1d34727bb53be00c1b",
+      "IsTemplate": true
+    },
+    {
+      "Path": "AGENTS.md",
+      "Bytes": 3564,
+      "Digest": "sha256:b0b739c94bda1b6dc8823a3412dfa7fc0e3ba1b11df4ef1219f4918e63f948bc",
+      "IsTemplate": true
+    },
+    {
+      "Path": "Makefile",
+      "Bytes": 1835,
+      "Digest": "sha256:6b2c2d6e87e6d4e11b527c617711e6c7bc78037d4cb0aca1ab05518acfa6d4cb",
+      "IsTemplate": true
+    },
+    {
+      "Path": "README.md",
+      "Bytes": 1119,
+      "Digest": "sha256:97942a38af872014f556bb308b2f075f7424e479093458b3bc47e0252f13511f",
+      "IsTemplate": true
+    },
+    {
+      "Path": "biome.json",
+      "Bytes": 1583,
+      "Digest": "sha256:1878146b1bfddb381d6f953e6b26116ddbe709a264de7c4047398e6ec6a3dd02",
+      "IsTemplate": false
+    },
+    {
+      "Path": "index.html",
+      "Bytes": 297,
+      "Digest": "sha256:082df09d689dcd0b65dbb619b3fe7f5b321536114582d717de31959780f47cd1",
+      "IsTemplate": true
+    },
+    {
+      "Path": "package.json",
+      "Bytes": 1208,
+      "Digest": "sha256:6b9bf402677690986b21f2b57904ecce4520390aef28353bbf0dfaf6c9c11ce3",
+      "IsTemplate": true
+    },
+    {
+      "Path": "src/index.css",
+      "Bytes": 764,
+      "Digest": "sha256:8f6167411fd45fe88a0fe6cd2477d8b3660043a4b399490f1a73748bfd0a5af8",
+      "IsTemplate": true
+    },
+    {
+      "Path": "tsconfig.json",
+      "Bytes": 478,
+      "Digest": "sha256:dd268ad77d1c81b3c806cbb638898df88ee0a5f7702e19ee64f945e6258d9267",
+      "IsTemplate": false
+    },
+    {
+      "Path": "ui.lock.json",
+      "Bytes": 169,
+      "Digest": "sha256:511e2d96c5425a752c971a47121106f09fbddff3956e3e7bdf96fb25378755e9",
+      "IsTemplate": true
+    },
+    {
+      "Path": "vite.config.ts",
+      "Bytes": 1592,
+      "Digest": "sha256:d6de48e8dab448cb750f9ea3a52525f7d10594e86975270a3c08e0ae6b770132",
+      "IsTemplate": true
+    },
+    {
+      "Path": "agents/README.md",
+      "Bytes": 1316,
+      "Digest": "sha256:5e46eefad03a6c134dcd13fdd80d3e8dcb88100976bd53cf34d545a6941bb155",
+      "IsTemplate": true
+    },
+    {
+      "Path": "agents/assistant/agent.md",
+      "Bytes": 603,
+      "Digest": "sha256:43bd0ba5bfc2a557f91c9feab1f10d81ceb448ae36dc8a136ad3e0f29b84398b",
+      "IsTemplate": true
+    },
+    {
+      "Path": "agents/assistant/host.yaml",
+      "Bytes": 95,
+      "Digest": "sha256:6b39dd196db8aa06560a0daf72b95beed3065bc6c71e79f142b034d4a0d367b0",
+      "IsTemplate": true
+    },
+    {
+      "Path": "internal/agentdir/agentdir.go",
+      "Bytes": 1156,
+      "Digest": "sha256:637c1fa2315e89307ea8a131fbb0d3eb89eb82717a4d696d76dd101b12ee8c82",
+      "IsTemplate": true
+    },
+    {
+      "Path": "internal/agentdir/agentdir_test.go",
+      "Bytes": 2585,
+      "Digest": "sha256:d2549482ec1275be406aa3bf333fee45399ca64968550da2c3172831471d6872",
+      "IsTemplate": true
+    },
+    {
+      "Path": "go.mod",
+      "Bytes": 179,
+      "Digest": "sha256:a3a1ac0472b8fe09694152c685a2e1104b686a8afe82964bde66b385a6f8b724",
+      "IsTemplate": true
+    },
+    {
+      "Path": "main.go",
+      "Bytes": 2008,
+      "Digest": "sha256:f2558893fcf7b36c9ea3a8254768c24be5c9636485f434b8cc9da7a41fe87eaf",
+      "IsTemplate": true
+    },
+    {
+      "Path": "modules/start/start.go",
+      "Bytes": 1621,
+      "Digest": "sha256:3f5d67b0e1d98e883b93f2bfc9b1f688e8e859689a196cb56ff2923f7e127a30",
+      "IsTemplate": true
+    },
+    {
+      "Path": "modules/start/start_test.go",
+      "Bytes": 422,
+      "Digest": "sha256:16955508f5df7643862399d27006256b3a9e697a144a55174d41da1fdf39ec8a",
+      "IsTemplate": true
+    },
+    {
+      "Path": "src/main.tsx",
+      "Bytes": 426,
+      "Digest": "sha256:b9ead5899fd241f12a9771c3a74f18c4092d434bf4f21f3ffdde5a0f3235bbcd",
+      "IsTemplate": false
+    },
+    {
+      "Path": "src/modules/start.tsx",
+      "Bytes": 1257,
+      "Digest": "sha256:8e37b59aea80ddf5fb482ce7ac945606163fb8004dfcf9e4413fdb0ec833dd55",
+      "IsTemplate": false
+    },
+    {
+      "Path": "webui/dist/.gitkeep",
+      "Bytes": 0,
+      "Digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "IsTemplate": false
+    },
+    {
+      "Path": "webui/embed.go",
+      "Bytes": 497,
+      "Digest": "sha256:73805300dcc64dbff33864854c1090b174421f1772f2749550f40bc52cb6d50f",
+      "IsTemplate": true
+    }
+  ]
+}

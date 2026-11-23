@@ -59,17 +59,17 @@ var validDropPadStatuses = map[string]bool{
 
 // Proposal is a visual alignment proposal (architecture flow, bucket triage, or timeline).
 type Proposal struct {
-	ID           string            `json:"id"`
-	Title        string            `json:"title"`
-	Summary      string            `json:"summary"`
-	Subtype      string            `json:"subtype"`
-	Status       string            `json:"status"`
-	Payload      json.RawMessage   `json:"payload"`
-	DecisionNote string            `json:"decision_note,omitempty"`
-	Rev          int               `json:"rev"`
-	CreatedAt    string            `json:"created_at"`
-	UpdatedAt    string            `json:"updated_at"`
-	DecidedAt    string            `json:"decided_at,omitempty"`
+	ID           string             `json:"id"`
+	Title        string             `json:"title"`
+	Summary      string             `json:"summary"`
+	Subtype      string             `json:"subtype"`
+	Status       string             `json:"status"`
+	Payload      json.RawMessage    `json:"payload"`
+	DecisionNote string             `json:"decision_note,omitempty"`
+	Rev          int                `json:"rev"`
+	CreatedAt    string             `json:"created_at"`
+	UpdatedAt    string             `json:"updated_at"`
+	DecidedAt    string             `json:"decided_at,omitempty"`
 	Revisions    []ProposalRevision `json:"revisions,omitempty"`
 }
 
@@ -102,7 +102,7 @@ type DropPad struct {
 	ID        string        `json:"id"`
 	Title     string        `json:"title"`
 	Summary   string        `json:"summary"`
-	Mode      string        `json:"mode"`                // "collection" | "file_ops"
+	Mode      string        `json:"mode"` // "collection" | "file_ops"
 	TargetDir string        `json:"target_dir,omitempty"`
 	Operation string        `json:"operation,omitempty"` // "copy" | "move" | "reference"
 	Status    string        `json:"status"`              // "active" | "executed" | "archived"
@@ -342,9 +342,9 @@ func (s *store) updateProposal(ctx context.Context, id string, patch proposalPat
 		p.Status = st
 	}
 	if len(patch.Payload) > 0 && string(patch.Payload) != "null" {
-		norm, err := normalizePayload(patch.Payload, p.Subtype)
-		if err != nil {
-			return p, err
+		norm, normalizeErr := normalizePayload(patch.Payload, p.Subtype)
+		if normalizeErr != nil {
+			return p, normalizeErr
 		}
 		p.Payload = norm
 	}
@@ -392,9 +392,9 @@ func (s *store) decideProposal(ctx context.Context, id string, in decideInput) (
 		return p, err
 	}
 	if len(in.Payload) > 0 && string(in.Payload) != "null" {
-		norm, err := normalizePayload(in.Payload, p.Subtype)
-		if err != nil {
-			return p, err
+		norm, normalizeErr := normalizePayload(in.Payload, p.Subtype)
+		if normalizeErr != nil {
+			return p, normalizeErr
 		}
 		p.Payload = norm
 	}
@@ -744,8 +744,8 @@ func (s *store) executeDropPad(ctx context.Context, id string) (DropPad, error) 
 		if err != nil {
 			return dp, err
 		}
-		if err := os.MkdirAll(targetRoot, 0o750); err != nil {
-			return dp, err
+		if mkdirErr := os.MkdirAll(targetRoot, 0o750); mkdirErr != nil {
+			return dp, mkdirErr
 		}
 	}
 	for i := range dp.Items {
@@ -757,9 +757,9 @@ func (s *store) executeDropPad(ctx context.Context, id string) (DropPad, error) 
 			it.Status = "done"
 			continue
 		}
-		src, err := expandLocalPath(it.RefOrPath)
-		if err != nil {
-			return dp, fmt.Errorf("item %s source: %w", it.ID, err)
+		src, sourceErr := expandLocalPath(it.RefOrPath)
+		if sourceErr != nil {
+			return dp, fmt.Errorf("item %s source: %w", it.ID, sourceErr)
 		}
 		dest := strings.TrimSpace(it.DestPath)
 		if dest == "" {
@@ -777,17 +777,17 @@ func (s *store) executeDropPad(ctx context.Context, id string) (DropPad, error) 
 				}
 			}
 		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
-			return dp, err
+		if mkdirErr := os.MkdirAll(filepath.Dir(dest), 0o750); mkdirErr != nil {
+			return dp, mkdirErr
 		}
 		switch dp.Operation {
 		case "copy":
-			if err := copyFileSafe(src, dest); err != nil {
-				return dp, err
+			if copyErr := copyFileSafe(src, dest); copyErr != nil {
+				return dp, copyErr
 			}
 		case "move":
-			if err := moveFileSafe(src, dest); err != nil {
-				return dp, err
+			if moveErr := moveFileSafe(src, dest); moveErr != nil {
+				return dp, moveErr
 			}
 		}
 		it.DestPath = dest

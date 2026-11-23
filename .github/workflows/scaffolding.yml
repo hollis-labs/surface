@@ -1,0 +1,37 @@
+name: scaffolding
+on:
+  push:
+    branches: [main]
+    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml", "scan-public.allow"]
+  pull_request:
+    paths: ["scaffolding/**", ".github/workflows/scaffolding.yml", "scan-public.allow"]
+permissions:
+  contents: read
+concurrency:
+  group: scaffolding-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GOWORK: "off"
+defaults:
+  run:
+    working-directory: scaffolding
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: scaffolding/go.mod
+          cache-dependency-path: scaffolding/go.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          working-directory: scaffolding
+      - name: public history and working tree
+        working-directory: .
+        run: python3 scripts/scan-public --ref HEAD

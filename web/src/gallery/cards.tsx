@@ -116,11 +116,11 @@ export function Cards() {
           <div className="w-full">
             <ModuleEntityCardBody
               entity={{
-                id: "agent-os",
+                id: "example-host",
                 entity_kind: "ops.host",
-                ref: "cite:ops/host/agent-os",
-                title: "agent-os.tailnet",
-                subtitle: "100.64.0.10:8190 · Linux 6.12 NixOS",
+                ref: "cite:ops/host/example-host",
+                title: "example-host.example.test",
+                subtitle: "192.0.2.10:8190 · Linux 6.12 NixOS",
                 status: "online",
                 telemetry: {
                   uptime: "18d 07h",

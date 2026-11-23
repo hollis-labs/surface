@@ -169,13 +169,18 @@ func TestDropPadStagingAndSafeFileExecution(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("POST /droppads/%s/execute: %d %s", dp.ID, code, body)
 	}
-	if err := json.Unmarshal([]byte(body), &dp); err != nil {
-		t.Fatal(err)
+	if decodeErr := json.Unmarshal([]byte(body), &dp); decodeErr != nil {
+		t.Fatal(decodeErr)
 	}
 	if dp.Status != "executed" || dp.Items[0].Status != "done" {
 		t.Fatalf("executed droppad: %+v", dp)
 	}
-	copiedBytes, err := os.ReadFile(filepath.Join(dstDir, "design-notes.md"))
+	copiedRoot, openErr := os.OpenRoot(dstDir)
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer func() { _ = copiedRoot.Close() }()
+	copiedBytes, err := copiedRoot.ReadFile("design-notes.md")
 	if err != nil || string(copiedBytes) != "# Design Notes\n" {
 		t.Fatalf("copied file mismatch: %q err=%v", string(copiedBytes), err)
 	}

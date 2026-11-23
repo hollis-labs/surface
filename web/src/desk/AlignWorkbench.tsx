@@ -370,7 +370,8 @@ const SEED_PROPOSALS: AlignProposal[] = [
       {
         id: "ts-4",
         title: "Adopt Surface Core in Personal macOS Basalisk App",
-        summary: "Use agent-os:/srv/data/backups/laptop-basalisk-snapshot-20261122 as reference for OS integration.",
+        summary:
+          "Use example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122 as reference for OS integration.",
         phaseId: "phase-3",
         status: "planned",
         owner: "Chrispian",
@@ -386,13 +387,13 @@ const SEED_DROPPADS: DropPadCollection[] = [
     summary: "Curated code paths, data snapshots, and architecture refs for migrating OS-level Basalisk features.",
     mode: "collection",
     operation: "reference",
-    targetDir: "agent-os:/srv/data/backups/laptop-basalisk-snapshot-20261122",
+    targetDir: "example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122",
     updatedAt: "2026-11-22T21:18:00Z",
     items: [
       {
         id: "dpi-1",
         kind: "folder",
-        pathOrRef: "agent-os:/srv/data/backups/laptop-basalisk-snapshot-20261122/data",
+        pathOrRef: "example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122/data",
         label: "Checkpointed Basalisk SQLite Databases (agent.db, basalisk.db, assist.db)",
         sizeOrMeta: "22 MB · 7 DBs",
         status: "staged",
@@ -400,7 +401,7 @@ const SEED_DROPPADS: DropPadCollection[] = [
       {
         id: "dpi-2",
         kind: "file",
-        pathOrRef: "agent-os:/srv/data/backups/laptop-basalisk-snapshot-20261122/config/standing.md",
+        pathOrRef: "example-host:/srv/data/backups/laptop-basalisk-snapshot-20261122/config/standing.md",
         label: "Standing Agent Instructions & Roster Config",
         sizeOrMeta: "4.1 KB",
         status: "staged",
@@ -429,25 +430,25 @@ const SEED_DROPPADS: DropPadCollection[] = [
     summary: "Stage files to copy or move into the shared agency artifacts inbox or target project folder.",
     mode: "file_ops",
     operation: "copy",
-    targetDir: "/Users/chrispian/dev/agent-os/workspaces/drafts/surface-next",
+    targetDir: "/workspace/example/workspaces/drafts/surface-next",
     updatedAt: "2026-11-22T21:20:00Z",
     items: [
       {
         id: "dpi-5",
         kind: "file",
-        pathOrRef: "/Users/chrispian/dev/hollis-labs/apps/surface/docs/taste.md",
+        pathOrRef: "/workspace/example/hollis-labs/apps/surface/docs/taste.md",
         label: "taste.md (Evolved Blade Runner Design Guide)",
         sizeOrMeta: "14 KB",
-        destPath: "/Users/chrispian/dev/agent-os/workspaces/drafts/surface-next/taste.md",
+        destPath: "/workspace/example/workspaces/drafts/surface-next/taste.md",
         status: "staged",
       },
       {
         id: "dpi-6",
         kind: "file",
-        pathOrRef: "/Users/chrispian/dev/hollis-labs/apps/surface/registry/README.md",
+        pathOrRef: "/workspace/example/hollis-labs/apps/surface/registry/README.md",
         label: "README.md (@surface UI Registry Specification)",
         sizeOrMeta: "8.2 KB",
-        destPath: "/Users/chrispian/dev/agent-os/workspaces/drafts/surface-next/registry-README.md",
+        destPath: "/workspace/example/workspaces/drafts/surface-next/registry-README.md",
         status: "staged",
       },
     ],
@@ -1590,7 +1591,7 @@ export function AlignWorkbench({ initialMode, win }: Partial<ViewProps> & { init
                         summary: "Custom drag-and-drop reference & file staging collection.",
                         mode: "collection",
                         operation: "reference",
-                        targetDir: "/Users/chrispian/dev",
+                        targetDir: "/workspace/example",
                         items: [],
                         updatedAt: new Date().toISOString(),
                       }
@@ -1803,7 +1804,7 @@ export function AlignWorkbench({ initialMode, win }: Partial<ViewProps> & { init
                   <Input
                     value={newDropPath}
                     onChange={(e) => setNewDropPath(e.target.value)}
-                    placeholder="File path or ref (e.g. /Users/chrispian/dev/... or registry:project:surface)"
+                    placeholder="File path or ref (e.g. /workspace/example/... or registry:project:surface)"
                     className="h-7 flex-1 font-mono text-xs"
                   />
                   <Input

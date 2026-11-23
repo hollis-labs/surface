@@ -22,9 +22,9 @@ var migrations embed.FS
 func init() { module.Register(&mod{}) }
 
 const (
-	viewID              = "align"
-	citeProposalKind    = "align.proposal"
-	citeDropPadKind     = "align.droppad"
+	viewID           = "align"
+	citeProposalKind = "align.proposal"
+	citeDropPadKind  = "align.droppad"
 )
 
 var (
@@ -150,7 +150,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("POST /proposals", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in proposalInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		if in.Actor == "" {
@@ -169,7 +169,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("PUT /proposals/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var patch proposalPatch
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		p, err := m.st.updateProposal(r.Context(), r.PathValue("id"), patch)
@@ -189,7 +189,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("POST /proposals/{id}/decide", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in decideInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		p, err := m.st.decideProposal(r.Context(), r.PathValue("id"), in)
@@ -207,7 +207,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("POST /droppads", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in dropPadInput
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		dp, err := m.st.createDropPad(r.Context(), in)
@@ -223,7 +223,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("PUT /droppads/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var patch dropPadPatch
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-			reply(w, nil, fmt.Errorf("%w: %v", errBadInput, err))
+			reply(w, nil, fmt.Errorf("%w: %w", errBadInput, err))
 			return
 		}
 		dp, err := m.st.updateDropPad(r.Context(), r.PathValue("id"), patch)

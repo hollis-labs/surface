@@ -7,3 +7,13 @@ internal-ip modules/browser/guard_test.go CW-20261121-0024: synthetic reserved-a
 credentials-in-url modules/browser/guard_test.go CW-20261121-0024: literal user:pass is a synthetic rejection fixture; no real credential
 tailscale-host modules/browser/guard_test.go CW-20261121-0024: invented example-tailnet hostname is expected in denied-host testing; no real host
 secret-assignment modules/registry/web/overlay.ts sample registry data: version_token values are content-hash fixtures for the overlay demo, not credentials
+
+# Owner reviewed 2026-11-22: previous demo values only; current examples sanitized.
+agent-box-host web/src/cards/EntityCard.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+agent-box-host web/src/desk/AlignWorkbench.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+home-path-macos web/src/desk/AlignWorkbench.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+agent-box-host web/src/desk/TrackersWorkbench.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+home-path-macos web/src/desk/TrackersWorkbench.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+internal-ip web/src/gallery/approval.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+agent-box-host web/src/gallery/cards.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+internal-ip web/src/gallery/cards.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.

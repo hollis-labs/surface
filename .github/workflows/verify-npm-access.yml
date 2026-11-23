@@ -39,16 +39,18 @@ jobs:
           set -euo pipefail
           test -n "$NODE_AUTH_TOKEN" || { echo "Organization publishing credential is missing"; exit 1; }
           identity=$(npm whoami --registry=https://registry.npmjs.org)
-          npm access list packages "$identity" --json --registry=https://registry.npmjs.org > "$RUNNER_TEMP/npm-access.json"
-          node - "$RUNNER_TEMP/npm-access.json" <<'JS'
+          for suffix in chat cards genui theme page ui; do
+            package="@hollis-labs/surface-$suffix"
+            npm access list collaborators "$package" --json --registry=https://registry.npmjs.org > "$RUNNER_TEMP/npm-access.json"
+            node - "$RUNNER_TEMP/npm-access.json" "$identity" "$package" <<'JS'
           const fs = require('node:fs');
           const permissions = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          for (const suffix of ['chat', 'cards', 'genui', 'theme', 'page', 'ui']) {
-            const name = '@hollis-labs/surface-' + suffix;
-            if (permissions[name] !== 'read-write') {
-              throw new Error('Write access not confirmed for ' + name);
-            }
-            console.log(name + ': reported read-write');
+          const identity = process.argv[3];
+          const name = process.argv[4];
+          if (permissions[identity] !== 'read-write') {
+            throw new Error('Write access not confirmed for ' + name);
           }
+          console.log(name + ': reported read-write');
           JS
+          done
           echo "Authentication and account package permissions verified; no publication attempted."

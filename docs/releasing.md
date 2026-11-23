@@ -24,7 +24,7 @@ So "which Surface is this app on" has one answer. Releases are run by the releas
    gh workflow run release-surface -R hollis-labs/surface -f ref=vX.Y.Z -f dry_run=false
    ```
 
-   **Credential migration pending:** configure Surface's `npm-release` environment with `NPM_TOKEN` before a real publish. The workflow fails closed without it. GitHub secrets cannot be read back or copied from frontend-support. Keep frontend-support's existing publisher available until the new credential is installed and validated; use its existing release command if a release is needed before cutover. Never dispatch both publishers for one release.
+   **Publishing credential:** the organization `NPM_TOKEN` secret is shared with Surface and frontend-support. Surface's `npm-release` environment restricts execution to main and intentionally has no environment-level token override. Rotate the existing organization secret in one place. The workflow fails closed without it. Run the manual `verify-npm-access` workflow from main to check authentication and reported write access to all six existing packages without publishing. This does not prove token-specific publication restrictions or a successful publish. Keep frontend-support's publisher available until verification and cutover are complete. Never dispatch both publishers for one release.
 
 4. **Verify.** `npm view @hollis-labs/surface-page version` answers `X.Y.Z` (a new name can 404 for a minute),
    and `go get github.com/hollis-labs/surface@vX.Y.Z` resolves from an empty module.

@@ -1,6 +1,6 @@
 # Manual npm release for Surface's packages. Never runs on push or tag.
 # The source is the public hollis-labs/surface repository at a release tag; this workflow lives
-# here beside its source; npm-release holds the publishing credential.
+# here beside its source; npm-release restricts main, and the org secret supplies the credential.
 # The gate job decides who may publish (vars.RELEASE_ACTORS); NPM_TOKEN is read from a secret reference only.
 # Surface has one version line: the tag vX.Y.Z is the version of every package.
 # Packages publish in dependency order; a version already on npm is skipped.
@@ -175,7 +175,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          test -n "$NPM_TOKEN" || { echo "Configure npm-release/NPM_TOKEN before publishing" >&2; exit 1; }
+          test -n "$NPM_TOKEN" || { echo "Configure the organization NPM_TOKEN secret for Surface before publishing" >&2; exit 1; }
 
       - name: install
         run: npm ci

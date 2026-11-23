@@ -2,7 +2,9 @@ name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: ["scaffolding/**", ".github/workflows/scaffolding.yml"]
   pull_request:
+    paths-ignore: ["scaffolding/**", ".github/workflows/scaffolding.yml"]
 permissions:
   contents: read
 concurrency:

@@ -1,4 +1,4 @@
-package folio_test
+package scaffolding_test
 
 import (
 	"encoding/json"
@@ -15,8 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/hollis-labs/tools/folio"
-	"github.com/hollis-labs/tools/folio/service"
+	"github.com/hollis-labs/substrate/folio"
+	"github.com/hollis-labs/substrate/folio/service"
 )
 
 // A title is free text a person types. Every output it reaches has to carry it as text: a Go string
@@ -122,7 +122,7 @@ func TestSurfacePresets_TitleIsOneLine(t *testing.T) {
 	for _, preset := range []string{"surface-app", "surface-desk"} {
 		for _, title := range []string{"Two\nLines", "Tab\there", "Bell\x07"} {
 			target := filepath.Join(t.TempDir(), "app")
-			svc := service.New(service.Options{BundledFS: folio.BundledPresets, BundledRoot: "presets", UserDir: t.TempDir(), FolioVersion: folio.Version})
+			svc := service.New(service.Options{BundledFS: surfaceCatalog(t), BundledRoot: "presets", UserDir: t.TempDir(), FolioVersion: folio.Version})
 			_, err := svc.New(service.NewOptions{PresetID: preset, TargetDir: target, Inputs: map[string]any{"repo_name": "line-probe", "title": title}})
 			if err == nil {
 				t.Errorf("%s accepted the title %q", preset, title)

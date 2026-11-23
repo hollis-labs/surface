@@ -43,3 +43,5 @@ SURFACE_APP=desk npm run dev        # the page with hot reload, against a runnin
 - **Substrate supplies mechanism** (config file, logging, health, HTTP lifecycle, the database handle). Pins follow Substrate's BOM (`make pins`).
 - The repo is public. No secrets, internal hosts, internal addresses or personal paths in files, commits or CI (`make scan`). Tags and releases are the owner's decision.
 - Use a disposable `<APP>_DATA_DIR` for tests and browser checks.
+
+- `scaffolding/` is an independent Go module containing Surface’s Folio preset pack and conformance tests. The renderer/generic presets live in Substrate’s `folio/` module. Do not duplicate the generic agent-dir layer here. Test the pack from `scaffolding/`; root app builds do not import it.

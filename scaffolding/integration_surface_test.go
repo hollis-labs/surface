@@ -1,4 +1,4 @@
-package folio_test
+package scaffolding_test
 
 import (
 	"encoding/json"
@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/tools/folio"
-	"github.com/hollis-labs/tools/folio/service"
+	"github.com/hollis-labs/substrate/folio"
+	"github.com/hollis-labs/substrate/folio/service"
 )
 
 func renderSurface(t *testing.T, preset string, inputs map[string]any) string {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "app")
-	svc := service.New(service.Options{BundledFS: folio.BundledPresets, BundledRoot: "presets", UserDir: t.TempDir(), FolioVersion: folio.Version, Now: time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)})
+	svc := service.New(service.Options{BundledFS: surfaceCatalog(t), BundledRoot: "presets", UserDir: t.TempDir(), FolioVersion: folio.Version, Now: time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)})
 	if _, err := svc.New(service.NewOptions{PresetID: preset, TargetDir: target, Inputs: inputs}); err != nil {
 		t.Fatalf("render %s: %v", preset, err)
 	}

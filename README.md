@@ -130,3 +130,10 @@ MCP lists and executes **read and act** tools only, for every outside client.
 Write and confirm tools are neither listed nor callable through `/mcp`; use the
 embedded runner's approval flow for those tools. Approval bridging is not part
 of the Tether attachment.
+
+
+## Project scaffolding
+
+The [Surface preset pack](scaffolding/README.md) owns new-project templates and
+their conformance checks. Load it explicitly with Substrate’s Folio generator.
+It is independent of the running app and root framework build.

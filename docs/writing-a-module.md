@@ -228,6 +228,15 @@ check out is left out at boot, with the reason in the log; the app still starts.
   It takes effect at once, and `ph.Set(nil)` removes them. A hub whose public URL changed uses it so its runners
   can reach it at the old name until they have moved. Only add names the operator configured, never one taken
   from a request. In tests, `moduletest.Host.PublicHostNames` records the last set.
+- Every API key made or revoked in the app (a person's, an admin's, a module's) is published on the bus as
+  `identity.key.created` or `identity.key.revoked`, with a `module.KeyEvent` (id, name, scopes, maker, expiry,
+  who did it, when; never the secret): `h.Events().Subscribe(module.KeyEventTopic, …)`. For an activity feed or
+  an audit log. `identity.*` events stay in the process: they are not streamed to the page.
+- `GET /readyz` is the app's readiness probe (`/healthz` says only that the process answers). It is public and
+  answers `{"status": "ok" | "degraded" | "down"}`, 503 when down: the worst of every module's. A module joins
+  by implementing `module.Readier` (`Ready(ctx) module.Readiness{Status, Reasons}`); it is asked on each probe
+  with a few seconds' deadline, so answer from what you already know. Serve the detailed report on a route of
+  your own, behind sign-in. A module without it counts as ready once started.
 - After any write, `h.Events().Publish("<id>.changed", …)`. Views listen and refresh; that is how a window
   learns the agent changed its data.
 - `h.Marks()` pins notes to a part of something (`Ref`, `Quote`, `Anchor`). Do not build your own comments.

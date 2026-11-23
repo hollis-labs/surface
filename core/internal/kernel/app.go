@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/hollis-labs/surface/core/internal/cards"
 	"github.com/hollis-labs/surface/core/internal/config"
@@ -664,6 +665,44 @@ func (a *App) PublicHostAllowed(hostport string) bool {
 		}
 	}
 	return false
+}
+
+// Ready is the app's readiness: the worst of its modules' (module.Readier), each asked with a
+// deadline; a module not started yet is down. Reasons are "<module>: <reason>".
+func (a *App) Ready(ctx context.Context) module.Readiness {
+	out := module.Readiness{Status: module.ReadyOK}
+	rank := map[string]int{module.ReadyOK: 0, module.ReadyDegraded: 1, module.ReadyDown: 2}
+	worse := func(st string) {
+		if _, known := rank[st]; !known {
+			st = module.ReadyDegraded
+		}
+		if rank[st] > rank[out.Status] {
+			out.Status = st
+		}
+	}
+	for _, h := range a.mods {
+		if !h.started.Load() {
+			worse(module.ReadyDown)
+			out.Reasons = append(out.Reasons, h.id+": not started")
+			continue
+		}
+		r, ok := h.mod.(module.Readier)
+		if !ok {
+			continue
+		}
+		c, cancel := context.WithTimeout(ctx, 5*time.Second)
+		res := r.Ready(c)
+		cancel()
+		if res.Status == "" {
+			res.Status = module.ReadyDegraded
+			res.Reasons = append(res.Reasons, "no answer")
+		}
+		worse(res.Status)
+		for _, why := range res.Reasons {
+			out.Reasons = append(out.Reasons, h.id+": "+why)
+		}
+	}
+	return out
 }
 
 // PublicRoute reports whether r is for a module route marked module.Public: one an app

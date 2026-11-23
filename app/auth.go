@@ -143,6 +143,17 @@ func operatorKey(ctx context.Context, sapp *smodule.App, dataDir string) (string
 }
 
 // identityKeys is module.Keys over Substrate's identity module.
+// keyEvent is a Substrate key event as modules see it (module.KeyEvent).
+func keyEvent(e identity.KeyEvent) module.KeyEvent {
+	out := module.KeyEvent{Action: e.Action, ID: e.Key.ID, Name: e.Key.Name, Scopes: e.Key.Scopes,
+		CreatedBy: e.Key.CreatedBy, By: e.By, At: e.At}
+	if !e.Key.ExpiresAt.IsZero() {
+		t := e.Key.ExpiresAt
+		out.ExpiresAt = &t
+	}
+	return out
+}
+
 type identityKeys struct {
 	sapp *smodule.App
 	svc  *identity.Service

@@ -68,7 +68,72 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "$TAG = $sha, on main, ci passed"
 
+  dry-run:
+    if: ${{ inputs.dry_run }}
+    name: verify surface release tarballs
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Dependency order: page depends on chat, cards, genui and theme.
+      PACKAGES: chat cards genui theme page ui
+    steps:
+      - name: the ref is a release tag
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a release tag: $REF"; exit 1; }
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate.outputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: every package is the tag's version
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          node scripts/version.mjs
+          v=$(node -p "require('./packages/page/package.json').version")
+          [ "v$v" = "$REF" ] || { echo "packages are $v, the tag is $REF"; exit 1; }
+
+      - name: install
+        run: npm ci
+
+      - name: build and check the tarballs
+        run: npm run pack-check
+
+      - name: publish in dependency order
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          for p in $PACKAGES; do
+            dir="packages/$p"
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if [ "$DRY_RUN" != "true" ] && npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already on npm)"
+              continue
+            fi
+            echo "publish $name@$version"
+            if [ "$DRY_RUN" = "true" ]; then
+              (cd "$dir" && npm publish --access public --dry-run)
+            else
+              (cd "$dir" && npm publish --access public)
+            fi
+          done
+
   publish:
+    if: ${{ !inputs.dry_run }}
     name: publish surface packages
     needs: gate
     runs-on: ubuntu-latest

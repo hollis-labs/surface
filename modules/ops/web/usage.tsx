@@ -911,6 +911,52 @@ export function Usage({ win, desk, api }: ViewProps) {
 
       {data && (
         <>
+          {/* Summary Link Card to Dedicated Usage Monitor Module (Station Usage Monitor v1) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/10 px-4 py-3 text-xs">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-sm border border-primary/40 bg-primary/15 text-primary">
+                <Icon name="flame" size={14} />
+              </span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-bold text-foreground uppercase tracking-wider">
+                    Station Usage Monitor · All Subscriptions, Quotas, Resets &amp; Spend Intelligence
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-primary/40 bg-primary/15 font-mono text-[10px] text-primary"
+                  >
+                    Usage Monitor
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">
+                  This Ops tab reads Tether tools and the Tether AI router only. Open the dedicated{" "}
+                  <strong className="text-foreground">Usage Monitor</strong> module for live Station usage-monitor v1
+                  windows, use-it-or-lose-it expiring capacity, reset countdowns, period trends, and subscription
+                  intelligence.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button size="xs" onClick={() => void desk.open("usage", { args: { tab: "now" } })}>
+                <Icon name="gauge" size={12} />
+                Open Usage Monitor
+              </Button>
+              <Button variant="outline" size="xs" onClick={() => void desk.open("usage", { args: { tab: "trends" } })}>
+                <Icon name="trending-up" size={12} />
+                Trends
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => void desk.open("usage", { args: { tab: "intelligence" } })}
+              >
+                <Icon name="sparkles" size={12} />
+                Intelligence
+              </Button>
+            </div>
+          </div>
+
           {/* Top Telemetry Summary Header & Filter Strip */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/80 bg-card/80 px-3.5 py-2.5">
             <div className="flex flex-wrap items-center gap-4">

@@ -85,6 +85,7 @@ export function createDefaultRefRegistry(): RefRegistry {
       "tracker.item",
       /tracker\.item:([A-Za-z0-9][A-Za-z0-9_-]{1,63})/g,
     ),
+    createPrefixKind("usage.account", "Usage account", "gauge", "usage", /usage:([A-Za-z0-9][A-Za-z0-9._-]{1,63})/g),
     ...createPathKinds(),
   ]) {
     r.register(k)

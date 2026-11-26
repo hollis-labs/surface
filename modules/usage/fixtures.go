@@ -88,6 +88,7 @@ func buildFixtureSeries(now time.Time, accounts []UsageAccount, accountFilter, s
 		seeds = []seedWin{
 			{accountID: "claude-personal", accountLabel: "Claude", provider: "anthropic", windowID: "weekly_all", model: "All Models", group: "weekly", unit: "percent", kind: "quota", curEnd: 42.5, prevEnd: 78.0, limit: 100},
 			{accountID: "codex-personal", accountLabel: "Codex", provider: "openai", windowID: "primary", model: "Codex Pro", group: "weekly", unit: "percent", kind: "quota", curEnd: 100.0, prevEnd: 94.0, limit: 100},
+			{accountID: "github-personal", accountLabel: "GitHub", provider: "github", windowID: "premium_requests_monthly", model: "Copilot Premium Requests", group: "monthly", unit: "percent", kind: "quota", curEnd: 96.02, prevEnd: 88.5, limit: 100},
 			{accountID: "agy-personal", accountLabel: "Antigravity", provider: "antigravity", windowID: "g0:gemini-5h", model: "Gemini Models", group: "5h", unit: "percent", kind: "quota", curEnd: 9.73, prevEnd: 64.2, limit: 100},
 			{accountID: "go-workspace", accountLabel: "OpenCode Go", provider: "opencode", windowID: "rolling", model: "Go Workspace", group: "5h", unit: "percent", kind: "quota", curEnd: 18.4, prevEnd: 52.0, limit: 100},
 			{accountID: "gateway-openrouter", accountLabel: "OpenRouter", provider: "openrouter", windowID: "account_balance", model: "Prepaid Balance", group: "balance", unit: "usd", kind: "balance", curEnd: 4.95, prevEnd: 48.20, limit: 245},
@@ -259,6 +260,21 @@ func buildFixturePeriods(now time.Time, accountFilter string) []CompletedPeriodR
 			Rolling:            true,
 		},
 		{
+			AccountID:          "github-personal",
+			AccountLabel:       "GitHub",
+			Provider:           "github",
+			WindowID:           "premium_requests_monthly",
+			Model:              "Copilot Premium Requests",
+			Group:              "monthly",
+			PeriodStart:        p2Start.Format(time.RFC3339),
+			PeriodEnd:          p1End.Format(time.RFC3339),
+			PeakUsedPercent:    floatPtr(91.4),
+			UsedAtResetPercent: floatPtr(91.4),
+			CapturedPercent:    floatPtr(91.4),
+			ForfeitedPercent:   floatPtr(8.6),
+			HoursExhausted:     floatPtr(0),
+		},
+		{
 			AccountID:          "elevenlabs",
 			AccountLabel:       "ElevenLabs",
 			Provider:           "elevenlabs",
@@ -341,6 +357,7 @@ func buildFixtureSpend(now time.Time, accounts []UsageAccount, costKindFilter st
 		{Bucket: day0, GroupKey: "digitalocean", Provider: "digitalocean", Model: "droplet-fleet", AccountID: "digitalocean", CostKind: "api_billed", KnownCostUSD: floatPtr(94.38), Events: 30, KnownTokens: 0},
 		{Bucket: day0, GroupKey: "anthropic", Provider: "anthropic", Model: "claude-opus-4-7", AccountID: "claude-personal", CostKind: "subscription_equivalent", KnownCostUSD: floatPtr(142.50), Events: 690, KnownTokens: 19400000},
 		{Bucket: day0, GroupKey: "openai", Provider: "openai", Model: "codex-pro", AccountID: "codex-personal", CostKind: "subscription_equivalent", KnownCostUSD: floatPtr(215.00), Events: 940, KnownTokens: 28500000},
+		{Bucket: day0, GroupKey: "github", Provider: "github", Model: "copilot-premium-requests", AccountID: "github-personal", CostKind: "subscription_equivalent", KnownCostUSD: floatPtr(57.60), Events: 1440, KnownTokens: 11500000},
 		{Bucket: day0, GroupKey: "antigravity", Provider: "antigravity", Model: "gemini-2.5-pro", AccountID: "agy-personal", CostKind: "subscription_equivalent", KnownCostUSD: floatPtr(68.20), Events: 410, KnownTokens: 14200000},
 		{Bucket: day0, GroupKey: "vastai", Provider: "vastai", Model: "rtx-4090-worker", AccountID: "vastai", CostKind: "local_compute", KnownCostUSD: floatPtr(12.40), Events: 88, KnownTokens: 3400000},
 	}
@@ -423,10 +440,19 @@ func buildIntelligence(now time.Time, nowPayload UsageNowPayload) UsageIntellige
 		})
 	}
 
-	// 2. Inspect live accounts for exhausted windows, low balances, sign-in expiry, overage, and stale collectors.
+	// 2. Inspect live accounts for exhausted windows, near-exhaustion quotas (e.g. GitHub Copilot 96%), low balances, sign-in expiry, overage, and stale collectors.
 	for _, a := range nowPayload.Accounts {
 		for _, w := range a.Windows {
-			if (w.Kind == "quota" || w.Unit == "percent") && w.Used != nil && *w.Used >= 99.9 {
+			var usedPct *float64
+			if (w.Kind == "quota" || w.Unit == "percent") && w.Used != nil {
+				if w.Unit == "percent" {
+					usedPct = w.Used
+				} else if w.Limit != nil && *w.Limit > 0 {
+					p := (*w.Used / *w.Limit) * 100.0
+					usedPct = &p
+				}
+			}
+			if usedPct != nil && *usedPct >= 99.9 {
 				addRec(InsightRecommendation{
 					ID:           fmt.Sprintf("rec_blocked_%s_%s", a.ID, w.ID),
 					Kind:         "blocked",
@@ -439,11 +465,33 @@ func buildIntelligence(now time.Time, nowPayload UsageNowPayload) UsageIntellige
 					Provider:     a.Provider,
 					WindowID:     w.ID,
 					Basis: map[string]any{
-						"used_percent": *w.Used,
+						"used_percent": *usedPct,
 						"resets_at":    w.ResetsAt,
 					},
 					Evidence: []string{
-						fmt.Sprintf("Live observation on %s shows %s used=%.1f%%, remaining=0%%", a.ID, w.ID, *w.Used),
+						fmt.Sprintf("Live observation on %s shows %s used=%.1f%%, remaining=0%%", a.ID, w.ID, *usedPct),
+					},
+				})
+			} else if usedPct != nil && *usedPct >= 90.0 && w.Unit == "percent" {
+				remPct := math.Max(0, 100.0-*usedPct)
+				addRec(InsightRecommendation{
+					ID:           fmt.Sprintf("rec_headroom_%s_%s", a.ID, w.ID),
+					Kind:         "plan_fit",
+					Severity:     "warning",
+					Title:        fmt.Sprintf("%s window %s is at %.1f%% (%.1f%% remaining before reset)", a.Label, w.ID, *usedPct, remPct),
+					Summary:      fmt.Sprintf("Account %s (%s) has consumed %.1f%% of %s before its reset at %s.", a.Label, a.ID, *usedPct, w.ID, w.ResetsAt),
+					Action:       fmt.Sprintf("Reserve remaining %.1f%% on %s for high-priority turns or route overflow to Antigravity / Claude", remPct, a.Label),
+					AccountID:    a.ID,
+					AccountLabel: a.Label,
+					Provider:     a.Provider,
+					WindowID:     w.ID,
+					Basis: map[string]any{
+						"used_percent":      math.Round(*usedPct*100) / 100,
+						"remaining_percent": math.Round(remPct*100) / 100,
+						"resets_at":         w.ResetsAt,
+					},
+					Evidence: []string{
+						fmt.Sprintf("Live collector %s on %s reports %s used=%.2f%%", a.SourceID, a.ID, w.ID, *usedPct),
 					},
 				})
 			}
@@ -677,6 +725,23 @@ func buildIntelligence(now time.Time, nowPayload UsageNowPayload) UsageIntellige
 			PlanFit:                "under_provisioned",
 			FitReason:              "Primary weekly window reached 100% exhaustion 3.5 days before reset.",
 			PeriodsAnalyzed:        4,
+		},
+		{
+			AccountID:              "github-personal",
+			AccountLabel:           "GitHub",
+			Provider:               "github",
+			Plan:                   "pro",
+			MonthlyPriceUSD:        floatPtr(10.00),
+			BillingDay:             intPtr(1),
+			UtilizationPercent:     floatPtr(96.0),
+			ForfeitedPercent:       floatPtr(4.0),
+			LeftOnTableUSD:         floatPtr(0.40),
+			ExhaustionSharePercent: floatPtr(0),
+			HoursExhausted:         floatPtr(0),
+			OverageSpendUSD:        floatPtr(0),
+			PlanFit:                "under_provisioned",
+			FitReason:              "Copilot premium requests (96.0%) and included AI credits (1,440 / 1,500) are near monthly cap before Dec 1 reset.",
+			PeriodsAnalyzed:        3,
 		},
 		{
 			AccountID:              "agy-personal",

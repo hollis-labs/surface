@@ -440,6 +440,10 @@ export function Desktop({ modules }: DesktopProps) {
               <Icon name="list-checks" size={15} />
               <span>Native Trackers</span>
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void desk.open("usage")}>
+              <Icon name="gauge" size={15} />
+              <span>Usage Monitor</span>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void desk.open("surface.workflows", { args: { tab: "samples" } })}>
               <Icon name="sparkles" size={15} />
               <span>Workflow Golden Samples</span>

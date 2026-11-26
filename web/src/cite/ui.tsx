@@ -49,6 +49,7 @@ const ICONS: Record<string, LucideIcon> = {
   "align.droppad": Folder,
   "tracker.list": ListChecks,
   "tracker.item": ListChecks,
+  "usage.account": Radar,
   path: FileText,
   "path.relative": FileText,
   url: Link2,

@@ -27,3 +27,4 @@ modules:
   - workflows
   - align
   - trackers
+  - usage

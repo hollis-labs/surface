@@ -100,6 +100,7 @@ const DEFAULT_VIEW_PLACEMENT: Record<string, { groupId: string; order: number }>
 
   // Operations & Fleet (Level 1)
   ops: { groupId: "operations", order: 10 },
+  usage: { groupId: "operations", order: 15 },
   tether: { groupId: "operations", order: 20 },
   registry: { groupId: "operations", order: 30 },
   // Operations -> Design & Visuals (Level 2)

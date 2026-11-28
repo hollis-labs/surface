@@ -15,8 +15,12 @@ import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/componen
 import { isLive, setOpenedFromChat, useCard, useCardsByIds } from "../cards/store"
 import { desk } from "../desk/store"
 import { useEvent } from "../sdk"
+import { baseToolName } from "./toolname.ts"
+
+export { baseToolName }
 
 type Of<K extends ChatItem["kind"]> = Extract<ChatItem, { kind: K }>
+
 export type ToolItem = Of<"tool">
 
 /**
@@ -134,7 +138,11 @@ function ShownCard({ item }: { item: ToolItem }) {
   const input = (item.input ?? {}) as { kind?: string; title?: string; end?: boolean }
   if (item.status === "error") return <ToolRow item={item} />
   const what =
-    item.name === "card_update" ? (input.end ? "Closed a card" : "Updated a card") : `Showed a ${input.kind ?? ""} card`
+    baseToolName(item.name) === "card_update"
+      ? input.end
+        ? "Closed a card"
+        : "Updated a card"
+      : `Showed a ${input.kind ?? ""} card`
   return (
     <MessageNotice>
       {what}
@@ -345,7 +353,7 @@ export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }
     ),
   text: ({ item }) => <AssistantMessage item={item} />,
   tool: ({ item }) => {
-    const Card = toolCards[item.name] ?? ToolRow
+    const Card = toolCards[baseToolName(item.name)] ?? ToolRow
     return <Card item={item} />
   },
   plan: DeskPlan,

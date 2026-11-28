@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.2] - 2026-11-28
+
+- **Chat cards for agents on MCP.** An agent that reaches the app's tools over MCP reports them as
+  `mcp__<server>__<tool>` or titles them `<server>: <tool>` (Claude's ACP adapter). The chat transcript now keys its
+  card renderers on the tool's own name (`baseToolName`), so `card_ask` and `card_show` calls from seat-host agents
+  draw as cards in Agent chat instead of plain rows.
+
 ## [0.21.1] - 2026-11-28
 
 - **Security:** go.opentelemetry.io/otel/sdk, sdk/log, sdk/metric and the OTLP exporters to v1.47.0 (otlploghttp

@@ -143,7 +143,8 @@ export function fakeHost(): FakeHost {
       const through = Number(q.get("through") || 0)
       const log = c.log.filter((ev) => ev.seq < before)
       const starts = log.filter((ev) => ev.verb === "run.start").map((ev) => ev.seq)
-      if (!starts.length) return json(200, { events: [], from: 0, head: c.log.length, more: false })
+      // A Go host sends null for an empty window: the client must take it.
+      if (!starts.length) return json(200, { events: null, from: 0, head: c.log.length, more: false })
       let first = Math.max(0, starts.length - runs)
       if (through) while (first > 0 && (starts[first] ?? 0) > through) first--
       const from = starts[first] ?? 0

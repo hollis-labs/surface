@@ -22,7 +22,7 @@
       "@hollis-labs/surface-cards": ["../packages/cards/src/index.ts"],
       "@hollis-labs/surface-theme": ["../packages/theme/src/index.ts"],
       "@hollis-labs/surface-genui": ["../packages/genui/src/index.ts"],
-      "@surface/app": ["src/generated/desk.ts"],
+      "@surface/app": ["src/generated/demo.ts"],
       "@/*": ["src/*"]
     }
   },

@@ -21,8 +21,11 @@ import m19 from "../../../modules/align/web/index"
 import m20 from "../../../modules/trackers/web/index"
 import m21 from "../../../modules/usage/web/index"
 import m22 from "../../../modules/chat/web/index"
+import m23 from "../../../modules/builder/web/index"
+import m24 from "../../../modules/workbench/web/index"
+import m25 from "../../../modules/workflows/web/index"
 
-export const app = { name: "desk", title: "Surface Desk" }
+export const app = { name: "demo", title: "Surface demo" }
 
 export const modules: Record<string, ModuleWeb> = {
   "notes": m0,
@@ -46,4 +49,7 @@ export const modules: Record<string, ModuleWeb> = {
   "trackers": m20,
   "usage": m21,
   "chat": m22,
+  "builder": m23,
+  "workbench": m24,
+  "workflows": m25,
 }

@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-ui",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Keep an app's copied components identical to the Surface registry: init, add, sync, verify, status and a drift report across apps.",
   "license": "MIT",
   "repository": {

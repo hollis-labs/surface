@@ -6,7 +6,7 @@
 // demo mode and records the page with the DevTools screencast until the demo ends. The
 // frames keep their timing; with ffmpeg on the PATH they become one MP4.
 //
-//   node scripts/record-demo.mjs --script tour.json [--app desk] [--out <dir>] [--width 1440 --height 900]
+//   node scripts/record-demo.mjs --script tour.json [--app demo] [--out <dir>] [--width 1440 --height 900]
 //
 // --out defaults to $TMPDIR/surface-demo-<name>. CHROME names the browser when it is not in
 // the usual place. Writes <out>/frames/*.jpg, <out>/frames.ffconcat, <out>/steps.json and,
@@ -33,7 +33,7 @@ const scriptFile = opt("script")
 if (!scriptFile) die("give the script: --script <file.json> (as script_save takes it)")
 const script = JSON.parse(readFileSync(resolve(scriptFile), "utf8"))
 if (!script.name) die("the script has no name")
-const appName = opt("app", "desk")
+const appName = opt("app", "demo")
 const width = Number(opt("width", "1440"))
 const height = Number(opt("height", "900"))
 const out = resolve(opt("out", join(tmpdir(), `surface-demo-${script.name}`)))

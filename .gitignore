@@ -10,8 +10,8 @@ coverage.out
 
 # The page's packages and each app's built page. dist/.gitkeep stays so go:embed compiles.
 node_modules/
-/apps/*/webui/dist/*
-!/apps/*/webui/dist/.gitkeep
+/examples/*/webui/dist/*
+!/examples/*/webui/dist/.gitkeep
 
 # IDE and OS
 .idea/

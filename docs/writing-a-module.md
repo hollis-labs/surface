@@ -347,9 +347,17 @@ when the card is `Blocking`. `modules/approvals` has one: the secret request.
 
 ## Add it to an app
 
-List the id under `modules:` in the app's `surface.yaml`, then `make generate` (or `make <app>`). The
-generator finds `modules/<id>` and `modules/<id>/web/index.tsx` itself. A module in another repository is
-named in full:
+Apps live in their own repositories (Basalisk: hollis-skunkworks/basalisk; Exo: hollis-labs/exo). This
+repository ships modules, plus `examples/demo`, a preset with every module for CI and local development.
+
+List the id under `modules:` in the app's `surface.yaml`, then run `go tool surface generate` (here:
+`make generate`). The generator finds `modules/<id>` and `modules/<id>/web/index.tsx` itself: in the app's
+own repository first, then in Surface. A Surface module's views reach an app in another repository as
+`@surface/modules/<id>`, which `surfacePage()` (`@hollis-labs/surface-page/vite`) resolves from the Surface
+module the app requires (`go list -m`); their imports resolve from the app's `node_modules`, and
+`@/components/ui/*` from the app's registry components. The app's CSS imports the
+`src/generated/surface-modules.css` the plugin writes (an `@source` for those views; keep it out of git).
+A module in another repository is named in full:
 
 ```yaml
 modules:

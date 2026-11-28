@@ -26,13 +26,16 @@ import (
 	_ "github.com/hollis-labs/surface/modules/trackers"
 	_ "github.com/hollis-labs/surface/modules/usage"
 	_ "github.com/hollis-labs/surface/modules/chat"
+	_ "github.com/hollis-labs/surface/modules/builder"
+	_ "github.com/hollis-labs/surface/modules/workbench"
+	_ "github.com/hollis-labs/surface/modules/workflows"
 )
 
 const (
-	surfaceApp   = "desk"
-	surfaceTitle = "Surface Desk"
+	surfaceApp   = "demo"
+	surfaceTitle = "Surface demo"
 	surfaceAuth  = ""
 )
 
 // surfaceModules is the start order.
-var surfaceModules = []string{"notes", "files", "scratch", "drafts", "browser", "design", "terminal", "viewer", "diagram", "inbox", "reader", "assist", "projects", "tether", "work", "frag", "approvals", "registry", "ops", "align", "trackers", "usage", "chat"}
+var surfaceModules = []string{"notes", "files", "scratch", "drafts", "browser", "design", "terminal", "viewer", "diagram", "inbox", "reader", "assist", "projects", "tether", "work", "frag", "approvals", "registry", "ops", "align", "trackers", "usage", "chat", "builder", "workbench", "workflows"}

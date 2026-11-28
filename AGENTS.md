@@ -21,14 +21,14 @@ in its agent directory's `host.yaml`; the `host` runner is retired. Stored trans
 ## Commands
 
 ```sh
-make desk studio                    # generate, build the page, build bin/<app>
+make demo                           # generate, build the page, build bin/demo (the CI/dev preset)
 make generate                       # regenerate wiring after editing a surface.yaml
 make test vet lint                  # go test -race, go vet, golangci-lint
 npm run typecheck && npm run lint   # the page
 make ui-build ui-verify             # regenerate the registry; check the page's copies match it
 make scan                           # secrets / hosts / private paths, tree and history
 make pack-check                     # pack the npm packages, install the tarballs elsewhere, use them
-SURFACE_APP=desk npm run dev        # the page with hot reload, against a running bin/desk
+SURFACE_APP=demo npm run dev        # the page with hot reload, against a running bin/demo
 ```
 
 ## Boundaries

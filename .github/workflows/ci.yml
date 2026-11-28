@@ -41,8 +41,8 @@ jobs:
       - name: Generated wiring is current
         run: |
           make generate
-          git diff --exit-code -- apps web/src/generated
-      - name: Build every app (page, then binary)
+          git diff --exit-code -- examples web/src/generated
+      - name: Build the demo preset (page, then binary)
         run: make all
       - run: go vet ./...
       - run: go test -race ./...

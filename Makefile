@@ -1,17 +1,17 @@
-.PHONY: all generate build desk studio web-install typecheck lint-web ui-build ui-verify ui-shots design-preview design-gallery packages pack-check test vet lint scan pins clean
+.PHONY: all generate build demo web-install typecheck lint-web ui-build ui-verify ui-shots design-preview design-gallery packages pack-check test vet lint scan pins clean
 
 SURFACE := go run ./cmd/surface
-APPS    := desk studio
+APPS    := demo
 
 # Generate, build the page and build the binary of every app into bin/.
 all: $(APPS)
 
 $(APPS):
-	$(SURFACE) build -f apps/$@/surface.yaml
+	$(SURFACE) build -f examples/$@/surface.yaml
 
 # Regenerate the wiring of every app after editing its surface.yaml.
 generate:
-	for a in $(APPS); do $(SURFACE) generate -f apps/$$a/surface.yaml || exit 1; done
+	for a in $(APPS); do $(SURFACE) generate -f examples/$$a/surface.yaml || exit 1; done
 
 web-install:
 	npm ci
@@ -76,4 +76,4 @@ scan:
 # Remove build artifacts. Keeps each webui/dist/.gitkeep so go:embed still compiles.
 clean:
 	rm -rf bin
-	for a in $(APPS); do find apps/$$a/webui/dist -mindepth 1 ! -name .gitkeep -delete; done
+	for a in $(APPS); do find examples/$$a/webui/dist -mindepth 1 ! -name .gitkeep -delete; done

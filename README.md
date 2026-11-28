@@ -28,8 +28,7 @@ Surface app (a generated binary)  =  Surface core  +  modules
 
 | App | Modules | |
 |---|---|---|
-| `desk` | notes, files, scratch, drafts, browser | The core modules. |
-| `studio` | scratch, notes, drafts, browser, builder | Adds the **Interaction Builder**: describe a flow, and the agent arranges windows, modules and reflexes for it and saves that as a layout you can return to. |
+| `demo` (`examples/demo`) | every module in this repository | A preset for CI and local development, not a product. Apps live in their own repositories and pick the modules they use: Basalisk (`hollis-skunkworks/basalisk`), Exo (`hollis-labs/exo`). |
 
 ## Run it
 
@@ -37,8 +36,8 @@ Needs Go 1.26.11+ and Node 22+.
 
 ```sh
 npm ci
-make desk            # generate, build the page, build bin/desk
-./bin/desk           # serves http://127.0.0.1:8190
+make demo            # generate, build the page, build bin/demo
+./bin/demo           # serves http://127.0.0.1:8190
 ```
 
 Data lives under `$XDG_DATA_HOME/surface/<app>` (or `<APP>_DATA_DIR`); the address is `<APP>_ADDR`. The
@@ -48,10 +47,10 @@ panel says what to set.
 The same binary drives a running app from a shell, and any MCP client can connect to `/mcp`:
 
 ```sh
-./bin/desk open scratch
-./bin/desk call scratch_add '{"text":"todo: try the palette"}'
-./bin/desk settings surface.theme light      # live: the open page changes at once
-./bin/desk layouts
+./bin/demo open scratch
+./bin/demo call scratch_add '{"text":"todo: try the palette"}'
+./bin/demo settings surface.theme light      # live: the open page changes at once
+./bin/demo layouts
 ```
 
 ## Write a module

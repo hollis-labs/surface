@@ -6,13 +6,13 @@ import { defineConfig } from "vite"
 // One page source, many apps: SURFACE_APP picks the generated module list
 // (src/generated/<app>.ts, written by `surface generate`), SURFACE_OUT where the build goes
 // (the app's webui/dist, which its binary embeds).
-const app = process.env.SURFACE_APP ?? "desk"
+const app = process.env.SURFACE_APP ?? "demo"
 const root = import.meta.dirname
 const generated = resolve(root, `src/generated/${app}.ts`)
 if (!existsSync(generated)) {
-  throw new Error(`no ${generated}: run \`go run ./cmd/surface generate -f apps/${app}/surface.yaml\` first`)
+  throw new Error(`no ${generated}: run \`go run ./cmd/surface generate -f examples/${app}/surface.yaml\` first`)
 }
-const outDir = process.env.SURFACE_OUT ?? resolve(root, `../apps/${app}/webui/dist`)
+const outDir = process.env.SURFACE_OUT ?? resolve(root, `../examples/${app}/webui/dist`)
 const api = process.env.SURFACE_API ?? "http://127.0.0.1:8190"
 
 export default defineConfig({

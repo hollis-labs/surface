@@ -590,6 +590,14 @@ export function EntityCardRenderer({ card, respond: send }: CardRendererProps) {
               )}
             </div>
           </CardFoot>
+        ) : open ? (
+          // A card that only shows something (card_show) still leaves the Cards window when
+          // the owner is done with it.
+          <div data-slot="card-entity-done" className="flex w-full items-center justify-end">
+            <Button size="xs" variant="ghost" onClick={() => void send({ status: "canceled" })}>
+              Dismiss
+            </Button>
+          </div>
         ) : undefined
       }
     >

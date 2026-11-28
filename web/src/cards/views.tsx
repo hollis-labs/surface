@@ -173,6 +173,8 @@ export function CardsWindow({ win }: ViewProps) {
   const [page, setPage] = useState(0)
   const [submittingAll, setSubmittingAll] = useState(false)
   const [hadOpenOnMount, setHadOpenOnMount] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const pageSizeSetting = (useSetting<number>("surface.card_page_size") ?? 3) as number
   const pageSize = Math.max(1, pageSizeSetting)
   const displayMode = (useSetting<string>("surface.card_display") ?? "inline") as string
@@ -241,6 +243,26 @@ export function CardsWindow({ win }: ViewProps) {
       }
     } finally {
       setSubmittingAll(false)
+    }
+  }
+
+  // Clear all: dismiss every open card at once. An agent's question is closed as declined
+  // (canceled); one its sender stopped waiting for takes no late answer after this.
+  const clearAll = async () => {
+    if (clearing) return
+    setClearing(true)
+    try {
+      for (const c of open) {
+        await respond(c.id, { status: "canceled" }).catch(() => {})
+      }
+      refresh()
+      if (isAutoFromChat) {
+        setOpenedFromChat(false)
+        void desk.close(win.id)
+      }
+    } finally {
+      setClearing(false)
+      setConfirmClear(false)
     }
   }
 
@@ -320,6 +342,25 @@ export function CardsWindow({ win }: ViewProps) {
                   Next
                 </Button>
               </>
+            )}
+            {confirmClear ? (
+              <>
+                <Button size="xs" variant="destructive" disabled={clearing} onClick={() => void clearAll()}>
+                  Dismiss all {open.length}
+                </Button>
+                <Button size="xs" variant="ghost" disabled={clearing} onClick={() => setConfirmClear(false)}>
+                  Keep
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="xs"
+                variant="ghost"
+                title="Dismiss every open card; an agent's questions close as declined"
+                onClick={() => setConfirmClear(true)}
+              >
+                Clear all
+              </Button>
             )}
             {open.length > 1 && (
               <Button

@@ -206,7 +206,11 @@ for (const kind of [
   "ops.host",
   "ops.followup",
   "registry.record",
+  "tracker.list",
   "tracker.item",
+  "align.proposal",
+  "align.droppad",
+  "work.item",
 ]) {
   registerCard(kind, "1", EntityCardRenderer)
 }

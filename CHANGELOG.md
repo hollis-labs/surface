@@ -5,6 +5,17 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.3] - 2026-11-28
+
+- **MCP approval bridge.** A client that names itself with `X-Surface-Agent` (a seat host sends its seat) now gets
+  write and confirm tools too; they ask the owner first with a card naming the caller and wait up to ten minutes.
+  Anonymous clients keep read and act only. A write tool's card offers Allow once, Always allow for that caller (until the app restarts) and Deny;
+  a confirm tool asks with an approval card every time. Seat-host agents can now use tools like `align_propose` and
+  `droppad_create` with the owner's approval.
+- **Cards that drew as "no way to draw this kind".** `tracker.list`, `work.item`, `align.proposal` and `align.droppad`
+  were offered by `card_show`/`card_ask` (and are entity kinds in the core) but had no renderer; they now draw with the
+  entity card renderer like `tracker.item` and `registry.record`.
+
 ## [0.21.2] - 2026-11-28
 
 - **Chat cards for agents on MCP.** An agent that reaches the app's tools over MCP reports them as

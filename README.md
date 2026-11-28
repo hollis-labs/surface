@@ -125,10 +125,12 @@ Tether keeps that context out of the conversation event log. The Tether path
 assembles context but does not run the embedded runner's routing/reflex or approval
 hooks. The local context panel remains available.
 
-MCP lists and executes **read and act** tools only, for every outside client.
-Write and confirm tools are neither listed nor callable through `/mcp`; use the
-embedded runner's approval flow for those tools. Approval bridging is not part
-of the Tether attachment.
+MCP serves read and act tools to every client. A client that names itself with the
+`X-Surface-Agent` header (a seat host sends its seat) also gets write and confirm tools, which
+**ask the owner first** with a card naming the caller and wait up to ten minutes for the answer.
+An anonymous client sees and calls read and act tools only. A write tool offers "Allow once",
+"Always allow … for <caller>" (it stands until the app restarts) and "Deny"; a confirm tool asks
+with an approval card every time.
 
 
 ## Project scaffolding

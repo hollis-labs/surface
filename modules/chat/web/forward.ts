@@ -14,6 +14,18 @@ export interface SeatName {
 }
 
 const SEND = "/api/m/chat/h/seats"
+/** The app's own seats (Nanite agents in this app) are listed and opened here; their keys in
+ * the roster are "local:<id>". */
+export const LOCAL_SEATS = "/api/agent/seats"
+export const LOCAL_PREFIX = "local:"
+
+/** The app's own seats, in the seat host's shape, keyed "local:<id>" (none when the app has none). */
+export async function localSeats<T extends { seat: string }>(): Promise<(T & { local_id: string; local: true })[]> {
+  const res = await fetch(LOCAL_SEATS, { credentials: "same-origin" }).catch(() => null)
+  if (!res?.ok) return []
+  const body = (await res.json().catch(() => ({}))) as { seats?: T[] }
+  return (body.seats ?? []).map((s) => ({ ...s, seat: LOCAL_PREFIX + s.seat, local_id: s.seat, local: true as const }))
+}
 let known = ""
 
 /** Sets the seats Forward offers. Cheap to call on every poll: it re-registers only on change. */
@@ -54,7 +66,10 @@ export function forwardText(obj: ObjectRef): string {
 }
 
 export async function sendToSeat(seat: string, text: string, session = ""): Promise<{ session: string }> {
-  const res = await fetch(`${SEND}/${encodeURIComponent(seat)}/send`, {
+  const url = seat.startsWith(LOCAL_PREFIX)
+    ? `${LOCAL_SEATS}/${encodeURIComponent(seat.slice(LOCAL_PREFIX.length))}/send`
+    : `${SEND}/${encodeURIComponent(seat)}/send`
+  const res = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },

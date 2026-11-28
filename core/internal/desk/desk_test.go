@@ -822,4 +822,10 @@ func TestAnOutsideClientsWindowOpensBehind(t *testing.T) {
 	if len(d.Snapshot().Wins) != 2 || w.ID == "" {
 		t.Fatal("the window was not opened")
 	}
+	// One of the app's own seats (the agent actor, named): behind as well.
+	local := module.WithAgent(as(module.ActorAgent), module.AgentRef{Name: "Research Seat"})
+	mustOpen(local, t, d, "browser", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Fatalf("an in-app seat's window took the focus: %s", f)
+	}
 }

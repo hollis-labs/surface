@@ -5,6 +5,16 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.24.0] - 2026-11-28
+
+- **Seats: more Nanite agents in the app.** Folders under `seats.dir` (agent config) or `SURFACE_SEATS_DIR`, each an
+  agent directory, become seats: their own Nanite runner, data and conversation on the app's wire (`seat.<id>`),
+  sharing the app's tools and approvals, context slots, router and reflexes. `GET /api/agent/seats`,
+  `POST /api/agent/seats/{seat}/sessions`, `POST /api/agent/seats/{seat}/send`. Their cards name them, late answers
+  go back to them, and their windows open behind. See docs/agent.md, "Seats".
+- **Agent chat lists the app's own seats** beside a seat host's, chats on their wire, and forwards to them.
+- **Desk:** any named agent's window (a seat over MCP or in the app) opens behind.
+
 ## [0.23.6] - 2026-11-28
 
 - **A reload no longer leaves the chat input held.** A conversation store lets go of its attachment (and the input

@@ -123,13 +123,19 @@ func (s *Service) deliverLate(ctx context.Context, store lateCards, d *lateDeliv
 			i++
 			continue
 		}
-		batch := list[i:]
+		// One turn per agent: the run of answers meant for the same one.
+		target := lateTarget(c, s.wire.agent)
+		end := i + 1
+		for end < len(list) && lateTarget(list[end], s.wire.agent) == target {
+			end++
+		}
+		batch := list[i:end]
 		var run string
 		var err error
 		if len(batch) > 1 {
-			run, err = s.submitLateBatch(ctx, batch)
+			run, err = s.submitLateBatch(ctx, batch, target)
 		} else {
-			run, err = s.submitLate(ctx, c)
+			run, err = s.submitLate(ctx, c, target)
 		}
 		if errors.Is(err, chat.ErrBusy) {
 			return true // the rest wait behind it, in order
@@ -159,10 +165,18 @@ func (s *Service) deliverLate(ctx context.Context, store lateCards, d *lateDeliv
 }
 
 // submitLateBatch submits multiple waiting late/held answers together as one consolidated turn.
-func (s *Service) submitLateBatch(ctx context.Context, batch []module.Card) (string, error) {
+// lateTarget is the agent a late answer goes to: the seat that asked, or the embedded agent.
+func lateTarget(c module.Card, embedded string) string {
+	if strings.HasPrefix(c.ReplyTo, SeatPrefix) {
+		return c.ReplyTo
+	}
+	return embedded
+}
+
+func (s *Service) submitLateBatch(ctx context.Context, batch []module.Card, target string) (string, error) {
 	title := fmt.Sprintf("Answers to %d cards", len(batch))
 	meta, _ := json.Marshal(errandMeta{Auto: true, Errand: LateErrand, Title: title})
-	view, err := s.wire.svc.EnsureConversation(ctx, s.wire.agent)
+	view, err := s.wire.svc.EnsureConversation(ctx, target)
 	if err != nil {
 		return "", err
 	}
@@ -180,13 +194,13 @@ func (s *Service) submitLateBatch(ctx context.Context, batch []module.Card) (str
 }
 
 // submitLate submits one late answer as a turn on the agent's conversation.
-func (s *Service) submitLate(ctx context.Context, c module.Card) (string, error) {
+func (s *Service) submitLate(ctx context.Context, c module.Card, target string) (string, error) {
 	title := cardTitle(c)
 	if r := []rune(title); len(r) > 200 {
 		title = string(r[:200])
 	}
 	meta, _ := json.Marshal(errandMeta{Auto: true, Errand: LateErrand, Title: title})
-	view, err := s.wire.svc.EnsureConversation(ctx, s.wire.agent)
+	view, err := s.wire.svc.EnsureConversation(ctx, target)
 	if err != nil {
 		return "", err
 	}

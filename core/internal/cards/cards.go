@@ -307,10 +307,11 @@ func (s *Store) closeLate(ctx context.Context, id string, o module.CardOutcome) 
 	return c, nil
 }
 
-// LateAnswers returns the embedded agent's late answers submitted but not yet handed to it,
-// oldest first (an outside agent's are fetched by its host). It is the delivery queue: kept in the database, so a restart does not lose it.
+// LateAnswers returns the late answers submitted but not yet handed to an agent of this app,
+// oldest first: the embedded agent's (no agent) and the app's own seats' (reply_to
+// "seat.<id>"). An outside agent's are fetched by its host. It is the delivery queue: kept in the database, so a restart does not lose it.
 func (s *Store) LateAnswers(ctx context.Context) ([]module.Card, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE late=1 AND status='submitted' AND delivered_at='' AND agent='' ORDER BY responded_at, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE late=1 AND status='submitted' AND delivered_at='' AND (agent='' OR reply_to LIKE 'seat.%') ORDER BY responded_at, id`)
 	if err != nil {
 		return nil, err
 	}

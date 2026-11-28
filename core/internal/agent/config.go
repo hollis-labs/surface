@@ -50,6 +50,11 @@ type FileConfig struct {
 	// not use this field; configure MCP in the Nanite agent directory.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
 
+	// Seats is where more Nanite agents of the app are: each subfolder with agent.md and
+	// host.yaml is a seat (seats.go). SURFACE_SEATS_DIR overrides it. Empty: no seats.
+	Seats struct {
+		Dir string `json:"dir,omitempty"`
+	} `json:"seats,omitempty"`
 	// Agents says where the agent's authored directory is kept, for a runner that has one
 	// (Nanite): <dir>/<app>. Default: agents/ beside this file.
 	Agents struct {

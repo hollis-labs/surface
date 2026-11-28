@@ -164,7 +164,7 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     }
     const firsts: Record<string, string> = {}
     let s: ChatState = { ...state, ids: [], items: {}, run: null, parts: {}, approval: null, cursor: 0 }
-    for (const ev of w.events) s = reduceNoting(s, ev, firsts)
+    for (const ev of w.events ?? []) s = reduceNoting(s, ev, firsts)
     historyHead = w.head
     historyFrom = w.from
     set({
@@ -181,7 +181,7 @@ export function createConversationStore(opts: ConversationStoreOptions) {
   function prepend(w: HistoryWindow) {
     const firsts: Record<string, string> = {}
     let s: ChatState = { ...initialState }
-    for (const ev of w.events) s = reduceNoting(s, ev, firsts)
+    for (const ev of w.events ?? []) s = reduceNoting(s, ev, firsts)
     const ids = [...s.ids.filter((id) => !(id in state.items)), ...state.ids]
     if (w.from) historyFrom = w.from
     set({

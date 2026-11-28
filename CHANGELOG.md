@@ -5,6 +5,11 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.2] - 2026-11-28
+
+- **A chat with no messages yet opens empty** instead of "events is not iterable": a host's history window for an
+  empty conversation sends `events: null`, which the conversation store now takes as no events.
+
 ## [0.23.1] - 2026-11-28
 
 - **Rename a seat** from its menu: a display name for the roster, the session header, Forward and the approvals

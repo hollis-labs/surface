@@ -466,3 +466,12 @@ test("a resumed turn that answers clears the offer", () => {
   s = reduceConversation(s, events[5])
   assert.equal(s.interrupted, null)
 })
+
+test("a conversation with no messages yet opens empty (the host sends events: null)", async () => {
+  const host = fakeHost()
+  const store = open(host)
+  await store.start()
+  await until(() => store.get().loaded)
+  assert.equal(store.get().error, "")
+  assert.deepEqual(store.get().ids, [])
+})

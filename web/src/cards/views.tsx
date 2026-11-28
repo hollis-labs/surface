@@ -172,9 +172,9 @@ export function CardHost() {
         </div>
       )}
       {waiting.length > 0 && !front && (
-        <div data-slot="card-waiting" className="fixed right-4 bottom-4 z-50">
-          <Button size="sm" variant="outline" className="gap-2 shadow-md" onClick={() => setDeferred(new Set())}>
-            <Icon name="message-circle-question-mark" size={14} />
+        <div data-slot="card-waiting" className="fixed top-1 left-1/2 z-50 translate-x-1">
+          <Button size="xs" variant="outline" className="h-6 gap-1.5 bg-card" onClick={() => setDeferred(new Set())}>
+            <Icon name="message-circle-question-mark" size={12} />
             {waiting.length === 1 ? "A question is waiting · Answer" : `${waiting.length} questions waiting · Answer`}
           </Button>
         </div>
@@ -240,7 +240,8 @@ export function CardsWindow({ win }: ViewProps) {
     const c = ev.data
     if (c && c.source === "agent" && ANSWERABLE.includes(c.kind) && lateOpen(c)) {
       if (isUserInChat()) setOpenedFromChat(true)
-      if (!win.focused) {
+      // Not while the owner is typing elsewhere: the question waits in this window.
+      if (!win.focused && !isOwnerTyping()) {
         void desk.focus(win.id)
       }
     }

@@ -16,6 +16,7 @@ func views() []ViewInfo {
 	return []ViewInfo{
 		{View: module.View{ID: "notes", Title: "Notes"}, Module: "notes"},
 		{View: module.View{ID: "scratch", Title: "Scratch"}, Module: "scratch"},
+		{View: module.View{ID: "surface.cards", Title: "Cards"}, Module: "surface"},
 		{View: module.View{ID: "browser", Title: "Browser", Multi: true, DefaultKey: "main"}, Module: "browser"},
 	}
 }
@@ -784,5 +785,26 @@ func TestTypingInThePanelKeepsTheFocusWhereItIs(t *testing.T) {
 	}
 	if _, err := d.Apply(agent, Action{Type: "composing", Composing: false}); err == nil {
 		t.Error("the agent cleared the owner's composing")
+	}
+}
+
+// The Cards window does not take the focus from a window the owner is typing in.
+func TestCardsDoNotTakeTheFocusWhileTheOwnerTypes(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, agent := as(module.ActorOwner), as(module.ActorAgent)
+	chat := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	if _, err := d.Apply(owner, Action{Type: "composing", ID: chat.ID, Composing: true}); err != nil {
+		t.Fatal(err)
+	}
+	mustOpen(agent, t, d, "surface.cards", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != chat.ID {
+		t.Fatalf("the Cards window took the focus while the owner typed: %s", f)
+	}
+	if _, err := d.Apply(owner, Action{Type: "composing", ID: chat.ID, Composing: false}); err != nil {
+		t.Fatal(err)
+	}
+	cards := mustOpen(agent, t, d, "surface.cards", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != cards.ID {
+		t.Fatalf("not typing: the Cards window should come forward, focus %s", f)
 	}
 }

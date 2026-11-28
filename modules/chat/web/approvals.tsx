@@ -250,9 +250,10 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
   return (
     <>
       {!open && (
-        <div className="fixed right-4 bottom-4 z-50">
-          <Button size="sm" variant="outline" className="gap-2 shadow-md" onClick={() => setOpen(true)}>
-            <Icon name="shield-question-mark" size={14} />
+        // In the empty middle of the top bar: clear of the windows' title bars and the composers.
+        <div className="fixed top-1 left-1/2 z-50 -translate-x-[calc(100%+0.25rem)]">
+          <Button size="xs" variant="outline" className="h-6 gap-1.5 bg-card" onClick={() => setOpen(true)}>
+            <Icon name="shield-question-mark" size={12} />
             {items.length === 1 ? "1 approval waiting" : `${items.length} approvals waiting`}
           </Button>
         </div>

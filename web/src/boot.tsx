@@ -17,6 +17,7 @@ import { coreWeb } from "./desk/coreViews"
 import { Desktop } from "./desk/Desktop"
 import { moduleApi } from "./desk/moduleApi"
 import { loadManifest } from "./desk/store"
+import { UpdateNotice } from "./desk/UpdateNotice"
 import { call, connect, loadSettings } from "./sdk/runtime"
 import type { ModuleWeb } from "./sdk/types"
 
@@ -80,6 +81,7 @@ export function Page({ modules, core }: PageProps) {
     <MarkdownExtensions value={citeMarkdownExtensions}>
       <Desktop modules={{ ...modules, surface: { ...coreWeb, views: { ...coreWeb.views, ...core } } }} />
       <CardHost />
+      <UpdateNotice />
       {Object.entries(modules).map(([id, m]) => {
         const Overlay = m.overlay
         return Overlay ? <Overlay key={id} api={moduleApi(id)} /> : null

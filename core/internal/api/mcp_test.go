@@ -152,6 +152,25 @@ func TestMCPWriteAsksAndAlwaysStands(t *testing.T) {
 	if n := mcpRuns.Load() - before; n != 4 {
 		t.Fatalf("runs = %d, want 4 (read, always, standing, once)", n)
 	}
+	// The standing answer is listed, and once revoked the caller is asked again.
+	resp, err := http.Get(srv.URL + "/api/mcp/grants")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grants []map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&grants)
+	_ = resp.Body.Close()
+	if len(grants) != 1 || grants[0]["caller"] != "seat-host:skills" || grants[0]["tool"] != "mcptest_write" {
+		t.Fatalf("grants = %v", grants)
+	}
+	req, _ := http.NewRequest("DELETE", srv.URL+"/api/mcp/grants?caller=seat-host:skills&tool=mcptest_write", nil)
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("revoke: %v", err)
+	}
+	answerNext(t, a, module.CardOutcome{Status: "submitted", Answers: []module.CardAnswer{{QuestionID: "choice", Value: "deny"}}})
+	if v := mcpCall(t, srv, "seat-host:skills", `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"mcptest_write"}}`); !isError(v) {
+		t.Fatalf("after revoke the caller must be asked (and here denied): %v", v)
+	}
 }
 
 func TestMCPConfirmAsksEveryTime(t *testing.T) {

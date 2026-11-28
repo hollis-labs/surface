@@ -61,6 +61,8 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("POST /api/cards/{id}/response", s.respondCard)
 	mux.HandleFunc("POST /api/cards/{id}/hold", s.holdCard)
 	mux.HandleFunc("POST /api/cards/{id}/delivered", s.deliveredCard)
+	mux.HandleFunc("GET /api/mcp/grants", s.mcpGrants)
+	mux.HandleFunc("DELETE /api/mcp/grants", s.mcpRevoke)
 
 	mux.HandleFunc("GET /api/layouts", s.layouts)
 	mux.HandleFunc("POST /api/layouts", s.saveLayout)

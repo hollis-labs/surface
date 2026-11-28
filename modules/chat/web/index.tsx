@@ -51,6 +51,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { ActivityLine, isFolded } from "./activity"
 import { ApprovalsOverlay } from "./approvals"
 import { setForwardSeats } from "./forward"
+import { AskSwitch, fetchPatch, RenameField, SeatDetails, SeatMenu, SessionMenu, UsageStrip } from "./manage"
 import { movePin, orderRoster, parsePins } from "./roster"
 
 type State = "stopped" | "starting" | "idle" | "running" | "stalled" | "waiting" | "crashed"
@@ -65,6 +66,7 @@ interface Session {
   last_error?: string
   last_event_at?: string
   active_run?: string
+  ask?: boolean
 }
 
 interface Seat {
@@ -78,6 +80,11 @@ interface Seat {
   effort?: string
   version?: string
   error?: string
+  lock?: { repo_sha?: string; [k: string]: unknown }
+  mcp_servers?: string[]
+  surface_tools?: string[]
+  dir?: string
+  archived?: number
   sessions: Session[]
 }
 
@@ -152,8 +159,17 @@ function ChatView({ win, desk, api }: ViewProps) {
     [api, desk, reload, select],
   )
 
-  const all = reply?.seats ?? []
-  useEffect(() => setForwardSeats(all.map((s) => ({ seat: s.seat, name: s.name }))), [all])
+  const every = reply?.seats ?? []
+  useEffect(() => setForwardSeats(every.map((s) => ({ seat: s.seat, name: s.name }))), [every])
+  const hidden = parsePins(useSetting<string>("chat.hidden_seats"))
+  const [showHidden, setShowHidden] = useState(false)
+  const all = showHidden ? every : every.filter((s) => !hidden.includes(s.seat))
+  const toggleHide = (seat: string) =>
+    void setSetting(
+      "chat.hidden_seats",
+      (hidden.includes(seat) ? hidden.filter((h) => h !== seat) : [...hidden, seat]).join(","),
+    )
+  const [details, setDetails] = useState<Seat | null>(null)
   const pins = parsePins(useSetting<string>("chat.pinned_seats"))
   const recentMin = useSetting<number>("chat.recent_minutes") ?? 15
   const roster = orderRoster(all, pins, recentMin * 60_000, Date.now())
@@ -164,8 +180,22 @@ function ChatView({ win, desk, api }: ViewProps) {
     if (dragging) savePins(movePin(pins, dragging, before))
     setDragging("")
   }
-  const session = useMemo(() => all.flatMap((s) => s.sessions).find((s) => s.id === selected), [all, selected])
-  const seat = useMemo(() => all.find((s) => s.seat === session?.seat), [all, session])
+  const session = useMemo(() => every.flatMap((s) => s.sessions).find((s) => s.id === selected), [every, selected])
+  const seat = useMemo(() => every.find((s) => s.seat === session?.seat), [every, session])
+  const rowProps = (s: Seat) => ({
+    api,
+    seat: s,
+    selected,
+    busy: busy === s.seat,
+    onOpen: open,
+    onSelect: select,
+    onPin: togglePin,
+    onHide: () => toggleHide(s.seat),
+    onDetails: () => setDetails(s),
+    onChanged: reload,
+    pinned: pins.includes(s.seat),
+    hidden: hidden.includes(s.seat),
+  })
 
   useEffect(() => {
     desk.report(win.id, { kind: "chat", ref: selected ? `chat:${selected}` : "chat:seats" })
@@ -204,35 +234,37 @@ function ChatView({ win, desk, api }: ViewProps) {
                 }}
                 className={dragging === s.seat ? "opacity-50" : ""}
               >
-                <SeatRow
-                  seat={s}
-                  selected={selected}
-                  busy={busy === s.seat}
-                  onOpen={open}
-                  onSelect={select}
-                  pinned
-                  onPin={togglePin}
-                />
+                <SeatRow {...rowProps(s)} />
               </div>
             ))}
             <div className="my-1 border-b border-[var(--color-border)]" />
           </div>
         )}
         {roster.rest.map((s) => (
-          <SeatRow
-            key={s.seat}
-            seat={s}
-            selected={selected}
-            busy={busy === s.seat}
-            onOpen={open}
-            onSelect={select}
-            recent={roster.recent.has(s.seat)}
-            onPin={togglePin}
-          />
+          <SeatRow key={s.seat} {...rowProps(s)} recent={roster.recent.has(s.seat)} />
         ))}
-        {reply && all.length === 0 && (
+        {reply && every.length === 0 && (
           <p className="px-1 text-xs text-[var(--color-muted-foreground)]">No seats on this host.</p>
         )}
+        {hidden.length > 0 && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="mt-1 justify-start text-[var(--color-muted-foreground)]"
+            onClick={() => setShowHidden((v) => !v)}
+          >
+            <Icon name={showHidden ? "eye-off" : "eye"} size={12} />
+            {showHidden ? "Hide hidden seats" : `${hidden.length} hidden ${hidden.length === 1 ? "seat" : "seats"}`}
+          </Button>
+        )}
+        <SeatDetails
+          api={api}
+          seat={details}
+          open={!!details}
+          onOpenChange={(o) => !o && setDetails(null)}
+          onChanged={reload}
+          onSelect={select}
+        />
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         {session && seat ? (
@@ -257,39 +289,62 @@ function ChatView({ win, desk, api }: ViewProps) {
 }
 
 function SeatRow({
+  api,
   seat,
   selected,
   busy,
   onOpen,
   onSelect,
   pinned = false,
+  hidden = false,
   recent = false,
   onPin,
+  onHide,
+  onDetails,
+  onChanged,
 }: {
+  api: ModuleAPI
   seat: Seat
   selected: string
   busy: boolean
   onOpen: (seat: string) => void
   onSelect: (id: string) => void
   pinned?: boolean
+  hidden?: boolean
   recent?: boolean
   onPin: (seat: string) => void
+  onHide: () => void
+  onDetails: () => void
+  onChanged: () => Promise<void>
 }) {
   const continuity = seat.shape === "continuity"
   const only = continuity ? seat.sessions[0] : undefined
   const active = only ? only.id === selected : false
+  const [renaming, setRenaming] = useState("")
+  const rename = async (id: string, title: string) => {
+    setRenaming("")
+    await fetchPatch(api, id, { title }).catch(() => {})
+    await onChanged()
+  }
+  const archive = async (id: string) => {
+    await api.del(`h/sessions/${encodeURIComponent(id)}`).catch(() => {})
+    if (id === selected) onSelect("")
+    await onChanged()
+  }
   return (
-    <div className="group/seat relative flex flex-col">
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        type="button"
-        className={`absolute top-1 right-1 z-10 ${pinned ? "" : "opacity-0 group-hover/seat:opacity-100"}`}
-        title={pinned ? "Unpin (drag pinned seats to reorder)" : "Pin to the top"}
-        onClick={() => onPin(seat.seat)}
+    <div className={`group/seat relative flex flex-col ${hidden ? "opacity-60" : ""}`}>
+      <div
+        className={`absolute top-1 right-1 z-10 ${pinned ? "" : "opacity-0 group-hover/seat:opacity-100 has-[[data-popup-open]]:opacity-100"}`}
       >
-        <Icon name={pinned ? "pin-off" : "pin"} size={11} />
-      </Button>
+        <SeatMenu
+          seat={seat}
+          pinned={pinned}
+          hidden={hidden}
+          onPin={() => onPin(seat.seat)}
+          onHide={onHide}
+          onDetails={onDetails}
+        />
+      </div>
       <Button
         variant="ghost"
         size="xs"
@@ -309,19 +364,35 @@ function SeatRow({
       {seat.error && <p className="px-2 text-xs text-red-500">{seat.error}</p>}
       {!continuity && (
         <div className="ml-4 flex flex-col">
-          {seat.sessions.map((s) => (
-            <Button
-              variant="ghost"
-              size="xs"
-              key={s.id}
-              type="button"
-              onClick={() => onSelect(s.id)}
-              className={`h-auto w-full justify-start flex items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-[var(--color-accent)] ${s.id === selected ? "bg-[var(--color-accent)]" : ""}`}
-            >
-              <StateDot state={s.state} />
-              <span className="min-w-0 flex-1 truncate">{s.title || "New session"}</span>
-            </Button>
-          ))}
+          {seat.sessions.map((s) =>
+            renaming === s.id ? (
+              <div key={s.id} className="flex items-center gap-2 px-2 py-0.5">
+                <StateDot state={s.state} />
+                <RenameField
+                  value={s.title ?? ""}
+                  onSave={(t) => void rename(s.id, t)}
+                  onCancel={() => setRenaming("")}
+                />
+              </div>
+            ) : (
+              <div key={s.id} className="group/sess relative flex items-center">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  onClick={() => onSelect(s.id)}
+                  onDoubleClick={() => setRenaming(s.id)}
+                  className={`h-auto w-full justify-start flex items-center gap-2 rounded px-2 py-1 pr-7 text-left text-xs hover:bg-[var(--color-accent)] ${s.id === selected ? "bg-[var(--color-accent)]" : ""}`}
+                >
+                  <StateDot state={s.state} />
+                  <span className="min-w-0 flex-1 truncate">{s.title || "New session"}</span>
+                </Button>
+                <div className="absolute right-1 opacity-0 group-hover/sess:opacity-100 has-[[data-popup-open]]:opacity-100">
+                  <SessionMenu canArchive onRename={() => setRenaming(s.id)} onArchive={() => void archive(s.id)} />
+                </div>
+              </div>
+            ),
+          )}
           {seat.sessions.length < seat.max_sessions && (
             <Button
               variant="ghost"
@@ -365,6 +436,9 @@ function SessionPane({
   }, [session.id])
   const [searching, setSearching] = useState(false)
   const [focus, setFocus] = useState("")
+  const [renaming, setRenaming] = useState(false)
+  const [turnsDone, setTurnsDone] = useState(0)
+  useEffect(() => store?.onRunEnd(() => setTurnsDone((n) => n + 1)), [store])
 
   const [logs, setLogs] = useState<string[] | null>(null)
   const [acting, setActing] = useState("")
@@ -403,19 +477,42 @@ function SessionPane({
       <header className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
         <StateDot state={session.state} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">
-            {seat.name}
-            {seat.shape === "concurrent" && session.title ? (
-              <span className="font-normal text-[var(--color-muted-foreground)]"> · {session.title}</span>
-            ) : null}
-          </div>
+          {renaming ? (
+            <div className="flex items-center gap-1 font-medium">
+              {seat.name} ·
+              <RenameField
+                value={session.title ?? ""}
+                onSave={(title) => {
+                  setRenaming(false)
+                  void fetchPatch(api, session.id, { title }).finally(() => void onChanged())
+                }}
+                onCancel={() => setRenaming(false)}
+              />
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="h-auto max-w-full justify-start truncate p-0 font-medium hover:bg-transparent"
+              title="Rename this session"
+              onClick={() => setRenaming(true)}
+            >
+              {seat.name}
+              <span className="font-normal text-[var(--color-muted-foreground)]">
+                {" "}
+                · {session.title || "Untitled session"}
+              </span>
+            </Button>
+          )}
           <div className="truncate text-xs text-[var(--color-muted-foreground)]">
             {session.state} · {seat.adapter}
             {seat.model ? ` · ${seat.model}` : ""}
             {seat.effort ? ` · ${seat.effort}` : ""}
             {session.last_error ? ` · ${session.last_error}` : ""}
           </div>
+          <UsageStrip api={api} session={session.id} refresh={turnsDone} />
         </div>
+        <AskSwitch api={api} session={session.id} ask={!!session.ask} onChanged={onChanged} />
         {session.state === "stopped" || session.state === "crashed" ? (
           <Button size="sm" variant="outline" disabled={!!acting} onClick={() => void act("start")}>
             Start

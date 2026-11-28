@@ -26,6 +26,13 @@ import {
 import { setForwardSeats } from "./forward"
 
 const POLL_MS = 3000
+const DISMISSED_KEY = "chat.approvals.dismissed"
+
+interface Grant {
+  caller: string
+  tool: string
+  granted_at: string
+}
 const isBridge = (c: ServerCard) => !c.status && (c.subject ?? "").startsWith("mcp:")
 
 interface SeatApproval {
@@ -106,7 +113,37 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  // Dismissed rows stay hidden across reloads (this browser), until answered elsewhere.
+  const [dismissed, setDismissedState] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]") as string[])
+    } catch {
+      return new Set()
+    }
+  })
+  const setDismissed = (fn: (d: Set<string>) => Set<string>) =>
+    setDismissedState((d) => {
+      const next = fn(d)
+      try {
+        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next].slice(-500)))
+      } catch {
+        // storage full or off: dismissing still works for this page
+      }
+      return next
+    })
+  const [grants, setGrants] = useState<Grant[]>([])
+  const [showGrants, setShowGrants] = useState(false)
+  const loadGrants = useCallback(async () => {
+    const r = await fetch("/api/mcp/grants", { credentials: "same-origin" }).catch(() => null)
+    if (r?.ok) setGrants((await r.json()) as Grant[])
+  }, [])
+  const revoke = async (g: Grant) => {
+    await fetch(`/api/mcp/grants?caller=${encodeURIComponent(g.caller)}&tool=${encodeURIComponent(g.tool)}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    }).catch(() => {})
+    await loadGrants()
+  }
   const snoozedUntil = useRef(0)
   const seen = useRef<Set<string>>(new Set())
 
@@ -219,6 +256,33 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
             ))}
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-2">
+            <Button
+              size="xs"
+              variant="ghost"
+              className="self-start"
+              onClick={() => {
+                if (!showGrants) void loadGrants()
+                setShowGrants((v) => !v)
+              }}
+            >
+              <Icon name={showGrants ? "chevron-down" : "chevron-right"} size={12} /> Always allowed
+            </Button>
+            {showGrants && grants.length === 0 && (
+              <p className="px-2 text-xs text-[var(--color-muted-foreground)]">No standing approvals.</p>
+            )}
+            {showGrants &&
+              grants.map((g) => (
+                <div key={`${g.caller}/${g.tool}`} className="flex items-center gap-2 px-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-medium">{g.caller}</span> · <span className="font-mono">{g.tool}</span>
+                  </span>
+                  <Button size="xs" variant="ghost" onClick={() => void revoke(g)}>
+                    Revoke
+                  </Button>
+                </div>
+              ))}
+          </div>
           <DialogFooter className="flex flex-wrap items-center gap-1.5 sm:justify-between">
             <div className="flex gap-1.5">
               <Button

@@ -39,3 +39,4 @@ export {
 } from "./objectActions"
 export { ApiError, setSetting } from "./runtime"
 export * from "./types"
+export { isOwnerTyping } from "./typing"

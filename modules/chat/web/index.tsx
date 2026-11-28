@@ -605,7 +605,7 @@ function SessionPane({
       {store && searching && <SearchBar store={store} onJump={setFocus} onClose={() => setSearching(false)} />}
       {store && <Thread store={store} session={session.id} seatName={seat.name} focus={focus} />}
       {store && <ActivityLine store={store} />}
-      {store && <Composer store={store} />}
+      {store && <Composer store={store} session={session.id} />}
     </div>
   )
 }
@@ -802,10 +802,32 @@ function SearchBar({
   )
 }
 
-function Composer({ store }: { store: ConversationStore }) {
+/** Unsent text per session, kept across switching chats and reloads (this browser). */
+const draftKey = (session: string) => `chat.draft.${session}`
+const readDraft = (session: string) => {
+  try {
+    return localStorage.getItem(draftKey(session)) ?? ""
+  } catch {
+    return ""
+  }
+}
+const writeDraft = (session: string, text: string) => {
+  try {
+    if (text) localStorage.setItem(draftKey(session), text)
+    else localStorage.removeItem(draftKey(session))
+  } catch {
+    // storage off or full: the draft lives as long as the page
+  }
+}
+
+function Composer({ store, session }: { store: ConversationStore; session: string }) {
   const busy = useChatBusy(store)
   const approval = useChat(store, (s) => s.approval)
-  const [draft, setDraft] = useState("")
+  const [draft, setDraftState] = useState(() => readDraft(session))
+  const setDraft = (text: string) => {
+    setDraftState(text)
+    writeDraft(session, text)
+  }
   const [queue, setQueue] = useState<{ id: number; text: string }[]>([])
   const nextId = useRef(0)
   const queueRef = useRef(queue)

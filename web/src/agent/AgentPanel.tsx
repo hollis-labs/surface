@@ -744,8 +744,26 @@ function InterruptedBar({ store }: { store: ChatStore }) {
 }
 
 /** Where a message is written. It owns the draft: typing redraws nothing else. */
+/** The unsent message, kept across reloads (this browser). */
+const DRAFT_KEY = "surface.agent.draft"
+
 const Composer = memo(function Composer({ store }: { store: ChatStore }) {
-  const [draft, setDraft] = useState("")
+  const [draft, setDraftState] = useState(() => {
+    try {
+      return localStorage.getItem(DRAFT_KEY) ?? ""
+    } catch {
+      return ""
+    }
+  })
+  const setDraft = (text: string) => {
+    setDraftState(text)
+    try {
+      if (text) localStorage.setItem(DRAFT_KEY, text)
+      else localStorage.removeItem(DRAFT_KEY)
+    } catch {
+      // storage off or full: the draft lives as long as the page
+    }
+  }
   const [attached, setAttached] = useState<{ ref: string; title: string }[]>([])
   const busy = useChatBusy(store)
   useCommits("composer")

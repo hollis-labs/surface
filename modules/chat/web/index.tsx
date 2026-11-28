@@ -85,6 +85,8 @@ interface Seat {
   surface_tools?: string[]
   dir?: string
   archived?: number
+  /** The seat's own name when the owner renamed it here (chat.seat_names). */
+  defined_name?: string
   sessions: Session[]
 }
 
@@ -159,7 +161,21 @@ function ChatView({ win, desk, api }: ViewProps) {
     [api, desk, reload, select],
   )
 
-  const every = reply?.seats ?? []
+  // Display names the owner gave seats here; the seat's definition keeps its own.
+  const names = (useSetting<Record<string, string>>("chat.seat_names") ?? {}) as Record<string, string>
+  const every = useMemo(
+    () =>
+      (reply?.seats ?? []).map((s) =>
+        names[s.seat] ? { ...s, name: names[s.seat] as string, defined_name: s.name } : s,
+      ),
+    [reply, names],
+  )
+  const renameSeat = (seat: string, name: string) => {
+    const next = { ...names }
+    if (name.trim()) next[seat] = name.trim()
+    else delete next[seat]
+    void setSetting("chat.seat_names", next)
+  }
   useEffect(() => setForwardSeats(every.map((s) => ({ seat: s.seat, name: s.name }))), [every])
   const hidden = parsePins(useSetting<string>("chat.hidden_seats"))
   const [showHidden, setShowHidden] = useState(false)
@@ -192,6 +208,7 @@ function ChatView({ win, desk, api }: ViewProps) {
     onPin: togglePin,
     onHide: () => toggleHide(s.seat),
     onDetails: () => setDetails(s),
+    onRename: (name: string) => renameSeat(s.seat, name),
     onChanged: reload,
     pinned: pins.includes(s.seat),
     hidden: hidden.includes(s.seat),
@@ -301,6 +318,7 @@ function SeatRow({
   onPin,
   onHide,
   onDetails,
+  onRename,
   onChanged,
 }: {
   api: ModuleAPI
@@ -315,8 +333,10 @@ function SeatRow({
   onPin: (seat: string) => void
   onHide: () => void
   onDetails: () => void
+  onRename: (name: string) => void
   onChanged: () => Promise<void>
 }) {
+  const [renamingSeat, setRenamingSeat] = useState(false)
   const continuity = seat.shape === "continuity"
   const only = continuity ? seat.sessions[0] : undefined
   const active = only ? only.id === selected : false
@@ -343,24 +363,36 @@ function SeatRow({
           onPin={() => onPin(seat.seat)}
           onHide={onHide}
           onDetails={onDetails}
+          onRename={() => setRenamingSeat(true)}
         />
       </div>
-      <Button
-        variant="ghost"
-        size="xs"
-        type="button"
-        disabled={!!seat.error || busy}
-        onClick={() => (only ? onSelect(only.id) : continuity ? onOpen(seat.seat) : undefined)}
-        className={`h-auto w-full justify-start flex items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-[var(--color-accent)] ${active ? "bg-[var(--color-accent)]" : ""}`}
-        title={seat.error || seat.summary}
-      >
-        {only ? <StateDot state={only.state} /> : <Icon name={continuity ? "user-round" : "users-round"} size={12} />}
-        <span className="min-w-0 flex-1 truncate font-medium">{seat.name}</span>
-        {recent && <span title="Recently active" className="size-1.5 shrink-0 rounded-full bg-sky-500" />}
-        <Badge variant="outline" className="mr-5 text-[10px]">
-          {continuity ? "continuity" : `${seat.sessions.length}/${seat.max_sessions}`}
-        </Badge>
-      </Button>
+      {renamingSeat ? (
+        <div className="flex items-center gap-2 px-2 py-1 pr-7">
+          <Icon name={continuity ? "user-round" : "users-round"} size={12} />
+          <RenameField
+            value={seat.name}
+            onSave={(name) => {
+              setRenamingSeat(false)
+              onRename(name)
+            }}
+            onCancel={() => setRenamingSeat(false)}
+          />
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          disabled={!!seat.error || busy}
+          onClick={() => (only ? onSelect(only.id) : continuity ? onOpen(seat.seat) : undefined)}
+          className={`h-auto w-full justify-start flex items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-[var(--color-accent)] ${active ? "bg-[var(--color-accent)]" : ""}`}
+          title={seat.error || seat.summary}
+        >
+          {only ? <StateDot state={only.state} /> : <Icon name={continuity ? "user-round" : "users-round"} size={12} />}
+          <span className="min-w-0 flex-1 truncate font-medium">{seat.name}</span>
+          {recent && <span title="Recently active" className="mr-5 size-1.5 shrink-0 rounded-full bg-sky-500" />}
+        </Button>
+      )}
       {seat.error && <p className="px-2 text-xs text-red-500">{seat.error}</p>}
       {!continuity && (
         <div className="ml-4 flex flex-col">

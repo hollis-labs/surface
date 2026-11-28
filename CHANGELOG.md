@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.1] - 2026-11-28
+
+- **Rename a seat** from its menu: a display name for the roster, the session header, Forward and the approvals
+  queue (`chat.seat_names`; the seat's definition keeps its own name, shown in its details).
+- **Quieter roster:** no "continuity" or "N/max" chips; the shape is in the seat's details.
+
 ## [0.23.0] - 2026-11-28
 
 Agent chat: roster management and chat features (seat host with sessions CRUD, usage and ask mode).

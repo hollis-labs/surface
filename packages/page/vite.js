@@ -45,12 +45,19 @@ export function surfacePage() {
     const root = goRoot(appRoot ?? process.cwd())
     surfaceDir = ""
     if (!root) return surfaceDir
-    try {
-      surfaceDir = execFileSync("go", ["list", "-m", "-f", "{{.Dir}}", SURFACE_MODULE], {
+    const list = () =>
+      execFileSync("go", ["list", "-m", "-f", "{{.Dir}}", SURFACE_MODULE], {
         cwd: root,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       }).trim()
+    try {
+      surfaceDir = list()
+      if (!surfaceDir) {
+        // Required but not downloaded yet (a fresh CI checkout).
+        execFileSync("go", ["mod", "download", SURFACE_MODULE], { cwd: root, stdio: "ignore" })
+        surfaceDir = list()
+      }
     } catch {
       surfaceDir = ""
     }

@@ -207,15 +207,29 @@ func surfaceDir(root string) (string, error) {
 	if d, ok := surfaceDirs[root]; ok {
 		return d, nil
 	}
-	c := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", surfaceModule) //nolint:gosec // fixed arguments
-	c.Dir, c.Stderr = root, os.Stderr
-	out, err := c.Output()
-	if err != nil {
-		return "", fmt.Errorf("find %s from %s (is it in go.mod and downloaded?): %w", surfaceModule, root, err)
+	list := func() (string, error) {
+		c := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", surfaceModule) //nolint:gosec // fixed arguments
+		c.Dir, c.Stderr = root, os.Stderr
+		out, err := c.Output()
+		if err != nil {
+			return "", fmt.Errorf("find %s from %s (is it in go.mod?): %w", surfaceModule, root, err)
+		}
+		return strings.TrimSpace(string(out)), nil
 	}
-	d := strings.TrimSpace(string(out))
-	if d == "" {
-		return "", fmt.Errorf("go list -m %s: no directory (run go mod download)", surfaceModule)
+	d, err := list()
+	if err != nil {
+		return "", err
+	}
+	if d == "" { // required but not downloaded yet (a fresh CI checkout)
+		if err = run(root, "go", "mod", "download", surfaceModule); err != nil {
+			return "", fmt.Errorf("go mod download %s: %w", surfaceModule, err)
+		}
+		if d, err = list(); err != nil {
+			return "", err
+		}
+		if d == "" {
+			return "", fmt.Errorf("go list -m %s: no directory after go mod download", surfaceModule)
+		}
 	}
 	surfaceDirs[root] = d
 	return d, nil

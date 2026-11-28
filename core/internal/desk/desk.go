@@ -784,13 +784,24 @@ func (d *Desk) claim(i int, by module.Actor) {
 
 // background says whether an open should leave the focus where it is: when asked, or when a
 // delegate would otherwise take it from the owner's unsaved work (rule 2).
-// Exception: surface.cards opened in the foreground (when the agent raises questions for the owner)
-// takes focus immediately so the cards window is never hidden behind the active module.
+// surface.cards opened in the foreground (an agent raising questions for the owner) takes the
+// focus even from the owner's unsaved work, so its questions are not hidden behind it, but
+// never while the owner is typing: then it opens behind, and the chat that asked says so.
 func (d *Desk) background(a Action) bool {
+	typing := a.Actor.Delegate() && d.ownerTyping()
 	if a.View == "surface.cards" && !a.Background {
-		return false
+		return typing
 	}
 	return a.Background || (a.Actor.Delegate() && d.ownerBusy())
+}
+
+// ownerTyping reports unsent input where the owner is: in the agent panel or the window in front.
+func (d *Desk) ownerTyping() bool {
+	if d.st.PanelComposing {
+		return true
+	}
+	i := d.find(d.st.Focus)
+	return i >= 0 && d.st.Wins[i].Composing
 }
 
 // ownerBusy reports that the owner is working where the focus is: unsaved work or unsent

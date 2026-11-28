@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.4] - 2026-11-28
+
+- **The Cards window no longer takes the focus while you type.** An agent's held questions open the Cards window behind
+  the window or panel holding unsent text (desk: `surface.cards` comes forward only when the owner is not composing),
+  and the Cards window no longer pulls itself forward when a question arrives while you type.
+- **The "waiting" buttons sit in the middle of the top bar**, clear of windows' title bars and the composers.
+
 ## [0.23.3] - 2026-11-28
 
 - **Nothing takes over while you type.** The approvals queue and a question its sender is waiting on (the modal in the

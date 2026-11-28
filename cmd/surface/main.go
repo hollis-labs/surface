@@ -5,8 +5,8 @@
 // wiring, the Surface wiring (which modules are compiled in, and in what order), a main
 // and the page's module list; `surface build` then builds the page and the binary.
 //
-//	surface generate -f apps/desk/surface.yaml
-//	surface build    -f apps/desk/surface.yaml
+//	surface generate -f examples/demo/surface.yaml
+//	surface build    -f examples/demo/surface.yaml
 package main
 
 import (
@@ -45,9 +45,15 @@ type moduleRef struct {
 	ID     string `yaml:"id"`
 	Import string `yaml:"import"`
 	// Web is the module's web entry, relative to the repository root. Empty means the
-	// module has no views of its own.
+	// module has no views of its own. A Surface module used by an app in another
+	// repository gets a "@surface/modules/<id>" specifier here instead: surfacePage()
+	// (@hollis-labs/surface-page/vite) resolves it from the Surface module on disk.
 	Web string `yaml:"web"`
 }
+
+// surfaceSpecifier is the page import of a Surface module's views in an app outside the
+// Surface repository. It is not a path, so the generated file is the same on every machine.
+const surfaceSpecifier = "@surface/modules/"
 
 func (m *moduleRef) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {
@@ -178,10 +184,41 @@ func load(file string) (*app, error) {
 				}
 			} else {
 				r.Import = surfaceModule + "/modules/" + r.ID
+				if modPath != surfaceModule {
+					dir, err := surfaceDir(root)
+					if err != nil {
+						return nil, err
+					}
+					if _, err := os.Stat(filepath.Join(dir, "modules", r.ID, "web", "index.tsx")); err == nil { //nolint:gosec // the Surface module in the Go module cache; the id is checked above
+						r.Web = surfaceSpecifier + r.ID
+					}
+				}
 			}
 		}
 	}
 	return a, nil
+}
+
+// surfaceDir is where the Surface module the app requires is on disk (the Go module cache, or a
+// replace target), as `go list -m` reports it from the app's repository.
+var surfaceDirs = map[string]string{}
+
+func surfaceDir(root string) (string, error) {
+	if d, ok := surfaceDirs[root]; ok {
+		return d, nil
+	}
+	c := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", surfaceModule) //nolint:gosec // fixed arguments
+	c.Dir, c.Stderr = root, os.Stderr
+	out, err := c.Output()
+	if err != nil {
+		return "", fmt.Errorf("find %s from %s (is it in go.mod and downloaded?): %w", surfaceModule, root, err)
+	}
+	d := strings.TrimSpace(string(out))
+	if d == "" {
+		return "", fmt.Errorf("go list -m %s: no directory (run go mod download)", surfaceModule)
+	}
+	surfaceDirs[root] = d
+	return d, nil
 }
 
 func write(path, body string) error {
@@ -333,11 +370,15 @@ func Assets() (fs.FS, error) {
 		if r.Web == "" {
 			continue
 		}
-		rel, err := filepath.Rel(genDir, filepath.Join(a.root, strings.TrimSuffix(r.Web, filepath.Ext(r.Web))))
-		if err != nil {
-			return nil, err
+		spec := r.Web
+		if !strings.HasPrefix(spec, surfaceSpecifier) {
+			rel, err := filepath.Rel(genDir, filepath.Join(a.root, strings.TrimSuffix(r.Web, filepath.Ext(r.Web))))
+			if err != nil {
+				return nil, err
+			}
+			spec = filepath.ToSlash(rel)
 		}
-		fmt.Fprintf(&web, "import m%d from %q\n", i, filepath.ToSlash(rel))
+		fmt.Fprintf(&web, "import m%d from %q\n", i, spec)
 		entries = append(entries, fmt.Sprintf("  %q: m%d,", r.ID, i))
 	}
 	fmt.Fprintf(&web, "\nexport const app = { name: %q, title: %q }\n\nexport const modules: Record<string, ModuleWeb> = {\n%s\n}\n", a.App, a.Title, strings.Join(entries, "\n"))

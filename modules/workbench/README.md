@@ -2,7 +2,7 @@
 
 A Surface module for making and improving Nanite agents: create, edit, version, import and export an agent; run
 eval suites against it; ask a model for edits that would fix the failures; accept or reject each; run again and
-compare. It is in Studio (`apps/studio/surface.yaml`).
+compare. Apps include it from their own `surface.yaml` (Basalisk does; `examples/demo` here).
 
 The agent is an **agent directory** as libs `agent/agentdir` v0.3.0 and Nanite 0.7.0 read it. The Workbench keeps
 its own state about an agent in a **sidecar** beside the directory, never inside it. Everything Nanite-specific goes

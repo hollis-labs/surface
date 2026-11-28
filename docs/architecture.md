@@ -95,7 +95,7 @@ Two different things:
   core database and changed live: from the Settings window, `PUT /api/settings/<key>`, the `settings_set`
   tool or `<app> settings <key> <value>`. A read (`Host.Config()`) always returns the present value, a watcher
   hears the change, and the page hears it on the bus. Nothing restarts. Try
-  `./bin/desk settings surface.theme light` with the page open.
+  `./bin/demo settings surface.theme light` with the page open.
 - **Agent and harness config** (model, gateway, key file, MCP config) lives in files ([agent.md](agent.md)).
 
 Substrate's own config (`substrate.yaml`, overridable with `SUBSTRATE_CONFIG`) holds only what must be known

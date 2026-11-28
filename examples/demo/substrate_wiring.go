@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	substrateApp        = "desk"
+	substrateApp        = "demo"
 	substrateConfigJSON = "{\"database\":{\"sqlite\":{\"path\":\"surface.db\"}},\"httphost\":{\"addr\":\"127.0.0.1:8190\"},\"logging\":{\"format\":\"text\",\"level\":\"info\"}}"
 )
 

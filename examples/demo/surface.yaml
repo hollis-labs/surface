@@ -1,0 +1,33 @@
+# The demo preset: every module in this repository, built as one throwaway app for CI and local
+# development (`make demo`, `./bin/demo`). It is not a product. Surface ships modules; apps that use
+# them live in their own repositories (Basalisk: hollis-skunkworks/basalisk; Exo: hollis-labs/exo).
+app: demo
+title: Surface demo
+addr: 127.0.0.1:8190
+modules:
+  - notes
+  - files
+  - scratch
+  - drafts
+  - browser
+  - design
+  - terminal
+  - viewer
+  - diagram
+  - inbox
+  - reader
+  - assist
+  - projects
+  - tether
+  - work
+  - frag
+  - approvals
+  - registry
+  - ops
+  - align
+  - trackers
+  - usage
+  - chat
+  - builder
+  - workbench
+  - workflows

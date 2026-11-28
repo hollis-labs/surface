@@ -57,7 +57,7 @@ const n: number = await count("notes")
 \`\`\`
 
 \`\`\`bash
-make desk && ./bin/desk serve --port 8199
+make demo && ./bin/demo serve --port 8199
 \`\`\`
 
 ## A table

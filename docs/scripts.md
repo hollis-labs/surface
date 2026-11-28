@@ -49,18 +49,18 @@ Writing a demo therefore also writes a tutorial and a test.
 |---|---|
 | Tools | `script_save` (write), `script_list`, `script_get`, `script_run {name, mode}`, `script_stop`, `script_delete` (confirm) |
 | HTTP | `GET /api/scripts`, `GET /api/scripts/{name}`, `POST /api/scripts/{name}/run {mode}`, `POST /api/scripts/stop` |
-| CLI | `./bin/desk call script_run '{"name":"tour","mode":"test"}'` prints the report |
+| CLI | `./bin/demo call script_run '{"name":"tour","mode":"test"}'` prints the report |
 | Page | A demo's `script.step` draws a labelled agent cursor gliding to what the step points at, and scales the desk toward it when `zoom` is set (`web/src/desk/GhostCursor.tsx`). |
 | Events | `script.started {script, mode, steps}`, `script.step {script, index, of, say, point, zoom, hold_ms}` (demo), `script.done` (the report) |
 
 Test mode puts the desk back by capturing it before and arranging it after. Run it against a disposable data
-directory (`DESK_DATA_DIR`) when the owner's own desk should not even flicker.
+directory (`<APP>_DATA_DIR`) when the owner's own desk should not even flicker.
 
 ## Recording
 
 ```sh
-make desk
-node scripts/record-demo.mjs --script docs/scripts/tour.json [--app desk] [--out dir] [--width 1440 --height 900]
+make demo
+node scripts/record-demo.mjs --script docs/scripts/tour.json [--app demo] [--out dir] [--width 1440 --height 900]
 ```
 
 The recorder needs no extra dependency. It drives headless Chrome over the DevTools protocol, as `ui-shots`

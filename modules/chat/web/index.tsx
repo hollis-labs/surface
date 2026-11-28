@@ -17,9 +17,8 @@ import {
   useChatItem,
   useStickToBottom,
 } from "@hollis-labs/surface-chat"
-import { Icon, type ModuleAPI, type ModuleWeb, type ViewProps } from "@hollis-labs/surface-page/sdk"
+import { ChatItemView, Icon, type ModuleAPI, type ModuleWeb, type ViewProps } from "@hollis-labs/surface-page/sdk"
 import { type FormEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ItemView } from "@/agent/items"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -406,7 +405,7 @@ const Thread = memo(function Thread({ store }: { store: ConversationStore }) {
 
 const Row = memo(function Row({ store, id }: { store: ConversationStore; id: string }) {
   const item = useChatItem(store, id)
-  return item ? <ItemView item={item} /> : null
+  return item ? <ChatItemView item={item} /> : null
 })
 
 function Composer({ store }: { store: ConversationStore }) {

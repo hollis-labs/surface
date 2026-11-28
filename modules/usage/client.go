@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	defaultURL     = "https://usage.nanite.cloud/api/usage-monitor/v1"
-	defaultKeyFile = "/home/chrispian/.config/station/usage/keys/surface-usage-module.key"
+	// No default Station URL: the owner sets usage.url. The key file defaults to the
+	// conventional path under the home directory.
+	defaultURL     = ""
+	defaultKeyFile = "~/.config/station/usage/keys/surface-usage-module.key"
 	fallbackKeyRel = ".config/station/usage/keys/surface-usage-module.key"
 	cacheTTL       = 30 * time.Second
 )
@@ -427,6 +429,9 @@ func newStationClient(base, keyFile string) (*stationClient, error) {
 	if base == "" {
 		base = defaultURL
 	}
+	if base == "" {
+		return nil, errNotConfigured
+	}
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(u.Hostname()))) {
 		return nil, errors.New("usage: the Usage Monitor URL must be https, or http on loopback")
@@ -448,7 +453,7 @@ func isLoopback(host string) bool {
 }
 
 // resolveKeyPath expands ~/ and falls back to ~/.config/station/usage/keys/surface-usage-module.key
-// when the configured Linux default path (/home/chrispian/...) does not exist on macOS.
+// when the configured path does not exist.
 func resolveKeyPath(configured string) string {
 	configured = strings.TrimSpace(configured)
 	if configured == "" {

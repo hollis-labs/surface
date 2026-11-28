@@ -114,6 +114,12 @@ export interface ModuleWeb {
   views: Record<string, ComponentType<ViewProps>>
   /** Renderers for card kinds of the module's own, by kind (version 1), or "kind@version". */
   cards?: Record<string, ComponentType<CardProps>>
+  /**
+   * Drawn once over the whole page, whatever window is in front: for something that must
+   * reach the owner anywhere (a queue that opens itself as a modal). Keep it small; it is
+   * mounted for the page's life.
+   */
+  overlay?: ComponentType<{ api: ModuleAPI }>
 }
 
 /** A mark (module.Mark). */

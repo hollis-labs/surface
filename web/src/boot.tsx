@@ -80,6 +80,10 @@ export function Page({ modules, core }: PageProps) {
     <MarkdownExtensions value={citeMarkdownExtensions}>
       <Desktop modules={{ ...modules, surface: { ...coreWeb, views: { ...coreWeb.views, ...core } } }} />
       <CardHost />
+      {Object.entries(modules).map(([id, m]) => {
+        const Overlay = m.overlay
+        return Overlay ? <Overlay key={id} api={moduleApi(id)} /> : null
+      })}
       <CiteDrawer />
       <CiteFloat />
     </MarkdownExtensions>

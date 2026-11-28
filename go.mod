@@ -6,7 +6,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/hollis-labs/libs/agent/agentdir v0.6.0
-	github.com/hollis-labs/libs/agent/chat v0.1.0
+	github.com/hollis-labs/libs/agent/chat v0.2.0
 	github.com/hollis-labs/libs/agent/core v0.5.0
 	github.com/hollis-labs/libs/agent/desk v0.1.0
 	github.com/hollis-labs/libs/agent/steer v0.1.0

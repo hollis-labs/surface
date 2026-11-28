@@ -27,5 +27,5 @@
     }
   },
   "include": ["src", "../modules/*/web", "../packages/*/src"],
-  "exclude": ["../packages/*/src/*.test.ts", "src/**/*.test.ts"]
+  "exclude": ["../packages/*/src/*.test.ts", "src/**/*.test.ts", "../modules/*/web/*.test.ts"]
 }

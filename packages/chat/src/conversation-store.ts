@@ -4,10 +4,11 @@
  * what a durable conversation brings: it survives a reload, another tab can watch or take
  * over, and a turn started anywhere shows here.
  *
- * History policy, in one rule: everything is the event stream. start() attaches and reads
- * the stream from the beginning (history arrives without deltas); from then on the store
- * follows it, and a reconnect resumes after the last event seen. There is no separate
- * history read and nothing is fetched on a timer or on focus.
+ * History policy: start() attaches, reads the latest runs in one window (GET …/history) and
+ * draws them at once, then follows the stream after the window's head; a reconnect resumes
+ * after the last event seen. Older runs are read on demand (loadOlder, jumpTo). A host whose
+ * wire has no history is read from the beginning of the stream instead, as before. Nothing is
+ * fetched on a timer or on focus.
  *
  * It assumes nothing about which agent runs the turns: only the wire.
  */
@@ -16,9 +17,11 @@ import {
   type ConversationApi,
   type ConversationOptions,
   conversationApi,
+  type HistoryWindow,
   isClosed,
   isStale,
   type Role,
+  type SearchHit,
   type StreamMode,
 } from "./conversation.ts"
 import { reduceConversation, userItemId } from "./conversation-reduce.ts"
@@ -39,6 +42,8 @@ export interface ConversationStoreOptions extends ConversationOptions {
   api?: ConversationApi
   /** How listeners are told: default once per animation frame (a microtask without one). */
   schedule?: (flush: () => void) => void
+  /** Runs per history window (each run is a message and its reply). 0: replay the stream from the start. Default 13. */
+  historyRuns?: number
 }
 
 const newId = () =>
@@ -64,6 +69,9 @@ export function createConversationStore(opts: ConversationStoreOptions) {
   let attachment = ""
   /** The head when this store attached: history is everything up to it. */
   let historyHead = 0
+  /** The seq the oldest window read starts at: older windows are read before it. */
+  let historyFrom = 0
+  const historyRuns = opts.historyRuns ?? 13
   let sending = false
   let started: Promise<void> | null = null
   let following: AbortController | null = null
@@ -85,8 +93,19 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     }
   }
 
+  /** reduceConversation, noting the first item each run draws. */
+  const reduceNoting = (s: ChatState, ev: StreamEvent, firsts: Record<string, string>): ChatState => {
+    const before = s.ids.length
+    const next = reduceConversation(s, ev)
+    if (ev.run_id && next.ids.length > before && !(ev.run_id in firsts) && !s.runItems?.[ev.run_id])
+      firsts[ev.run_id] = next.ids[before] as string
+    return next
+  }
+
   const onEvent = (ev: StreamEvent) => {
-    let next = reduceConversation(state, ev)
+    const firsts: Record<string, string> = {}
+    let next = reduceNoting(state, ev, firsts)
+    if (Object.keys(firsts).length) next = { ...next, runItems: { ...next.runItems, ...firsts } }
     if (!next.loaded && (next.cursor ?? 0) >= historyHead) next = { ...next, loaded: true }
     set(next)
     const how = ENDS[ev.verb]
@@ -130,6 +149,80 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     }
   }
 
+  /**
+   * Read the latest window and draw it at once. False when the host's wire has no history (the
+   * stream is then read from the start). The cursor becomes the window's head.
+   */
+  async function loadLatest(): Promise<boolean> {
+    if (!historyRuns) return false
+    let w: HistoryWindow
+    try {
+      w = await api.history(conversation, { runs: historyRuns })
+    } catch (err) {
+      if (err instanceof HostError && (err.status === 404 || err.status === 405)) return false
+      throw err
+    }
+    const firsts: Record<string, string> = {}
+    let s: ChatState = { ...state, ids: [], items: {}, run: null, parts: {}, approval: null, cursor: 0 }
+    for (const ev of w.events) s = reduceNoting(s, ev, firsts)
+    historyHead = w.head
+    historyFrom = w.from
+    set({
+      ...s,
+      cursor: Math.max(s.cursor ?? 0, w.head),
+      loaded: true,
+      older: { more: w.more, loading: false },
+      runItems: firsts,
+    })
+    return true
+  }
+
+  /** Add an older window above what is drawn. */
+  function prepend(w: HistoryWindow) {
+    const firsts: Record<string, string> = {}
+    let s: ChatState = { ...initialState }
+    for (const ev of w.events) s = reduceNoting(s, ev, firsts)
+    const ids = [...s.ids.filter((id) => !(id in state.items)), ...state.ids]
+    if (w.from) historyFrom = w.from
+    set({
+      ...state,
+      ids,
+      items: { ...s.items, ...state.items },
+      older: { more: w.more, loading: false },
+      runItems: { ...firsts, ...state.runItems },
+    })
+  }
+
+  /** Read the window before the oldest drawn one. */
+  async function loadOlder(): Promise<void> {
+    if (!state.older?.more || state.older.loading || !historyFrom) return
+    set({ ...state, older: { more: true, loading: true } })
+    try {
+      prepend(await api.history(conversation, { runs: historyRuns || 13, before: historyFrom }))
+    } catch (err) {
+      set({
+        ...state,
+        older: { more: true, loading: false },
+        error: err instanceof Error ? err.message : "Older messages could not be read.",
+      })
+    }
+  }
+
+  /** Search the whole conversation, newest first. */
+  async function search(text: string): Promise<SearchHit[]> {
+    if (!conversation || !text.trim()) return []
+    return (await api.search(conversation, text.trim())).hits
+  }
+
+  /** Make sure a search hit's run is drawn (reading back to it), and return its first item's id. */
+  async function jumpTo(hit: SearchHit): Promise<string | undefined> {
+    if (!state.runItems?.[hit.run_id] && historyFrom && hit.run_seq < historyFrom) {
+      set({ ...state, older: { more: true, loading: true } })
+      prepend(await api.history(conversation, { runs: 1, before: historyFrom, through: hit.run_seq }))
+    }
+    return state.runItems?.[hit.run_id]
+  }
+
   /** The conversation was replaced by a new one: start over on it. */
   async function moveTo(id: string) {
     if (!id) {
@@ -139,7 +232,9 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     conversation = id
     const a = await attach()
     historyHead = a.head
+    historyFrom = 0
     set({ ...initialState, host: state.host, loaded: a.head === 0 })
+    await loadLatest().catch(() => false)
   }
 
   /** Attach to the agent's conversation and follow it, once. Safe to call more than once. */
@@ -161,6 +256,7 @@ export function createConversationStore(opts: ConversationStoreOptions) {
         const a = await attach()
         historyHead = a.head
         set({ ...state, loaded: a.head === 0, holder: conv.lease?.attachment ?? null, generation: conv.generation })
+        await loadLatest()
         void follow()
       } catch (err) {
         set({ ...state, loaded: true, error: err instanceof Error ? err.message : "The agent could not be reached." })
@@ -335,6 +431,9 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     conversation: () => conversation,
     /** "viewer" while this window only watches; a takeover makes it a controller. */
     role: (): Role => role,
+    loadOlder,
+    search,
+    jumpTo,
     /** The stream is the history: there is nothing to read again. Kept so a caller of the run store need not change. */
     reload: async () => {},
     turnElsewhere: (_run: string) => {},

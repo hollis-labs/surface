@@ -13,6 +13,8 @@ import type { StreamEvent } from "./stream.ts"
 export type ChatItem =
   | { kind: "user"; id: string; text: string; auto?: string }
   | { kind: "text"; id: string; text: string; streaming: boolean }
+  /** The agent's reasoning (a reasoning part), for an activity view; the thread need not draw it. */
+  | { kind: "thinking"; id: string; text: string; streaming: boolean }
   | {
       kind: "tool"
       id: string
@@ -71,6 +73,10 @@ export interface ChatState {
   holder?: string | null
   /** On the conversation wire: rises when the agent's side was replaced. */
   generation?: number
+  /** On the conversation wire: whether older runs can be read, and whether a read is going. */
+  older?: { more: boolean; loading: boolean }
+  /** On the conversation wire: the first item each run drew, by run id (to scroll to a search hit). */
+  runItems?: Readonly<Record<string, string>>
 }
 
 export const initialState: ChatState = {
@@ -115,7 +121,8 @@ export function endRun(s: ChatState): ChatState {
   for (const id of s.ids) {
     const it = s.items[id]
     if (it?.kind === "tool" && it.status === "running") next = patch(next, id, () => ({ ...it, status: "done" }))
-    else if (it?.kind === "text" && it.streaming) next = patch(next, id, () => ({ ...it, streaming: false }))
+    else if ((it?.kind === "text" || it?.kind === "thinking") && it.streaming)
+      next = patch(next, id, () => ({ ...it, streaming: false }))
   }
   return next
 }
@@ -138,6 +145,10 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
         const next = { ...base, parts: { ...base.parts, [ev.part_id]: "text" } }
         return append(next, { kind: "text", id: key(ev.part_id), text: "", streaming: true })
       }
+      if (ev.kind === "reasoning") {
+        const next = { ...base, parts: { ...base.parts, [ev.part_id]: "reasoning" } }
+        return append(next, { kind: "thinking", id: key(ev.part_id), text: "", streaming: true })
+      }
       if (ev.kind === "tool_call") {
         const next = { ...base, parts: { ...base.parts, [ev.part_id]: "tool_call" } }
         return append(next, { kind: "tool", id: key(ev.part_id), name: String(ev.meta?.name ?? ""), status: "running" })
@@ -158,6 +169,8 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
       const add = ev.text
       if (kind === "text")
         return patch(s, key(ev.part_id), (it) => (it.kind === "text" ? { ...it, text: it.text + add } : it))
+      if (kind === "reasoning")
+        return patch(s, key(ev.part_id), (it) => (it.kind === "thinking" ? { ...it, text: it.text + add } : it))
       if (kind.startsWith("result:"))
         return patch(s, kind.slice(7), (it) => (it.kind === "tool" ? { ...it, result: (it.result ?? "") + add } : it))
       return s
@@ -169,6 +182,14 @@ export function reduceEvent(s: ChatState, ev: StreamEvent): ChatState {
         return patch(s, key(ev.part_id), (it) => (it.kind === "text" ? { ...it, streaming: false } : it))
       if (kind === "tool_call")
         return patch(s, key(ev.part_id), (it) => (it.kind === "tool" ? { ...it, input: ev.final } : it))
+      if (kind === "reasoning") {
+        // History carries no deltas: the finished part's text is in final.
+        const f = ev.final as { text?: unknown } | undefined
+        const text = typeof f?.text === "string" ? f.text : undefined
+        return patch(s, key(ev.part_id), (it) =>
+          it.kind === "thinking" ? { ...it, text: text && !it.text ? text : it.text, streaming: false } : it,
+        )
+      }
       return s
     }
     case "approval.request":

@@ -129,7 +129,7 @@ MCP serves read and act tools to every client. A client that names itself with t
 `X-Surface-Agent` header (a seat host sends its seat) also gets write and confirm tools, which
 **ask the owner first** with a card naming the caller and wait up to ten minutes for the answer.
 An anonymous client sees and calls read and act tools only. A write tool offers "Allow once",
-"Always allow … for <caller>" (it stands until the app restarts) and "Deny"; a confirm tool asks
+"Always allow … for <caller>" (kept in the core database until revoked: `GET`/`DELETE /api/mcp/grants`) and "Deny"; a confirm tool asks
 with an approval card every time.
 
 

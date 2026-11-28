@@ -73,6 +73,8 @@ func (m *mod) Manifest() module.Manifest {
 				Type: module.SettingInt, Default: 15},
 			{Key: "pinned_seats", Title: "Pinned seats", About: "Seat ids pinned to the top of the roster, in order, comma separated. Pin and drag in the roster to change it.",
 				Type: module.SettingString, Default: ""},
+			{Key: "hidden_seats", Title: "Hidden seats", About: "Seat ids left out of the roster, comma separated. Hide and show from a seat's menu.",
+				Type: module.SettingString, Default: ""},
 			{Key: "approvals_auto_open", Title: "Open approvals automatically", About: "Open the approvals queue when an agent asks for a tool approval.",
 				Type: module.SettingBool, Default: true},
 			{Key: "approvals_snooze_minutes", Title: "Approvals snooze (minutes)", About: "How long Snooze keeps the approvals queue closed.",

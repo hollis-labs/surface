@@ -5,6 +5,22 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.0] - 2026-11-28
+
+Agent chat: roster management and chat features (seat host with sessions CRUD, usage and ask mode).
+
+- **Roster management.** A seat's menu: pin, hide (`chat.hidden_seats`; "N hidden seats" shows them), and details
+  (runtime, boot commit, MCP servers, Surface tools, boot dir) with its archived sessions to restore or delete. A
+  session's menu (or double-click): rename, archive. The session header's title renames in place.
+- **Usage strip** under the session header: session cost, last turn's cost, context window use and turns, refreshed
+  after each turn (seat host `GET /sessions/{id}/usage`).
+- **Ask before tools** switch per session: the agent asks through the approvals queue instead of running freely (seat
+  host `PATCH /sessions/{id} {ask}`).
+- **Standing MCP approvals are kept** (migration `0005_mcp_grants`) instead of lasting until a restart; listed and
+  revoked under "Always allowed" in the approvals queue (`GET`/`DELETE /api/mcp/grants`). Dismissed approvals stay
+  dismissed across reloads in this browser.
+- **"A new version is running"**: after the app's server restarts with a new page bundle, open tabs offer Reload.
+
 ## [0.22.1] - 2026-11-28
 
 - **Agent chat opens at the newest message.** The thread drew a spinner in place of its scroll area until the history

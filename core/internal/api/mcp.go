@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hollis-labs/surface/module"
@@ -20,7 +19,7 @@ import (
 // Read and act tools run at once for every client. A client that names itself (the
 // X-Surface-Agent header; a seat host sends its seat) also gets write and confirm tools, which
 // ask the owner first with a card (mcpApprove): a write tool's "always" answer stands for that
-// caller and tool until the app restarts; a confirm tool asks every time. An anonymous client
+// caller and tool until revoked (mcp_grants); a confirm tool asks every time. An anonymous client
 // sees and calls read and act tools only.
 func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -107,12 +106,47 @@ func mcpCaller(r *http.Request) string {
 	return c
 }
 
-// mcpGrants are the standing "always" answers: caller -> tool. In memory: they last until the
-// app restarts.
-var (
-	mcpGrantsMu sync.Mutex
-	mcpGrants   = map[string]map[string]bool{}
-)
+// The standing "always" answers live in the core database (mcp_grants) and last until revoked.
+
+func (s *server) mcpGranted(ctx context.Context, caller, tool string) bool {
+	var one int
+	err := s.a.DB().QueryRowContext(ctx, `SELECT 1 FROM mcp_grants WHERE caller = ? AND tool = ?`, caller, tool).Scan(&one)
+	return err == nil
+}
+
+func (s *server) mcpGrant(ctx context.Context, caller, tool string) error {
+	_, err := s.a.DB().ExecContext(ctx, `INSERT OR IGNORE INTO mcp_grants(caller, tool, granted_at) VALUES (?, ?, ?)`,
+		caller, tool, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+// mcpGrants lists the standing answers (GET /api/mcp/grants).
+func (s *server) mcpGrants(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.a.DB().QueryContext(r.Context(), `SELECT caller, tool, granted_at FROM mcp_grants ORDER BY caller, tool`)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	out := []map[string]string{}
+	for rows.Next() {
+		var c, t, at string
+		if rows.Scan(&c, &t, &at) == nil {
+			out = append(out, map[string]string{"caller": c, "tool": t, "granted_at": at})
+		}
+	}
+	ok(w, out)
+}
+
+// mcpRevoke drops one standing answer (DELETE /api/mcp/grants?caller=&tool=).
+func (s *server) mcpRevoke(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if _, err := s.a.DB().ExecContext(r.Context(), `DELETE FROM mcp_grants WHERE caller = ? AND tool = ?`, q.Get("caller"), q.Get("tool")); err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // mcpApproveTimeout is how long a call waits for the owner's answer.
 var mcpApproveTimeout = 10 * time.Minute
@@ -146,10 +180,7 @@ func (s *server) callMCP(ctx context.Context, caller, name string, input json.Ra
 func (s *server) mcpApprove(ctx context.Context, caller string, t module.Tool, input json.RawMessage) error {
 	confirm := t.Level == module.LevelConfirm
 	if !confirm {
-		mcpGrantsMu.Lock()
-		granted := mcpGrants[caller][t.Name]
-		mcpGrantsMu.Unlock()
-		if granted {
+		if s.mcpGranted(ctx, caller, t.Name) {
 			return nil
 		}
 	}
@@ -176,7 +207,7 @@ func (s *server) mcpApprove(ctx context.Context, caller string, t module.Tool, i
 			"body":     fmt.Sprintf("Tool %s. Input: %s", t.Name, truncate(string(input), 600)),
 			"options": []map[string]string{
 				{"id": "once", "label": "Allow once"},
-				{"id": "always", "label": fmt.Sprintf("Always allow %s for %s", t.Name, caller), "description": "Until the app restarts."},
+				{"id": "always", "label": fmt.Sprintf("Always allow %s for %s", t.Name, caller), "description": "Until you revoke it (Approvals → Always allowed)."},
 				{"id": "deny", "label": "Deny"},
 			},
 			"allow_other": false,
@@ -211,12 +242,9 @@ func (s *server) mcpApprove(ctx context.Context, caller string, t module.Tool, i
 		case "once":
 			return nil
 		case "always":
-			mcpGrantsMu.Lock()
-			if mcpGrants[caller] == nil {
-				mcpGrants[caller] = map[string]bool{}
+			if err := s.mcpGrant(context.WithoutCancel(ctx), caller, t.Name); err != nil {
+				return fmt.Errorf("allowed once; the standing answer was not kept: %w", err)
 			}
-			mcpGrants[caller][t.Name] = true
-			mcpGrantsMu.Unlock()
 			return nil
 		}
 	}

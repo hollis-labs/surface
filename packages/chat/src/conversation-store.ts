@@ -402,9 +402,20 @@ export function createConversationStore(opts: ConversationStoreOptions) {
     }
   }
 
+  /**
+   * The page is going (a reload, a closed tab): let go of the attachment, and of the input with
+   * it, so the next page can type at once. React does not unmount on a reload, so dispose alone
+   * would leave the input held until its lease lapsed.
+   */
+  function onPageHide() {
+    if (conversation && attachment) void api.detach(conversation, attachment, true).catch(() => undefined)
+  }
+  if (typeof window !== "undefined") window.addEventListener("pagehide", onPageHide)
+
   /** Stop following and let go of the attachment. A run in progress goes on without this page. */
   function dispose() {
     disposed = true
+    if (typeof window !== "undefined") window.removeEventListener("pagehide", onPageHide)
     following?.abort()
     // Detaching releases the input, so the next page (a reload, another tab) can type at once.
     if (conversation && attachment) void api.detach(conversation, attachment, true).catch(() => undefined)

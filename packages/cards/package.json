@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-cards",
-  "version": "0.23.5",
+  "version": "0.23.6",
   "description": "Cards without any styling: the outcome a card reports and the status it reads back, a lifecycle engine that decides where each card shows, a form compiled from a JSON Schema subset, and a table of renderers by kind and version. Visuals are the Surface registry's card components.",
   "license": "MIT",
   "repository": {

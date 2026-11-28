@@ -692,7 +692,16 @@ const Thread = memo(function Thread({
           {ids.map((id) => (
             <Row key={id} store={store} id={id} session={session} seatName={seatName} />
           ))}
-          {error && <MessageNotice tone="error">{error}</MessageNotice>}
+          {error && (
+            <MessageNotice tone="error">
+              {error}
+              {/Take over/.test(error) && (
+                <Button size="xs" variant="outline" className="ml-2" onClick={() => void store.takeover()}>
+                  Take over
+                </Button>
+              )}
+            </MessageNotice>
+          )}
         </ConversationContent>
       </ConversationViewport>
       {!atBottom && <ConversationScrollButton onClick={scrollToBottom} />}

@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.4] - 2026-11-28
+
+- **Cards window: Clear all.** Dismisses every open card after a second click to confirm; an agent's questions close
+  as declined. When the window was opened from the chat, it closes afterwards.
+- **Show-only module cards can be dismissed.** An entity card with nothing to answer (a `tracker.list` or `tracker.item`
+  from `card_show`) had no action besides opening its module, so it stayed in the Cards window; it now has Dismiss.
+
 ## [0.21.3] - 2026-11-28
 
 - **MCP approval bridge.** A client that names itself with `X-Surface-Agent` (a seat host sends its seat) now gets

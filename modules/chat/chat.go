@@ -103,7 +103,7 @@ func (m *mod) target() (*url.URL, string, error) {
 	}
 	token := ""
 	if f := strings.TrimSpace(cfg.String(settingKeyFile)); f != "" {
-		b, err := os.ReadFile(f)
+		b, err := os.ReadFile(f) //nolint:gosec // owner-configured token file path
 		if err != nil {
 			return nil, "", fmt.Errorf("chat: read the token file: %w", err)
 		}
@@ -126,7 +126,7 @@ func (m *mod) status(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"configured": true, "reachable": false, "url": u.String(), "error": err.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var health map[string]any
 	_ = json.NewDecoder(http.MaxBytesReader(w, resp.Body, maxSeatsBody)).Decode(&health)
 	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "reachable": resp.StatusCode == http.StatusOK, "url": u.String(), "health": health})

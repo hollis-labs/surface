@@ -20,6 +20,7 @@ import m18 from "../../../modules/ops/web/index"
 import m19 from "../../../modules/align/web/index"
 import m20 from "../../../modules/trackers/web/index"
 import m21 from "../../../modules/usage/web/index"
+import m22 from "../../../modules/chat/web/index"
 
 export const app = { name: "desk", title: "Surface Desk" }
 
@@ -44,4 +45,5 @@ export const modules: Record<string, ModuleWeb> = {
   "align": m19,
   "trackers": m20,
   "usage": m21,
+  "chat": m22,
 }

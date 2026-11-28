@@ -14,7 +14,7 @@ import (
 	"github.com/hollis-labs/surface/module/moduletest"
 )
 
-const testBearerCanary = "CANARY-USAGE-KEY-9941a8bc72"
+const testBearerCanary = "CANARY-USAGE-KEY-9941a8bc72" //nolint:gosec // a canary the tests check never leaks, not a credential
 
 type fakeStation struct {
 	mapTrendsAndInsights bool

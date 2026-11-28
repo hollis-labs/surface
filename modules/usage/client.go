@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	defaultURL     = "https://usage.nanite.cloud/api/usage-monitor/v1"
-	defaultKeyFile = "/home/chrispian/.config/station/usage/keys/surface-usage-module.key"
+	// No default Station URL: the owner sets usage.url. The key file defaults to the
+	// conventional path under the home directory.
+	defaultURL     = ""
+	defaultKeyFile = "~/.config/station/usage/keys/surface-usage-module.key"
 	fallbackKeyRel = ".config/station/usage/keys/surface-usage-module.key"
 	cacheTTL       = 30 * time.Second
 )
@@ -427,8 +429,11 @@ func newStationClient(base, keyFile string) (*stationClient, error) {
 	if base == "" {
 		base = defaultURL
 	}
+	if base == "" {
+		return nil, errNotConfigured
+	}
 	u, err := url.Parse(base)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && isLoopback(u.Hostname()))) {
+	if err != nil || u.Host == "" || (u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(u.Hostname()))) {
 		return nil, errors.New("usage: the Usage Monitor URL must be https, or http on loopback")
 	}
 	return &stationClient{
@@ -448,7 +453,7 @@ func isLoopback(host string) bool {
 }
 
 // resolveKeyPath expands ~/ and falls back to ~/.config/station/usage/keys/surface-usage-module.key
-// when the configured Linux default path (/home/chrispian/...) does not exist on macOS.
+// when the configured path does not exist.
 func resolveKeyPath(configured string) string {
 	configured = strings.TrimSpace(configured)
 	if configured == "" {
@@ -504,7 +509,7 @@ func (c *stationClient) getRaw(ctx context.Context, path string) ([]byte, error)
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil) //nolint:gosec // c.base is the owner-configured URL, checked in newStationClient
 	if err != nil {
 		return nil, errors.New("usage: invalid request URL")
 	}
@@ -625,7 +630,7 @@ func applyParentBlockedShading(windows []UsageWindowItem) []UsageWindowItem {
 	return windows
 }
 
-func extractLatestError(latest, lastSuccess *stationAttempt) string {
+func extractLatestError(latest *stationAttempt) string {
 	if latest == nil {
 		return ""
 	}
@@ -647,15 +652,19 @@ func extractLatestError(latest, lastSuccess *stationAttempt) string {
 // UsageNowPayload according to the frontend contract.
 func (c *stationClient) fetchNow(ctx context.Context, now time.Time) (UsageNowPayload, error) {
 	var (
-		wg       sync.WaitGroup
-		accResp  struct{ Accounts []stationAccount `json:"accounts"` }
-		srcResp  struct{ Sources []stationSource `json:"sources"` }
-		capResp  stationCapacityResponse
-		sumResp  stationSummaryResponse
-		accErr   error
-		srcErr   error
-		capErr   error
-		sumErr   error
+		wg      sync.WaitGroup
+		accResp struct {
+			Accounts []stationAccount `json:"accounts"`
+		}
+		srcResp struct {
+			Sources []stationSource `json:"sources"`
+		}
+		capResp stationCapacityResponse
+		sumResp stationSummaryResponse
+		accErr  error
+		srcErr  error
+		capErr  error
+		sumErr  error
 	)
 
 	wg.Add(4)
@@ -857,11 +866,12 @@ func (c *stationClient) fetchNow(ctx context.Context, now time.Time) (UsageNowPa
 				// Estimate runway when used & limit or monthly spend window exists.
 				if w.Unit == "usd" && rem > 0 {
 					dailyBurn := 1.5
-					if sa.ID == "gateway-openrouter" {
+					switch sa.ID {
+					case "gateway-openrouter":
 						dailyBurn = 2.2
-					} else if sa.ID == "digitalocean" {
+					case "digitalocean":
 						dailyBurn = 3.15
-					} else if sa.ID == "vastai" {
+					case "vastai":
 						dailyBurn = 1.8
 					}
 					rd := rem / dailyBurn
@@ -892,7 +902,7 @@ func (c *stationClient) fetchNow(ctx context.Context, now time.Time) (UsageNowPa
 			CollectedAt:     collectedAt,
 			SourceID:        sourceID,
 			Collector:       collector,
-			LatestError:     extractLatestError(sa.LatestAttempt, sa.LastSuccess),
+			LatestError:     extractLatestError(sa.LatestAttempt),
 			Attributes:      attrs,
 			Windows:         windows,
 			SpendByCostKind: spendByAccount[sa.ID],
@@ -996,7 +1006,7 @@ func (c *stationClient) fetchNow(ctx context.Context, now time.Time) (UsageNowPa
 			Stale:        stale,
 			ObservedAt:   observedAt,
 			CollectedAt:  collectedAt,
-			LatestError:  extractLatestError(ss.LatestAttempt, ss.LastSuccess),
+			LatestError:  extractLatestError(ss.LatestAttempt),
 			WindowCount:  winCount,
 			Attributes:   attrs,
 			RawURL:       "/api/m/usage/sources/" + url.PathEscape(ss.ID) + "/raw",

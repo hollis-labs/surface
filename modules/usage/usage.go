@@ -156,7 +156,7 @@ func (m *mod) loadNow(ctx context.Context, refresh bool) (UsageNowPayload, error
 	return payload, nil
 }
 
-func (m *mod) loadTrends(ctx context.Context, refresh bool, accountFilter, windowID, step, groupBy, costKind string) (UsageTrendsPayload, error) {
+func (m *mod) loadTrends(ctx context.Context, refresh bool, accountFilter, windowID, step, groupBy, costKind string) UsageTrendsPayload {
 	now := m.clock()
 	nowPayload, _ := m.loadNow(ctx, refresh)
 	cl, err := m.client()
@@ -224,17 +224,17 @@ func (m *mod) loadTrends(ctx context.Context, refresh bool, accountFilter, windo
 	if out.SpendSource == "fixture" {
 		out.Spend = buildFixtureSpend(now, nowPayload.Accounts, costKind)
 	}
-	return out, nil
+	return out
 }
 
-func (m *mod) loadIntelligence(ctx context.Context, refresh bool) (UsageIntelligencePayload, error) {
+func (m *mod) loadIntelligence(ctx context.Context, refresh bool) UsageIntelligencePayload {
 	now := m.clock()
 	nowPayload, _ := m.loadNow(ctx, refresh)
 	out := buildIntelligence(now, nowPayload)
 
 	cl, err := m.client()
 	if err != nil {
-		return out, nil
+		return out
 	}
 
 	var liveInsights struct {
@@ -292,7 +292,7 @@ func (m *mod) loadIntelligence(ctx context.Context, refresh bool) (UsageIntellig
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 func (m *mod) routes(h module.Host) {
@@ -305,7 +305,7 @@ func (m *mod) routes(h module.Host) {
 	h.Handle("GET /trends", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		refresh := q.Get("refresh") == "1" || q.Get("refresh") == "true"
-		payload, _ := m.loadTrends(
+		payload := m.loadTrends(
 			r.Context(),
 			refresh,
 			q.Get("account"),
@@ -319,7 +319,7 @@ func (m *mod) routes(h module.Host) {
 
 	h.Handle("GET /intelligence", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		refresh := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("refresh") == "true"
-		payload, _ := m.loadIntelligence(r.Context(), refresh)
+		payload := m.loadIntelligence(r.Context(), refresh)
 		writeJSON(w, http.StatusOK, payload)
 	}))
 
@@ -483,7 +483,7 @@ func (m *mod) tools() []module.Tool {
 					Refresh  bool   `json:"refresh"`
 				}
 				_ = json.Unmarshal(in, &a)
-				return m.loadTrends(ctx, a.Refresh, a.Account, a.Window, a.Step, a.GroupBy, a.CostKind)
+				return m.loadTrends(ctx, a.Refresh, a.Account, a.Window, a.Step, a.GroupBy, a.CostKind), nil
 			},
 		},
 		{
@@ -496,7 +496,7 @@ func (m *mod) tools() []module.Tool {
 					Refresh bool `json:"refresh"`
 				}
 				_ = json.Unmarshal(in, &a)
-				return m.loadIntelligence(ctx, a.Refresh)
+				return m.loadIntelligence(ctx, a.Refresh), nil
 			},
 		},
 		{

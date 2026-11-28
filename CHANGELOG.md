@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.1] - 2026-11-28
+
+- **Security:** go.opentelemetry.io/otel/sdk, sdk/log, sdk/metric and the OTLP exporters to v1.47.0 (otlploghttp
+  v0.23.0), fixing GO-2026-6974 (attribute length limit bypass), which govulncheck found reachable through the
+  workbench's model client. `govulncheck ./...`: no vulnerabilities affecting the code.
+
 ## [0.21.0] - 2026-11-28
 
 - **Surface ships modules; apps live in their own repositories.** `apps/desk` and `apps/studio` are removed.

@@ -1,6 +1,6 @@
 {
   "name": "@hollis-labs/surface-page",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "The core of a Surface app's page: the desktop (bar, windows, palette), the agent panel, cards, generated surfaces, ADE's overlays, and the sdk a module's views import. It draws with the app's installed Surface registry components.",
   "license": "MIT",
   "repository": {
@@ -51,10 +51,10 @@
   },
   "dependencies": {
     "@hollis-labs/ade-core": "0.1.0",
-    "@hollis-labs/surface-cards": "0.21.0",
-    "@hollis-labs/surface-chat": "0.21.0",
-    "@hollis-labs/surface-genui": "0.21.0",
-    "@hollis-labs/surface-theme": "0.21.0"
+    "@hollis-labs/surface-cards": "0.21.1",
+    "@hollis-labs/surface-chat": "0.21.1",
+    "@hollis-labs/surface-genui": "0.21.1",
+    "@hollis-labs/surface-theme": "0.21.1"
   },
   "peerDependencies": {
     "lucide-react": ">=1",

@@ -7,9 +7,9 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## [0.21.3] - 2026-11-28
 
-- **MCP approval bridge.** `/mcp` now lists every tool. Read and act tools run at once. Write and confirm tools
-  ask the owner first with a card naming the caller (`X-Surface-Agent`; a seat host sends its seat) and wait up to
-  ten minutes. A write tool's card offers Allow once, Always allow for that caller (until the app restarts) and Deny;
+- **MCP approval bridge.** A client that names itself with `X-Surface-Agent` (a seat host sends its seat) now gets
+  write and confirm tools too; they ask the owner first with a card naming the caller and wait up to ten minutes.
+  Anonymous clients keep read and act only. A write tool's card offers Allow once, Always allow for that caller (until the app restarts) and Deny;
   a confirm tool asks with an approval card every time. Seat-host agents can now use tools like `align_propose` and
   `droppad_create` with the owner's approval.
 - **Cards that drew as "no way to draw this kind".** `tracker.list`, `work.item`, `align.proposal` and `align.droppad`

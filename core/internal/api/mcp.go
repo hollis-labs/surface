@@ -17,10 +17,11 @@ import (
 // initialize, tools/list and tools/call. It is how an outside agent drives the app with
 // the same tools the embedded one has.
 //
-// Read and act tools run at once. Write and confirm tools ask the owner first, with a card
-// (mcpApprove): a write tool's "always" answer stands for that caller and tool until the app
-// restarts; a confirm tool asks every time. The caller is the X-Surface-Agent header (a seat
-// host sends its seat), or "an MCP client".
+// Read and act tools run at once for every client. A client that names itself (the
+// X-Surface-Agent header; a seat host sends its seat) also gets write and confirm tools, which
+// ask the owner first with a card (mcpApprove): a write tool's "always" answer stands for that
+// caller and tool until the app restarts; a confirm tool asks every time. An anonymous client
+// sees and calls read and act tools only.
 func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		JSONRPC string          `json:"jsonrpc"`
@@ -55,7 +56,11 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 			Annotations map[string]any  `json:"annotations,omitempty"`
 		}
 		tools := []tool{}
+		caller := mcpCaller(r)
 		for _, t := range s.a.Tools() {
+			if caller == "" && t.Level != module.LevelRead && t.Level != module.LevelAct {
+				continue
+			}
 			tools = append(tools, tool{Name: t.Name, Description: t.Description, InputSchema: t.Input,
 				Annotations: map[string]any{"readOnlyHint": t.Level == "read", "destructiveHint": t.Level == "confirm"}})
 		}
@@ -88,11 +93,12 @@ func rpcErr(id json.RawMessage, code int, msg string) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": msg}}
 }
 
-// mcpCaller names who is calling, for the approval card and standing grants.
+// mcpCaller names who is calling, for the approval card and standing grants; empty for an
+// anonymous client.
 func mcpCaller(r *http.Request) string {
 	c := strings.TrimSpace(r.Header.Get("X-Surface-Agent"))
-	if c == "" || len(c) > 120 {
-		return "an MCP client"
+	if len(c) > 120 {
+		return ""
 	}
 	return c
 }
@@ -116,6 +122,9 @@ func (s *server) callMCP(ctx context.Context, caller, name string, input json.Ra
 			continue
 		}
 		if t.Level != module.LevelRead && t.Level != module.LevelAct {
+			if caller == "" {
+				return "", fmt.Errorf("tool %q is not available to an anonymous MCP client (read and act only; name yourself with X-Surface-Agent to ask the owner)", name)
+			}
 			if err := s.mcpApprove(ctx, caller, t.Tool, input); err != nil {
 				return "", err
 			}

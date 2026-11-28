@@ -91,9 +91,21 @@ func isError(v map[string]any) bool {
 	return r != nil && r["isError"] == true
 }
 
-func TestMCPListsAllLevels(t *testing.T) {
+func TestMCPListsAllLevelsToANamedCaller(t *testing.T) {
 	_, srv := mcpApp(t)
-	v := mcpCall(t, srv, "", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	anon := mcpCall(t, srv, "", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if n := len(anon["result"].(map[string]any)["tools"].([]any)); n == 0 {
+		t.Fatal("anonymous list is empty")
+	}
+	for _, x := range anon["result"].(map[string]any)["tools"].([]any) {
+		if n := x.(map[string]any)["name"].(string); n == "mcptest_write" || n == "mcptest_confirm" {
+			t.Errorf("anonymous client sees %s", n)
+		}
+	}
+	if v := mcpCall(t, srv, "", `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mcptest_write"}}`); !isError(v) {
+		t.Fatalf("an anonymous write must be refused at once: %v", v)
+	}
+	v := mcpCall(t, srv, "seat-host:skills", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	names := map[string]bool{}
 	for _, x := range v["result"].(map[string]any)["tools"].([]any) {
 		names[x.(map[string]any)["name"].(string)] = true

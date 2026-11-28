@@ -5,6 +5,14 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.3] - 2026-11-28
+
+- **MCP approval bridge.** `/mcp` now lists every tool. Read and act tools run at once. Write and confirm tools
+  ask the owner first with a card naming the caller (`X-Surface-Agent`; a seat host sends its seat) and wait up to
+  ten minutes. A write tool's card offers Allow once, Always allow for that caller (until the app restarts) and Deny;
+  a confirm tool asks with an approval card every time. Seat-host agents can now use tools like `align_propose` and
+  `droppad_create` with the owner's approval.
+
 ## [0.21.2] - 2026-11-28
 
 - **Chat cards for agents on MCP.** An agent that reaches the app's tools over MCP reports them as

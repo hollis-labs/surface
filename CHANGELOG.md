@@ -12,6 +12,9 @@ One version for the whole of Surface: the registry at the tag, the Go module and
   ten minutes. A write tool's card offers Allow once, Always allow for that caller (until the app restarts) and Deny;
   a confirm tool asks with an approval card every time. Seat-host agents can now use tools like `align_propose` and
   `droppad_create` with the owner's approval.
+- **Cards that drew as "no way to draw this kind".** `tracker.list`, `work.item`, `align.proposal` and `align.droppad`
+  were offered by `card_show`/`card_ask` (and are entity kinds in the core) but had no renderer; they now draw with the
+  entity card renderer like `tracker.item` and `registry.record`.
 
 ## [0.21.2] - 2026-11-28
 

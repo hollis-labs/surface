@@ -17,3 +17,9 @@ home-path-macos web/src/desk/TrackersWorkbench.tsx@7aee72e450ea Owner-reviewed h
 internal-ip web/src/gallery/approval.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
 agent-box-host web/src/gallery/cards.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
 internal-ip web/src/gallery/cards.tsx@7aee72e450ea Owner-reviewed historical demo value from the original UI import; current examples sanitized, exception limited to this rule/path/commit.
+
+# Owner reviewed 2026-11-28 (PR 23): the Usage Monitor's first commit used a private Station host and an absolute
+# home path as setting defaults. The current tree has neither (usage.url has no default, usage.key_file is under ~/);
+# exceptions limited to these rules, this path and this commit.
+home-path-linux modules/usage/client.go@619f442c96bb Owner-reviewed historical setting default from the Usage Monitor import; removed from the tree in PR 23.
+nanite-cloud-host modules/usage/client.go@619f442c96bb Owner-reviewed historical setting default from the Usage Monitor import; removed from the tree in PR 23.

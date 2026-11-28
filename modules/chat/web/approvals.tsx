@@ -11,7 +11,15 @@
  * session, deny all, dismiss all (hide what is there now without answering: each stays in its
  * own chat).
  */
-import { claimCards, Icon, type ModuleAPI, type ServerCard, useEvent, useSetting } from "@hollis-labs/surface-page/sdk"
+import {
+  claimCards,
+  Icon,
+  isOwnerTyping,
+  type ModuleAPI,
+  type ServerCard,
+  useEvent,
+  useSetting,
+} from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -203,7 +211,8 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
       setOpen(false)
       return
     }
-    if (fresh && autoOpen && Date.now() >= snoozedUntil.current) setOpen(true)
+    // Not over what the owner is typing: then the button below asks instead.
+    if (fresh && autoOpen && Date.now() >= snoozedUntil.current && !isOwnerTyping()) setOpen(true)
   }, [items, autoOpen])
 
   const answer = useCallback(

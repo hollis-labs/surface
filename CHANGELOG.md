@@ -5,6 +5,14 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.3] - 2026-11-28
+
+- **Nothing takes over while you type.** The approvals queue and a question its sender is waiting on (the modal in the
+  middle of the page) no longer open over a text field you are typing in or have unsent text in; a button asks instead
+  ("N approvals waiting", "A question is waiting · Answer"). `isOwnerTyping` is in the SDK.
+- **Unsent messages are kept**: the agent chat keeps a draft per session and the embedded agent's composer keeps its
+  draft, across switching chats and reloads (this browser).
+
 ## [0.23.2] - 2026-11-28
 
 - **A chat with no messages yet opens empty** instead of "events is not iterable": a host's history window for an

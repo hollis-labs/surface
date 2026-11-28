@@ -1,6 +1,6 @@
 /** Where cards show: docked in the agent's panel, popped up over the desk, in the middle
  * of the screen when their sender is waiting, and all together in the Cards window. */
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { desk, useDeskState } from "../desk/store"
 import { Icon, useEvent, useSetting, type ViewProps } from "../sdk"
 import { call, setSetting } from "../sdk/runtime"
+import { isOwnerTyping } from "../sdk/typing"
 import { CardView } from "./renderers"
 import {
   ANSWERABLE,
@@ -132,7 +133,19 @@ export function CardHost() {
   )
   const blocking = useCards("modal").filter((s) => isOpen(s.card))
   const [hidden, setHidden] = useState<string | null>(null)
-  const front = blocking.find((s) => s.card.id !== hidden)
+  // A question that arrives while the owner is typing does not take the screen: it waits behind
+  // a small prompt until they choose to answer it.
+  const [deferred, setDeferred] = useState<Set<string>>(new Set())
+  const seenBlocking = useRef<Set<string>>(new Set())
+  const blockingIds = blocking.map((s) => s.card.id).join(",")
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the ids of the questions
+  useEffect(() => {
+    const fresh = blocking.map((s) => s.card.id).filter((id) => !seenBlocking.current.has(id))
+    for (const id of fresh) seenBlocking.current.add(id)
+    if (fresh.length && isOwnerTyping()) setDeferred((d) => new Set([...d, ...fresh]))
+  }, [blockingIds])
+  const front = blocking.find((s) => s.card.id !== hidden && !deferred.has(s.card.id))
+  const waiting = blocking.filter((s) => deferred.has(s.card.id))
   return (
     <>
       {toasts.length > 0 && (
@@ -156,6 +169,14 @@ export function CardHost() {
               )}
             </div>
           ))}
+        </div>
+      )}
+      {waiting.length > 0 && !front && (
+        <div data-slot="card-waiting" className="fixed right-4 bottom-4 z-50">
+          <Button size="sm" variant="outline" className="gap-2 shadow-md" onClick={() => setDeferred(new Set())}>
+            <Icon name="message-circle-question-mark" size={14} />
+            {waiting.length === 1 ? "A question is waiting · Answer" : `${waiting.length} questions waiting · Answer`}
+          </Button>
         </div>
       )}
       <Dialog open={!!front} onOpenChange={(open) => !open && front && setHidden(front.card.id)}>

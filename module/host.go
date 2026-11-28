@@ -305,6 +305,13 @@ type Card struct {
 	Title   string `json:"title,omitempty"`
 	// Source is who showed it: a module's id, or "agent".
 	Source string `json:"source,omitempty"`
+	// Agent names the outside agent that showed it (a seat, over MCP), for the owner to see
+	// who asked; empty for the embedded agent and for modules.
+	Agent string `json:"agent,omitempty"`
+	// ReplyTo is that agent's handle for routing a late answer back (a seat host's session
+	// id). A card with an Agent is not answered to the embedded agent: its host fetches the
+	// answer and marks it delivered (POST /api/cards/{id}/delivered).
+	ReplyTo string `json:"reply_to,omitempty"`
 	// Subject is what the card is about (a run, a file). A new card with the same kind,
 	// source and subject as an open one replaces it.
 	Subject string `json:"subject,omitempty"`

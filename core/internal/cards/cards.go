@@ -64,7 +64,7 @@ func newID() string {
 	return "cd_" + hex.EncodeToString(b)
 }
 
-const cols = `id, kind, version, title, source, subject, risk, blocking, payload, status, outcome, revision, created_at, updated_at, responded_at, expires_at, late, delivered_at`
+const cols = `id, kind, version, title, source, subject, risk, blocking, payload, status, outcome, revision, created_at, updated_at, responded_at, expires_at, late, delivered_at, agent, reply_to`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -73,7 +73,7 @@ func scan(row scanner) (module.Card, error) {
 	var payload, outcome string
 	var blocking, late int
 	if err := row.Scan(&c.ID, &c.Kind, &c.Version, &c.Title, &c.Source, &c.Subject, &c.Risk, &blocking, &payload,
-		&c.Status, &outcome, &c.Revision, &c.Created, &c.Updated, &c.Responded, &c.ExpiresAt, &late, &c.Delivered); err != nil {
+		&c.Status, &outcome, &c.Revision, &c.Created, &c.Updated, &c.Responded, &c.ExpiresAt, &late, &c.Delivered, &c.Agent, &c.ReplyTo); err != nil {
 		return c, err
 	}
 	c.Blocking, c.Late = blocking != 0, late != 0
@@ -139,7 +139,7 @@ func (s *Store) Show(ctx context.Context, c module.Card) (module.Card, error) {
 	// A card about the same thing from the same sender replaces the open one.
 	var replaced []module.Card
 	if c.Subject != "" {
-		rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE status='' AND kind=? AND source=? AND subject=?`, c.Kind, c.Source, c.Subject)
+		rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE status='' AND kind=? AND source=? AND agent=? AND subject=?`, c.Kind, c.Source, c.Agent, c.Subject)
 		if err != nil {
 			return c, err
 		}
@@ -156,8 +156,8 @@ func (s *Store) Show(ctx context.Context, c module.Card) (module.Card, error) {
 		}
 	}
 	c.Late, c.Delivered = false, ""
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO cards (`+cols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.Kind, c.Version, c.Title, c.Source, c.Subject, c.Risk, c.Blocking, string(c.Payload), "", "null", 1, t, t, "", c.ExpiresAt, 0, ""); err != nil {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO cards (`+cols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.Kind, c.Version, c.Title, c.Source, c.Subject, c.Risk, c.Blocking, string(c.Payload), "", "null", 1, t, t, "", c.ExpiresAt, 0, "", c.Agent, c.ReplyTo); err != nil {
 		return c, err
 	}
 	for _, old := range replaced {
@@ -307,10 +307,10 @@ func (s *Store) closeLate(ctx context.Context, id string, o module.CardOutcome) 
 	return c, nil
 }
 
-// LateAnswers returns the late answers submitted but not yet handed to the agent, oldest
-// first. It is the delivery queue: kept in the database, so a restart does not lose it.
+// LateAnswers returns the embedded agent's late answers submitted but not yet handed to it,
+// oldest first (an outside agent's are fetched by its host). It is the delivery queue: kept in the database, so a restart does not lose it.
 func (s *Store) LateAnswers(ctx context.Context) ([]module.Card, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE late=1 AND status='submitted' AND delivered_at='' ORDER BY responded_at, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM cards WHERE late=1 AND status='submitted' AND delivered_at='' AND agent='' ORDER BY responded_at, id`)
 	if err != nil {
 		return nil, err
 	}

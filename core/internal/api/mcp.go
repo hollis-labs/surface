@@ -74,7 +74,11 @@ func (s *server) mcp(w http.ResponseWriter, r *http.Request) {
 			ok(w, rpcErr(req.ID, -32602, err.Error()))
 			return
 		}
-		out, err := s.callMCP(r.Context(), mcpCaller(r), p.Name, p.Arguments)
+		ctx := r.Context()
+		if c := mcpCaller(r); c != "" {
+			ctx = module.WithAgent(ctx, module.AgentRef{Name: c, ReplyTo: strings.TrimSpace(r.Header.Get("X-Surface-Reply-To"))})
+		}
+		out, err := s.callMCP(ctx, mcpCaller(r), p.Name, p.Arguments)
 		if err != nil {
 			ok(w, rpcOK(req.ID, map[string]any{"isError": true, "content": []map[string]string{{"type": "text", "text": err.Error()}}}))
 			return
@@ -164,7 +168,7 @@ func (s *server) mcpApprove(ctx context.Context, caller string, t module.Tool, i
 			"requested_by": caller,
 			"changes":      []map[string]any{{"id": "call", "label": t.Name, "detail": string(input)}},
 		})
-		c = module.Card{Kind: "approval", Title: title, Source: "agent", Subject: "mcp:" + caller + ":" + t.Name,
+		c = module.Card{Kind: "approval", Title: title, Source: "agent", Agent: caller, Subject: "mcp:" + caller + ":" + t.Name,
 			Risk: "high", Blocking: true, Payload: payload}
 	} else {
 		payload, _ := json.Marshal(map[string]any{
@@ -177,7 +181,7 @@ func (s *server) mcpApprove(ctx context.Context, caller string, t module.Tool, i
 			},
 			"allow_other": false,
 		})
-		c = module.Card{Kind: "choice", Title: "Allow " + t.Name + "?", Source: "agent", Subject: "mcp:" + caller + ":" + t.Name,
+		c = module.Card{Kind: "choice", Title: "Allow " + t.Name + "?", Source: "agent", Agent: caller, Subject: "mcp:" + caller + ":" + t.Name,
 			Risk: "medium", Blocking: true, Payload: payload}
 	}
 	card, err := s.a.Cards().Show(ctx, c)

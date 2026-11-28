@@ -60,6 +60,7 @@ func Handler(a *kernel.App, assets fs.FS, services ...Mounter) http.Handler {
 	mux.HandleFunc("GET /api/cards/{id}", s.card)
 	mux.HandleFunc("POST /api/cards/{id}/response", s.respondCard)
 	mux.HandleFunc("POST /api/cards/{id}/hold", s.holdCard)
+	mux.HandleFunc("POST /api/cards/{id}/delivered", s.deliveredCard)
 
 	mux.HandleFunc("GET /api/layouts", s.layouts)
 	mux.HandleFunc("POST /api/layouts", s.saveLayout)
@@ -518,6 +519,24 @@ func (s *server) holdCard(w http.ResponseWriter, r *http.Request) {
 	default:
 		ok(w, c)
 	}
+}
+
+// deliveredCard records that an outside agent's host handed a late answer to its agent.
+// It answers {"marked": false} when the answer had already been marked.
+func (s *server) deliveredCard(w http.ResponseWriter, r *http.Request) {
+	store, okStore := s.a.Cards().(interface {
+		MarkDelivered(ctx context.Context, id string) (bool, error)
+	})
+	if !okStore {
+		fail(w, http.StatusNotImplemented, errors.New("this app's cards do not keep late answers"))
+		return
+	}
+	marked, err := store.MarkDelivered(r.Context(), r.PathValue("id"))
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	ok(w, map[string]bool{"marked": marked})
 }
 
 func (s *server) layouts(w http.ResponseWriter, r *http.Request) {

@@ -64,10 +64,11 @@ interface Item {
 
 type Answer = "once" | "session" | "deny"
 
-function fromSeat(a: SeatApproval): Item {
+function fromSeat(a: SeatApproval, names: Record<string, string>): Item {
+  const seat = names[a.seat] || a.seat_name
   return {
     key: `seat:${a.conversation_id}:${a.approval_id}`,
-    from: a.title ? `${a.seat_name} · ${a.title}` : a.seat_name,
+    from: a.title ? `${seat} · ${a.title}` : seat,
     what: a.tool || "a tool call",
     detail: a.description,
     input: a.input,
@@ -108,6 +109,9 @@ async function answerCard(c: ServerCard, a: Answer) {
 export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
   const autoOpen = useSetting<boolean>("chat.approvals_auto_open") ?? true
   const snoozeMin = useSetting<number>("chat.approvals_snooze_minutes") ?? 10
+  const names = (useSetting<Record<string, string>>("chat.seat_names") ?? {}) as Record<string, string>
+  const namesRef = useRef(names)
+  namesRef.current = names
   const [seatItems, setSeatItems] = useState<SeatApproval[]>([])
   const [cards, setCards] = useState<ServerCard[]>([])
   const [open, setOpen] = useState(false)
@@ -177,7 +181,9 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
     const read = () =>
       void api
         .get<{ seats: { seat: string; name: string }[] }>("h/seats")
-        .then((r) => setForwardSeats((r.seats ?? []).map((s) => ({ seat: s.seat, name: s.name }))))
+        .then((r) =>
+          setForwardSeats((r.seats ?? []).map((s) => ({ seat: s.seat, name: namesRef.current[s.seat] || s.name }))),
+        )
         .catch(() => {})
     read()
     const t = setInterval(read, 30_000)
@@ -185,8 +191,8 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
   }, [api])
 
   const items = useMemo(
-    () => [...seatItems.map(fromSeat), ...cards.map(fromCard)].filter((i) => !dismissed.has(i.key)),
-    [seatItems, cards, dismissed],
+    () => [...seatItems.map((a) => fromSeat(a, names)), ...cards.map(fromCard)].filter((i) => !dismissed.has(i.key)),
+    [seatItems, cards, dismissed, names],
   )
 
   // Open for something new; close when nothing is left.

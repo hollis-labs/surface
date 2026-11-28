@@ -46,6 +46,7 @@ export interface SeatInfo {
   surface_tools?: string[]
   dir?: string
   archived?: number
+  defined_name?: string
 }
 
 const enc = encodeURIComponent
@@ -58,6 +59,7 @@ export function SeatMenu({
   onPin,
   onHide,
   onDetails,
+  onRename,
 }: {
   seat: SeatInfo
   pinned: boolean
@@ -65,6 +67,7 @@ export function SeatMenu({
   onPin: () => void
   onHide: () => void
   onDetails: () => void
+  onRename: () => void
 }) {
   return (
     <DropdownMenu>
@@ -76,6 +79,9 @@ export function SeatMenu({
         }
       />
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onRename}>
+          <Icon name="pencil" size={13} /> Rename
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={onPin}>
           <Icon name={pinned ? "pin-off" : "pin"} size={13} /> {pinned ? "Unpin" : "Pin to the top"}
         </DropdownMenuItem>
@@ -134,10 +140,8 @@ export function SeatDetails({
     await onChanged()
   }
   const rows: [string, string | undefined][] = [
-    [
-      "Shape",
-      seat.shape === "continuity" ? "continuity (one long-running session)" : `concurrent (up to ${seat.max_sessions})`,
-    ],
+    ["Defined as", seat.defined_name ? `${seat.defined_name} (${seat.seat})` : seat.seat],
+    ["Shape", seat.shape === "continuity" ? "continuity (one long-running session)" : "concurrent (several sessions)"],
     ["Runtime", [seat.adapter, seat.model, seat.effort].filter(Boolean).join(" · ")],
     ["Boot commit", seat.lock?.repo_sha ? String(seat.lock.repo_sha).slice(0, 12) : undefined],
     ["Version", seat.version],

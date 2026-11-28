@@ -534,16 +534,17 @@ const Thread = memo(function Thread({
     return () => clearTimeout(t)
   }, [focus, viewportRef])
 
-  if (!loaded)
-    return (
-      <div className="grid min-h-0 flex-1 place-items-center">
-        <Spinner />
-      </div>
-    )
+  // The viewport is always drawn (the stick-to-bottom hook attaches to it once, on mount);
+  // until the history window is in, it holds a spinner.
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationViewport ref={viewportRef}>
         <ConversationContent ref={contentRef} className="gap-2.5 p-3">
+          {!loaded && (
+            <div className="grid flex-1 place-items-center py-16">
+              <Spinner />
+            </div>
+          )}
           <div ref={top} />
           {more && (
             <div className="flex justify-center">
@@ -552,7 +553,7 @@ const Thread = memo(function Thread({
               </Button>
             </div>
           )}
-          {ids.length === 0 && (
+          {loaded && ids.length === 0 && (
             <ConversationEmptyState
               icon={<Icon name="message-circle" size={24} />}
               title="Say hello"

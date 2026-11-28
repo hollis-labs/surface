@@ -5,6 +5,12 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.22.1] - 2026-11-28
+
+- **Agent chat opens at the newest message.** The thread drew a spinner in place of its scroll area until the history
+  was in, so the stick-to-bottom hook (which attaches once, on mount) never attached: a chat opened part-way up and
+  did not follow new messages. The scroll area is now always drawn, with the spinner inside it.
+
 ## [0.22.0] - 2026-11-28
 
 Agent chat (the `chat` module) quality of life, on libs `agent/chat` v0.2.0.

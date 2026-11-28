@@ -2,7 +2,9 @@
  * @hollis-labs/surface-page/sdk: everything a module's web code may import from Surface.
  */
 
-export { ItemView as ChatItemView } from "../agent/items"
+export { describeToolCall } from "../agent/ActivityTimeline"
+export { baseToolName, ItemView as ChatItemView } from "../agent/items"
+export { claimCards, type ServerCard } from "../cards/store"
 export { RecordBody } from "../cite/record.tsx"
 export { citeTerminalLinks } from "../cite/terminal.tsx"
 export { CiteRef, CiteText, citeMarkdownExtensions, remarkCite } from "../cite/ui.tsx"

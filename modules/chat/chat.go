@@ -67,6 +67,16 @@ func (m *mod) Manifest() module.Manifest {
 				Type: module.SettingString, Default: defaultURL, Owner: true},
 			{Key: settingKeyFile, Title: "Seat host token file", About: "File holding the seat host's bearer token. Never sent to the browser.",
 				Type: module.SettingString, Default: defaultKeyFile, Owner: true},
+			{Key: "history_messages", Title: "Messages to load", About: "How many recent messages a chat draws when opened (a turn is your message and the reply); older ones load as you scroll up.",
+				Type: module.SettingInt, Default: 25},
+			{Key: "recent_minutes", Title: "Recently active (minutes)", About: "A seat that answered within this many minutes sits at the top of the roster, most recent first.",
+				Type: module.SettingInt, Default: 15},
+			{Key: "pinned_seats", Title: "Pinned seats", About: "Seat ids pinned to the top of the roster, in order, comma separated. Pin and drag in the roster to change it.",
+				Type: module.SettingString, Default: ""},
+			{Key: "approvals_auto_open", Title: "Open approvals automatically", About: "Open the approvals queue when an agent asks for a tool approval.",
+				Type: module.SettingBool, Default: true},
+			{Key: "approvals_snooze_minutes", Title: "Approvals snooze (minutes)", About: "How long Snooze keeps the approvals queue closed.",
+				Type: module.SettingInt, Default: 10},
 		},
 	}
 }

@@ -73,6 +73,19 @@ const LATE_SHOWN_MS = 3_200
 export const recentlyAnsweredLate = (c: ServerCard) =>
   c.status === "submitted" && Date.now() - (lateShown.get(c.id) ?? 0) < LATE_SHOWN_MS
 
+/**
+ * Cards a module draws in a place of its own (the chat module's approvals queue claims the
+ * MCP approval-bridge cards): the Cards window leaves them out.
+ */
+const claims = new Map<string, (c: ServerCard) => boolean>()
+export function claimCards(id: string, claims_: (c: ServerCard) => boolean): () => void {
+  claims.set(id, claims_)
+  return () => {
+    claims.delete(id)
+  }
+}
+export const isClaimed = (c: ServerCard): boolean => [...claims.values()].some((fn) => fn(c))
+
 /** Tracks whether the Cards window was opened automatically or from the chat stream, as opposed
  * to the user deliberately opening Cards from outside chat (menu / command palette). */
 let openedFromChat = false

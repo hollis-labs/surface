@@ -5,6 +5,31 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.22.0] - 2026-11-28
+
+Agent chat (the `chat` module) quality of life, on libs `agent/chat` v0.2.0.
+
+- **The thread is the conversation.** Tool calls (but a `card_ask`) and the agent's reasoning fold into one activity
+  line pinned above the composer: what the agent is doing now and how many steps. Clicking it opens the timeline,
+  turn by turn, with each call's input and output and the reasoning. Reasoning parts now reduce to `thinking` items
+  (`@hollis-labs/surface-chat`); the embedded agent's thread does not draw them.
+- **No replay.** A chat draws its latest messages at once from the wire's history window (`GET …/history`, setting
+  `chat.history_messages`, default 25), then follows the stream; older messages load as you scroll up, keeping your
+  place. It sticks to the newest message unless you scroll up. Conversation stores gain `loadOlder`, `search` and
+  `jumpTo`; a host without history is read from the start of the stream as before.
+- **Search** a chat (header) across its whole history; a hit is read back to and scrolled into view.
+- **Roster order:** pinned seats first (pin on hover, drag to reorder; `chat.pinned_seats`), then seats active within
+  `chat.recent_minutes` (default 15), most recent first, then the rest by name.
+- **Approvals queue:** every seat's pending tool approvals and the MCP approval-bridge cards in one modal, which opens
+  itself when something new arrives (`chat.approvals_auto_open`) and closes when the queue is empty. Allow, allow for
+  the session, deny, per item or all at once; dismiss all; snooze (`chat.approvals_snooze_minutes`, default 10). Needs
+  a seat host with `/approvals`.
+- **Forward to agent:** an object action on anything the page can name (cites, notes, drafts, chat messages) that
+  hands it to a seat as a turn (seat host `POST /seats/{seat}/send`). Chat messages get the object actions menu
+  (copy, bookmark, mark, forward).
+- **Page:** `ModuleWeb.overlay` (a module component drawn once over the page) and `claimCards` (a module takes some
+  cards out of the Cards window). `describeToolCall` and `baseToolName` are exported from the SDK.
+
 ## [0.21.5] - 2026-11-28
 
 - **Cards say which agent asked.** A card from an MCP client that names itself (`X-Surface-Agent`; a seat host sends

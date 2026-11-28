@@ -17,6 +17,7 @@ const shown = (s: ChatState) =>
     if (it.kind === "user") return `user: ${it.auto ? `[${it.auto}]` : it.text}`
     if (it.kind === "text") return `agent: ${it.text}${it.streaming ? "…" : ""}`
     if (it.kind === "tool") return `tool ${it.name}: ${it.status}${it.result ? ` (${it.result})` : ""}`
+    if (it.kind === "thinking") return `thinking: ${it.text}`
     return `note: ${it.text}`
   })
 
@@ -49,13 +50,42 @@ test("a reload shows the history without replaying deltas, and a second tab sees
   await until(() => reloaded.get().loaded && reloaded.get().ids.length === 4)
   assert.deepEqual(shown(reloaded.get()), shown(first.get()))
   assert.deepEqual(shown(reloaded.get()), ["user: one", "agent: You said one.", "user: two", "agent: You said two."])
-  // History is one stream read from the start: no separate thread read.
+  // History is one window read, drawn at once; the stream is followed after its head.
+  const head = host.conversation().log.length
   const paths = host.requests.slice(before).map((r) => `${r.method} ${r.path.replace(/att-\d+/, "att")}`)
   assert.deepEqual(paths, [
     "POST /agents/desk/conversation",
     `POST /conversations/${host.conversation().id}/attachments`,
-    `GET /conversations/${host.conversation().id}/events?attachment=att&after=0`,
+    `GET /conversations/${host.conversation().id}/history?runs=13`,
+    `GET /conversations/${host.conversation().id}/events?attachment=att&after=${head}`,
   ])
+})
+
+test("a long conversation draws its latest runs; older ones are read on demand and by a search hit", async () => {
+  const host = fakeHost()
+  host.script((run, text) => says(run, [`You said `, text, `.`]))
+  const first = open(host)
+  await first.start()
+  for (const n of ["one", "two", "three", "four", "five"]) {
+    await first.send(n)
+    await until(() => first.get().run === null && first.get().items[first.get().ids.at(-1) ?? ""]?.kind === "text")
+  }
+  const later = open(host, { historyRuns: 2 })
+  await later.start()
+  await until(() => later.get().loaded)
+  assert.deepEqual(shown(later.get()), ["user: four", "agent: You said four.", "user: five", "agent: You said five."])
+  assert.equal(later.get().older?.more, true)
+
+  await later.loadOlder()
+  assert.deepEqual(shown(later.get()).slice(0, 2), ["user: two", "agent: You said two."])
+  assert.equal(later.get().ids.length, 8)
+
+  const [hit] = await later.search("SAID ONE")
+  assert.ok(hit)
+  const id = await later.jumpTo(hit)
+  assert.equal(later.get().older?.more, false)
+  assert.equal(id, later.get().ids[0])
+  assert.deepEqual(shown(later.get()).slice(0, 2), ["user: one", "agent: You said one."])
 })
 
 test("a tab that joins while the answer is being written gets what was written so far and the rest", async () => {
@@ -281,14 +311,16 @@ test("the Nanite runner's events draw a turn: steps, usage and slots change noth
   }
   assert.deepEqual(shown(s), [
     "user: what notes are there?",
+    "thinking: thinking",
     'tool notes_list: done ({"notes":[]})',
     "tool no_such_tool: error (unknown tool)",
     "note: The older part of this conversation was summarised for the model. Every message is still here.",
     "agent: None yet.",
   ])
   assert.equal(s.run, null)
-  // Steps, usage, slots, reasoning and subagent activity add no row.
-  for (const i of [5, 6, 7, 9, 10, 11, 21, 24, 25]) assert.equal(idsAt[i], idsAt[i - 1], events[i].verb)
+  // Steps, usage, slots and subagent activity add no row; reasoning adds one (a thinking item,
+  // which the embedded thread does not draw), and its delta and end add none.
+  for (const i of [5, 6, 7, 10, 11, 21, 24, 25]) assert.equal(idsAt[i], idsAt[i - 1], events[i].verb)
   const call = s.items[`${run}:toolu_2`]
   assert.deepEqual(call?.kind === "tool" && call.input, { a: 1 })
 })

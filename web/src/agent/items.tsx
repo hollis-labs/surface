@@ -358,6 +358,8 @@ export const renderers: { [K in ChatItem["kind"]]: ComponentType<{ item: Of<K> }
   },
   plan: DeskPlan,
   notice: ({ item }) => <MessageNotice tone={item.tone}>{item.text}</MessageNotice>,
+  // Reasoning is for an activity view (the seat chat's timeline), not the thread.
+  thinking: () => null,
 }
 
 export function ItemView({ item, topic, slot }: { item: ChatItem; topic?: string; slot?: string }) {

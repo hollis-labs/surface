@@ -42,6 +42,26 @@ export interface ConversationOptions {
 }
 
 /** Where a first connect starts reading: 0 for everything, a cursor, or "head" for new events only. */
+/** A window of whole runs (GET …/history): newest last, finished runs without deltas. */
+export interface HistoryWindow {
+  events: StreamEvent[]
+  /** The seq of the window's first event (a run.start); 0 when the conversation is empty. */
+  from: number
+  /** The log's head when read: follow the stream after it. */
+  head: number
+  /** There are older runs before `from`. */
+  more: boolean
+}
+
+/** A finished part whose text matched a search (GET …/search). */
+export interface SearchHit {
+  seq: number
+  run_id: string
+  /** Where the hit's run starts: read history `through` it to show the hit. */
+  run_seq: number
+  snippet: string
+}
+
 export type Start = number | "head"
 
 export type ConversationApi = ReturnType<typeof conversationApi>
@@ -115,6 +135,16 @@ export function conversationApi(opts: ConversationOptions = {}) {
     ) => request<{ run_id: string; cursor: number }>(`/conversations/${enc(id)}/turns`, "POST", turn),
     cancel: (id: string, run: string, attachment: string) =>
       request<void>(`/conversations/${enc(id)}/runs/${enc(run)}/cancel`, "POST", { attachment }),
+    /** A window of whole runs; 404 from a host whose wire predates history. */
+    history: (id: string, o: { runs?: number; before?: number; through?: number } = {}) => {
+      const q = new URLSearchParams()
+      if (o.runs) q.set("runs", String(o.runs))
+      if (o.before) q.set("before", String(o.before))
+      if (o.through) q.set("through", String(o.through))
+      return request<HistoryWindow>(`/conversations/${enc(id)}/history?${q}`)
+    },
+    search: (id: string, text: string, limit = 50) =>
+      request<{ hits: SearchHit[] }>(`/conversations/${enc(id)}/search?q=${enc(text)}&limit=${limit}`),
     approve: (id: string, approval: string, attachment: string, answer: ApprovalAnswer) =>
       request<void>(`/conversations/${enc(id)}/approvals/${enc(approval)}`, "POST", { attachment, ...answer }),
 

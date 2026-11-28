@@ -135,6 +135,35 @@ export function fakeHost(): FakeHost {
       if (c.holder === seg[3]) c.holder = null
       return new Response(null, { status: 204 })
     }
+    if (seg[2] === "history") {
+      // A window of whole runs, newest last; finished runs without deltas (the wire's GET …/history).
+      const q = url.searchParams
+      const runs = Number(q.get("runs") || 13)
+      const before = Number(q.get("before") || 0) || c.log.length + 1
+      const through = Number(q.get("through") || 0)
+      const log = c.log.filter((ev) => ev.seq < before)
+      const starts = log.filter((ev) => ev.verb === "run.start").map((ev) => ev.seq)
+      if (!starts.length) return json(200, { events: [], from: 0, head: c.log.length, more: false })
+      let first = Math.max(0, starts.length - runs)
+      if (through) while (first > 0 && (starts[first] ?? 0) > through) first--
+      const from = starts[first] ?? 0
+      const events = log.filter(
+        (ev) => ev.seq >= from && !(ev.verb === "part.delta" && ev.run_id && c.finished.has(ev.run_id)),
+      )
+      return json(200, { events, from, head: c.log.length, more: first > 0 })
+    }
+    if (seg[2] === "search") {
+      const needle = (url.searchParams.get("q") ?? "").toLowerCase()
+      let runSeq = 0
+      const hits: { seq: number; run_id: string; run_seq: number; snippet: string }[] = []
+      for (const ev of c.log) {
+        if (ev.verb === "run.start") runSeq = ev.seq
+        const text = ev.verb === "part.end" ? String((ev.final as { text?: string } | undefined)?.text ?? "") : ""
+        if (needle && text.toLowerCase().includes(needle))
+          hits.push({ seq: ev.seq, run_id: ev.run_id ?? "", run_seq: runSeq, snippet: text })
+      }
+      return json(200, { hits: hits.reverse() })
+    }
     if (seg[2] === "events") {
       const a = url.searchParams.get("attachment")
       const at = known(a)

@@ -14,6 +14,7 @@ import {
   ANSWERABLE,
   dismissToast,
   holdCard,
+  isClaimed,
   isLive,
   isUserInChat,
   lateOpen,
@@ -198,7 +199,7 @@ export function CardsWindow({ win }: ViewProps) {
   // Newest first, so what an agent just added is at the top. Only open cards by default: the
   // answered and dismissed ones are a click away.
   const newestFirst = (a: ServerCard, b: ServerCard) => (b.created ?? "").localeCompare(a.created ?? "")
-  const open = all.filter(isLive).sort(newestFirst)
+  const open = all.filter((c) => isLive(c) && !isClaimed(c)).sort(newestFirst)
   const closed = all.filter((c) => !isLive(c)).sort(newestFirst)
 
   // When Cards was opened automatically while in chat (or via "Hold & open in Cards" from chat),

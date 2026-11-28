@@ -138,6 +138,13 @@ export function useDeskState(): DeskState {
   return useSyncExternalStore(subscribe, deskState)
 }
 
+/** The window in front (view, module and args), or null: for page-level code such as a module's overlay. */
+export function useFocusedWindow(): Pick<DeskWin, "id" | "view" | "module" | "args"> | null {
+  const d = useDeskState()
+  const w = d.wins.find((x) => x.id === d.focus)
+  return w ? { id: w.id, view: w.view, module: w.module, args: w.args } : null
+}
+
 /** Post one action to the server's window manager. */
 export async function act(action: Record<string, unknown>): Promise<DeskWin | undefined> {
   const res = await call<{ window?: DeskWin }>("POST", "/api/desk/actions", action)

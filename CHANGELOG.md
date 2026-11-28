@@ -5,6 +5,15 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.5] - 2026-11-28
+
+- **Agents in seats never pull a window to the front.** A window an outside agent opens (a seat over MCP, which names
+  itself) opens behind whatever the owner has in front, idle or not; it shows in the tab bar and as "not seen yet" on
+  the attention badge. The HTTP tools and the CLI keep the delegate rules. The Cards window keeps its rule (forward
+  when the owner is not typing).
+- **No double approvals.** The approvals queue leaves out the approvals of the chat in front, which shows them inline;
+  leaving that chat does not open the queue (its button says they are waiting). `useFocusedWindow` is in the SDK.
+
 ## [0.23.4] - 2026-11-28
 
 - **The Cards window no longer takes the focus while you type.** An agent's held questions open the Cards window behind

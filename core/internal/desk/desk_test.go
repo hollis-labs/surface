@@ -808,3 +808,18 @@ func TestCardsDoNotTakeTheFocusWhileTheOwnerTypes(t *testing.T) {
 		t.Fatalf("not typing: the Cards window should come forward, focus %s", f)
 	}
 }
+
+// An outside agent's window (a seat over MCP) opens behind and the owner's stays in front.
+func TestAnOutsideClientsWindowOpensBehind(t *testing.T) {
+	d, _ := open(t, filepath.Join(t.TempDir(), "s.db"))
+	owner, outside := as(module.ActorOwner), as(module.ActorOutside)
+	notes := mustOpen(owner, t, d, "notes", module.OpenOptions{})
+	seat := module.WithAgent(outside, module.AgentRef{Name: "Skill Designer"})
+	w := mustOpen(seat, t, d, "scratch", module.OpenOptions{})
+	if f := d.Snapshot().Focus; f != notes.ID {
+		t.Fatalf("an outside client's window took the focus: %s", f)
+	}
+	if len(d.Snapshot().Wins) != 2 || w.ID == "" {
+		t.Fatal("the window was not opened")
+	}
+}

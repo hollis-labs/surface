@@ -17,6 +17,7 @@ export {
   useNavTree,
 } from "../desk/navGroups"
 export { ObjectActionsMenu, type ObjectActionsMenuProps } from "../desk/ObjectActionsMenu"
+export { useFocusedWindow } from "../desk/store"
 export { useAnchor } from "./anchors"
 export { useEvent, useMarks, useSetting } from "./hooks"
 export { Icon } from "./icon"

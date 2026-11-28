@@ -119,6 +119,8 @@ type Action struct {
 	// Actor is who asks. It is never read from the request body: Apply takes it from the
 	// context (module.ActorOf).
 	Actor module.Actor `json:"-"`
+	// Agent names the outside agent acting (a seat over MCP: module.AgentOf), if any.
+	Agent string `json:"-"`
 }
 
 // ViewInfo is what the desk needs to know of a view.
@@ -282,6 +284,7 @@ func (d *Desk) find(id string) int {
 // concerned, when there is one.
 func (d *Desk) Apply(ctx context.Context, a Action) (Win, error) {
 	a.Actor = module.ActorOf(ctx)
+	a.Agent = module.AgentOf(ctx).Name
 	d.mu.Lock()
 	d.held = false
 	win, changed, quiet, err := d.reduce(a)
@@ -787,10 +790,18 @@ func (d *Desk) claim(i int, by module.Actor) {
 // surface.cards opened in the foreground (an agent raising questions for the owner) takes the
 // focus even from the owner's unsaved work, so its questions are not hidden behind it, but
 // never while the owner is typing: then it opens behind, and the chat that asked says so.
+//
+// An outside agent's window (a seat over MCP, which names itself) always opens behind: the
+// owner may be reading or answering where they are, and an outside agent cannot see that. It
+// shows in the tab bar and on the attention badge ("not seen yet") until the owner looks. The
+// HTTP tools and the CLI, which name no agent, keep the delegate rules.
 func (d *Desk) background(a Action) bool {
 	typing := a.Actor.Delegate() && d.ownerTyping()
 	if a.View == "surface.cards" && !a.Background {
 		return typing
+	}
+	if a.Actor == module.ActorOutside && a.Agent != "" {
+		return true
 	}
 	return a.Background || (a.Actor.Delegate() && d.ownerBusy())
 }

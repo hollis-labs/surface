@@ -18,6 +18,7 @@ import {
   type ModuleAPI,
   type ServerCard,
   useEvent,
+  useFocusedWindow,
   useSetting,
 } from "@hollis-labs/surface-page/sdk"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -198,10 +199,22 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
     return () => clearInterval(t)
   }, [api])
 
+  // The chat in front shows its own session's approvals inline: the queue is for the others.
+  const front = useFocusedWindow()
+  const inFront =
+    front?.module === "chat" ? String((front.args as { session?: string } | undefined)?.session ?? "") : ""
   const items = useMemo(
-    () => [...seatItems.map((a) => fromSeat(a, names)), ...cards.map(fromCard)].filter((i) => !dismissed.has(i.key)),
-    [seatItems, cards, dismissed, names],
+    () =>
+      [...seatItems.filter((a) => a.session !== inFront).map((a) => fromSeat(a, names)), ...cards.map(fromCard)].filter(
+        (i) => !dismissed.has(i.key),
+      ),
+    [seatItems, cards, dismissed, names, inFront],
   )
+  // What the chat in front shows inline counts as seen: leaving that chat does not open the
+  // queue over the next window; the button says it is waiting.
+  useEffect(() => {
+    for (const a of seatItems) if (a.session === inFront) seen.current.add(`seat:${a.conversation_id}:${a.approval_id}`)
+  }, [seatItems, inFront])
 
   // Open for something new; close when nothing is left.
   useEffect(() => {

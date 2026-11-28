@@ -5,6 +5,13 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.23.6] - 2026-11-28
+
+- **A reload no longer leaves the chat input held.** A conversation store lets go of its attachment (and the input
+  lease with it) when the page goes (`pagehide`), not only when it unmounts; a reload used to leave the old page's
+  lease for up to 90 seconds, refusing sends with "Another window has the input".
+- **Take over** in the agent chat when another attachment does hold the input.
+
 ## [0.23.5] - 2026-11-28
 
 - **Agents in seats never pull a window to the front.** A window an outside agent opens (a seat over MCP, which names

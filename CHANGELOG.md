@@ -5,6 +5,22 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.0] - 2026-11-28
+
+- **Surface ships modules; apps live in their own repositories.** `apps/desk` and `apps/studio` are removed.
+  Their modules go to Basalisk (`hollis-skunkworks/basalisk`); Exo (`hollis-labs/exo`) already worked this way.
+  `examples/demo` is a preset with every module, for CI and local development (`make demo`); it is not a product.
+- **Apps in other repositories get Surface modules' views.** `surface generate` writes `@surface/modules/<id>` for
+  each Surface module with a web entry (no machine paths in generated files). `surfacePage()` resolves it from the
+  Surface module the app requires (`go list -m`), resolves those files' imports from the app's `node_modules`,
+  compiles them with the automatic JSX runtime, and writes `src/generated/surface-modules.css` (a Tailwind
+  `@source`; import it from the app's CSS and keep it out of git).
+- **Agent chat module (`modules/chat`).** Chat with agent seats a seat host runs: continuity seats and concurrent
+  seats with nested sessions, state, stop/start/restart/reset and the agent log, on the agent/chat conversation
+  wire. Settings `chat.url` and `chat.key_file` (the token never reaches the browser).
+- **`@hollis-labs/surface-page/sdk` exports `ChatItemView`**, the chat transcript row renderer.
+- **Usage Monitor:** `usage.url` has no default (set it); `usage.key_file` defaults under `~/`. Lint findings fixed.
+
 ## [0.20.0] - 2026-11-22
 
 - **API key events.** Every key made or revoked (a person's, an admin's, a module's) is published to modules

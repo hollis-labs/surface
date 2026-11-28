@@ -791,7 +791,7 @@ func (d *Desk) claim(i int, by module.Actor) {
 // focus even from the owner's unsaved work, so its questions are not hidden behind it, but
 // never while the owner is typing: then it opens behind, and the chat that asked says so.
 //
-// An outside agent's window (a seat over MCP, which names itself) always opens behind: the
+// A named agent's window (a seat: over MCP, or one of the app's own) always opens behind: the
 // owner may be reading or answering where they are, and an outside agent cannot see that. It
 // shows in the tab bar and on the attention badge ("not seen yet") until the owner looks. The
 // HTTP tools and the CLI, which name no agent, keep the delegate rules.
@@ -800,7 +800,7 @@ func (d *Desk) background(a Action) bool {
 	if a.View == "surface.cards" && !a.Background {
 		return typing
 	}
-	if a.Actor == module.ActorOutside && a.Agent != "" {
+	if a.Actor.Delegate() && a.Agent != "" {
 		return true
 	}
 	return a.Background || (a.Actor.Delegate() && d.ownerBusy())

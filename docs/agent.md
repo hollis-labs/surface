@@ -1,6 +1,6 @@
 # The embedded agent
 
-Every Surface app has one agent. The owner talks to it in the agent panel, and outside agents can reach the same
+Every Surface app has one embedded agent, and may have **seats** besides it (see "Seats" at the end). The owner talks to it in the agent panel, and outside agents can reach the same
 tools over MCP. It has every tool in the app. What changes from message to message is what it has in mind: the
 **context slots**. The window in front decides them, and the modules fill them. Rules in front of the agent (the
 **router**) and standing rules that watch the conversation and the app (**reflexes**) shape what it does. A saved
@@ -736,3 +736,28 @@ a separate port and copied agent configuration, never an owner's conversation.
 
 Conversation and desk-event streams observe Substrate's stopping signal and close
 as HTTP shutdown begins; ordinary requests keep their normal drain period.
+
+
+## Seats: more Nanite agents in the app
+
+A seat is another Nanite agent of the app. Point `seats.dir` in the agent config (or `SURFACE_SEATS_DIR`) at a
+folder; each subfolder with `agent.md` and `host.yaml` (an agent directory, optionally `.mcp.json`, skills and
+context) is a seat, named by the folder (`a-z 0-9 - _`). Surface reads these folders and never writes into them;
+whatever defines the seats renders them. A folder that does not load is listed with its error.
+
+Each seat has its own Nanite runner, data directory (`<data>/agents/seats/<id>/`) and durable conversation on the
+same wire as the embedded agent, under the agent name `seat.<id>`. It shares what the app gives the embedded
+agent: every app tool (with the same levels and approvals), the context slots and their notes, the router and the
+reflexes. It does not get the embedded agent's own `standing_*` and `profile_switch` tools, module profiles, the
+front desk or the mailbox. Its tool calls carry its name (`module.AgentOf`), so its cards name it, a late answer
+to its question goes back to it (cards `reply_to` `seat.<id>`), and windows it opens open behind (desk rules).
+"Always" approvals are kept per seat.
+
+| Route | Does |
+|---|---|
+| `GET /api/agent/seats` | the seats, in the seat host's shape (`local: true`, `wire_base: /api/agent`), each with its one session |
+| `POST /api/agent/seats/{seat}/sessions` | open its conversation (one, kept) |
+| `POST /api/agent/seats/{seat}/send` `{text}` | hand it text as a turn (409 while it works) |
+
+The Agent chat module lists them beside a seat host's seats (keys `local:<id>`), chats on their wire, and leaves
+out what only a seat host's processes have (start/stop, restart, logs, usage, ask mode).

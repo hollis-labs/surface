@@ -32,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { setForwardSeats } from "./forward"
+import { localSeats, setForwardSeats } from "./forward"
 
 const POLL_MS = 3000
 const DISMISSED_KEY = "chat.approvals.dismissed"
@@ -190,9 +190,9 @@ export function ApprovalsOverlay({ api }: { api: ModuleAPI }) {
     const read = () =>
       void api
         .get<{ seats: { seat: string; name: string }[] }>("h/seats")
-        .then((r) =>
-          setForwardSeats((r.seats ?? []).map((s) => ({ seat: s.seat, name: namesRef.current[s.seat] || s.name }))),
-        )
+        .catch(() => ({ seats: [] as { seat: string; name: string }[] }))
+        .then(async (r) => [...(r.seats ?? []), ...(await localSeats<{ seat: string; name: string }>())])
+        .then((all) => setForwardSeats(all.map((s) => ({ seat: s.seat, name: namesRef.current[s.seat] || s.name }))))
         .catch(() => {})
     read()
     const t = setInterval(read, 30_000)

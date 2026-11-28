@@ -48,9 +48,11 @@ type wire struct {
 	nanite   *chatrunner.Runner
 	// asks is the tool a routing rule marked ask-first, for the turn in progress.
 	asks asks
-	// agent is the one agent name this app serves on the wire.
+	// agent is the embedded agent's name on the wire (the app's name).
 	agent  string
 	runner string
+	// seats are the app's other Nanite agents, by their name on the wire ("seat.<id>").
+	seats map[string]*seat
 }
 
 // runnerChoice selects Nanite unless an explicit runner is named.
@@ -104,6 +106,9 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		_ = st.Close()
 		return nil, err
 	}
+	if runner == RunnerNanite {
+		s.openSeats(ctx, w)
+	}
 	replaced := make(chan string, 4)
 	mergeReplaced(context.WithoutCancel(ctx), run.Replaced(), replaced)
 	run = watchedRunner{Runner: run, started: s.runStarted, ended: s.runEnded, log: s.runs, model: s.cfg.Model, event: s.wireEvent, replaced: replaced}
@@ -112,12 +117,15 @@ func (s *Service) openWire(ctx context.Context, runner string) (*wire, error) {
 		Log:     st,
 		Control: st,
 		Grants:  grants{db: s.k.DB()},
-		// One agent, the app's own, owned by the one person the app serves.
+		// The app's own agent, and its seats, owned by the one person the app serves.
 		Agents: func(_ context.Context, name string) (chat.Agent, error) {
-			if name != w.agent {
-				return chat.Agent{}, chat.ErrNotFound
+			if name == w.agent {
+				return chat.Agent{Owner: Owner, Scope: s.k.AppName(), Kind: "embedded"}, nil
 			}
-			return chat.Agent{Owner: Owner, Scope: s.k.AppName(), Kind: "embedded"}, nil
+			if st, ok := w.seats[name]; ok && st.run != nil {
+				return chat.Agent{Owner: Owner, Scope: s.k.AppName() + "/" + st.id, Kind: "seat", Runner: st.run}, nil
+			}
+			return chat.Agent{}, chat.ErrNotFound
 		},
 		Intercept: s.intercept,
 		Logger:    s.log,
@@ -206,6 +214,7 @@ func (s *Service) mountWire(mux *http.ServeMux) {
 	h := http.StripPrefix(Prefix, stopConversationStreams(refusalStatus(w.handler)))
 	mux.HandleFunc("POST "+Prefix+"/stop-all", s.stopAll)
 	s.mountInterrupted(mux)
+	s.mountSeats(mux)
 	mux.Handle(Prefix+"/agents/", h)
 	mux.Handle(Prefix+"/conversations/", h)
 	mux.HandleFunc("GET "+Prefix+"/grants", func(rw http.ResponseWriter, r *http.Request) {
@@ -308,10 +317,15 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	extra.Asks = s.keepingAsks(ctx, sel.Primary().Name, !auto)
 	extra.Limit = s.contextLimit()
 
-	// The profile this turn runs as, staged for the runner before the turn starts.
-	choice := s.chooseProfile(ctx, turn.ConversationID, sit)
-	if err := s.stageProfile(choice); err != nil {
-		return chat.Reject("agent_profile", err.Error())
+	// The profile this turn runs as, staged for the runner before the turn starts. A seat
+	// runs as itself: module profiles are the embedded agent's.
+	seatTurn := s.wire != nil && s.wire.isSeat(ctx, turn.ConversationID)
+	choice := ProfileChoice{Why: "seat"}
+	if !seatTurn {
+		choice = s.chooseProfile(ctx, turn.ConversationID, sit)
+		if err := s.stageProfile(choice); err != nil {
+			return chat.Reject("agent_profile", err.Error())
+		}
 	}
 	// Capture the selected directory on this turn so a concurrent focus or setting
 	// change cannot select a different agent between interception and dispatch.
@@ -335,9 +349,14 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 		s.log.Info("the turn uses a bound agent", "module", choice.ID, "agent_dir", dir, "run_id", turn.RunID)
 	}
 	turn.Meta, _ = json.Marshal(turnMeta)
-	extra.Profile, extra.ProfileID = s.profileLine(choice), choice.ID
+	tools := s.allTools()
+	if seatTurn {
+		tools = withoutSeatOnly(tools)
+	} else {
+		extra.Profile, extra.ProfileID = s.profileLine(choice), choice.ID
+	}
 
-	asm := slots.Assemble(ctx, sit, sel, s.allTools(), s.notes, extra)
+	asm := slots.Assemble(ctx, sit, sel, tools, s.notes, extra)
 	if len(asm.Trimmed) > 0 {
 		s.log.Info("the context block was trimmed to fit", "run_id", turn.RunID, "trimmed", asm.Trimmed, "bytes", len(asm.Block))
 	}
@@ -351,7 +370,7 @@ func (s *Service) intercept(ctx context.Context, turn *chat.Turn) chat.Outcome {
 	// the config's extra standing instructions (if any) in front. The panel reads the
 	// assembly from the app's own events, not from the turn.
 	block := asm.Block
-	if extra := strings.TrimSpace(s.cfg.System); extra != "" && s.wire != nil && s.wire.nanite != nil {
+	if extra := strings.TrimSpace(s.cfg.System); extra != "" && s.wire != nil && s.wire.nanite != nil && !seatTurn {
 		block = extra + "\n\n" + block
 	}
 	raw, err := json.Marshal(block)

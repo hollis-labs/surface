@@ -50,7 +50,7 @@ import { PromptInput, PromptInputSubmit, PromptInputTextarea } from "@/component
 import { Spinner } from "@/components/ui/spinner"
 import { ActivityLine, isFolded } from "./activity"
 import { ApprovalsOverlay } from "./approvals"
-import { setForwardSeats } from "./forward"
+import { LOCAL_PREFIX, LOCAL_SEATS, localSeats, setForwardSeats } from "./forward"
 import { AskSwitch, fetchPatch, RenameField, SeatDetails, SeatMenu, SessionMenu, UsageStrip } from "./manage"
 import { movePin, orderRoster, parsePins } from "./roster"
 
@@ -85,6 +85,11 @@ interface Seat {
   surface_tools?: string[]
   dir?: string
   archived?: number
+  /** One of the app's own seats (a Nanite agent in this app), not the seat host's. */
+  local?: boolean
+  local_id?: string
+  /** Where its conversation wire is (local seats: the app's /api/agent). */
+  wire_base?: string
   /** The seat's own name when the owner renamed it here (chat.seat_names). */
   defined_name?: string
   sessions: Session[]
@@ -116,11 +121,22 @@ function useSeats(api: ModuleAPI) {
   const [reply, setReply] = useState<SeatsReply | null>(null)
   const [error, setError] = useState("")
   const load = useCallback(async () => {
-    try {
-      setReply(await api.get<SeatsReply>("h/seats"))
+    // The seat host's seats and the app's own, in one roster.
+    const [remote, local] = await Promise.all([
+      api.get<SeatsReply>("h/seats").then(
+        (r) => ({ ok: true as const, r }),
+        (err: unknown) => ({ ok: false as const, err }),
+      ),
+      localSeats<Seat>(),
+    ])
+    if (remote.ok) {
+      setReply({ ...remote.r, seats: [...remote.r.seats, ...local] })
       setError("")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "The seat host could not be reached.")
+    } else {
+      setReply({ host: "this app", seats: local })
+      setError(
+        local.length ? "" : remote.err instanceof Error ? remote.err.message : "The seat host could not be reached.",
+      )
     }
   }, [api])
   useEffect(() => {
@@ -145,7 +161,17 @@ function ChatView({ win, desk, api }: ViewProps) {
     async (seat: string) => {
       setBusy(seat)
       try {
-        const s = await api.post<Session>(`h/seats/${encodeURIComponent(seat)}/sessions`)
+        const local = seat.startsWith(LOCAL_PREFIX)
+        const s = local
+          ? await fetch(`${LOCAL_SEATS}/${encodeURIComponent(seat.slice(LOCAL_PREFIX.length))}/sessions`, {
+              method: "POST",
+              credentials: "same-origin",
+            }).then(async (r) => {
+              if (!r.ok)
+                throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? `${r.status}`)
+              return (await r.json()) as Session
+            })
+          : await api.post<Session>(`h/seats/${encodeURIComponent(seat)}/sessions`)
         select(s.id)
         await reload()
       } catch (err) {
@@ -461,7 +487,7 @@ function SessionPane({
   const runs = Math.max(1, Math.ceil(messages / 2))
   // biome-ignore lint/correctness/useExhaustiveDependencies: a changed window size applies to the next chat opened
   useEffect(() => {
-    const s = createConversationStore({ base: WIRE_BASE, agent: session.id, historyRuns: runs })
+    const s = createConversationStore({ base: seat.wire_base ?? WIRE_BASE, agent: session.id, historyRuns: runs })
     setStore(s)
     void s.start()
     return () => s.dispose()
@@ -542,10 +568,11 @@ function SessionPane({
             {seat.effort ? ` · ${seat.effort}` : ""}
             {session.last_error ? ` · ${session.last_error}` : ""}
           </div>
-          <UsageStrip api={api} session={session.id} refresh={turnsDone} />
+          {!seat.local && <UsageStrip api={api} session={session.id} refresh={turnsDone} />}
         </div>
-        <AskSwitch api={api} session={session.id} ask={!!session.ask} onChanged={onChanged} />
-        {session.state === "stopped" || session.state === "crashed" ? (
+        {/* The app's own seats run in the app: no process to start, stop or read logs of. */}
+        {!seat.local && <AskSwitch api={api} session={session.id} ask={!!session.ask} onChanged={onChanged} />}
+        {seat.local ? null : session.state === "stopped" || session.state === "crashed" ? (
           <Button size="sm" variant="outline" disabled={!!acting} onClick={() => void act("start")}>
             Start
           </Button>
@@ -560,16 +587,18 @@ function SessionPane({
             Stop
           </Button>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!!acting}
-          onClick={() => void act("restart")}
-          title="Stop and resume the agent"
-        >
-          Restart
-        </Button>
-        {seat.shape === "continuity" ? (
+        {!seat.local && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!!acting}
+            onClick={() => void act("restart")}
+            title="Stop and resume the agent"
+          >
+            Restart
+          </Button>
+        )}
+        {seat.local ? null : seat.shape === "continuity" ? (
           <Button
             size="sm"
             variant="ghost"
@@ -593,9 +622,11 @@ function SessionPane({
         <Button size="sm" variant="ghost" onClick={() => setSearching((v) => !v)} title="Search this chat">
           <Icon name="search" size={14} />
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => void showLogs()} title="Agent log">
-          <Icon name="scroll-text" size={14} />
-        </Button>
+        {!seat.local && (
+          <Button size="sm" variant="ghost" onClick={() => void showLogs()} title="Agent log">
+            <Icon name="scroll-text" size={14} />
+          </Button>
+        )}
       </header>
       {logs && (
         <pre className="max-h-48 overflow-auto border-b border-[var(--color-border)] bg-[var(--color-muted)] p-2 text-[11px] leading-tight">

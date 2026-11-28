@@ -61,6 +61,8 @@ export function CardDock() {
   // Live cards that should render inline in the dock (not held in the Cards window).
   const open = inlineCards.filter((s) => {
     if (!isLive(s.card)) return false
+    // An outside agent's (a seat's) cards are not the embedded agent's: they live in the Cards window.
+    if (s.card.agent) return false
     // Held/abandoned cards or window-routed answerable cards live in the Cards window, not inline.
     if (lateOpen(s.card)) return false
     if (windowMode && ANSWERABLE.includes(s.card.kind)) return false
@@ -174,6 +176,7 @@ export function CardsWindow({ win }: ViewProps) {
   const [submittingAll, setSubmittingAll] = useState(false)
   const [hadOpenOnMount, setHadOpenOnMount] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [showClosed, setShowClosed] = useState(false)
   const [clearing, setClearing] = useState(false)
   const pageSizeSetting = (useSetting<number>("surface.card_page_size") ?? 3) as number
   const pageSize = Math.max(1, pageSizeSetting)
@@ -192,8 +195,11 @@ export function CardsWindow({ win }: ViewProps) {
   }, [])
   useEffect(refresh, [refresh])
   useEvent("cards.changed", refresh)
-  const open = all.filter(isLive)
-  const closed = all.filter((c) => !isLive(c)).reverse()
+  // Newest first, so what an agent just added is at the top. Only open cards by default: the
+  // answered and dismissed ones are a click away.
+  const newestFirst = (a: ServerCard, b: ServerCard) => (b.created ?? "").localeCompare(a.created ?? "")
+  const open = all.filter(isLive).sort(newestFirst)
+  const closed = all.filter((c) => !isLive(c)).sort(newestFirst)
 
   // When Cards was opened automatically while in chat (or via "Hold & open in Cards" from chat),
   // submitting the last remaining question automatically closes the Cards window and returns focus.
@@ -380,22 +386,42 @@ export function CardsWindow({ win }: ViewProps) {
         <Sourced key={c.id} card={c} />
       ))}
 
+      {open.length === 0 && all.length > 0 && <p className="text-muted-foreground text-xs">Nothing waiting for you.</p>}
       {closed.length > 0 && (
-        <h3 className="pt-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">Closed</h3>
+        <div className="flex items-center justify-between pt-2">
+          <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+            Answered and dismissed ({closed.length})
+          </h3>
+          <Button size="xs" variant="ghost" onClick={() => setShowClosed((v) => !v)}>
+            {showClosed ? "Hide" : "Show"}
+          </Button>
+        </div>
       )}
-      {closed.map((c) => (
-        <Sourced key={c.id} card={c} />
-      ))}
+      {showClosed && closed.map((c) => <Sourced key={c.id} card={c} />)}
     </div>
   )
 }
 
+/** When a card arrived, short: the time today, else the date and time. */
+function arrived(created?: string): string {
+  if (!created) return ""
+  const d = new Date(created)
+  if (Number.isNaN(d.getTime())) return ""
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`
+}
+
 function Sourced({ card }: { card: ServerCard }) {
+  // Who asked: the seat by name when an outside agent asked, else the app's own agent or module.
+  const from = card.agent || card.source || "app"
   return (
     <div className="flex flex-col gap-1">
       <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
         <Icon name={card.source === "agent" ? "bot" : "puzzle"} size={12} />
-        {card.source || "app"}
+        <span className="font-medium text-foreground/80">{from}</span>
+        {arrived(card.created) && <span>· {arrived(card.created)}</span>}
       </span>
       <CardView card={card} />
     </div>

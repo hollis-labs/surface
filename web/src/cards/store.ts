@@ -23,6 +23,8 @@ export interface ServerCard {
   version?: string
   title?: string
   source?: string
+  /** The outside agent that asked (a seat, over MCP); empty for the embedded agent. */
+  agent?: string
   subject?: string
   risk?: string
   blocking?: boolean

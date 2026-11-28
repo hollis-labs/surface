@@ -458,6 +458,8 @@ func coreTools(a *App) []module.Tool {
 					in = a.enrichEntityCard(ctx, in)
 				}
 				in.Source = "agent"
+				ag := module.AgentOf(ctx)
+				in.Agent, in.ReplyTo = ag.Name, ag.ReplyTo
 				c, err := a.cards.Show(ctx, in)
 				if err != nil {
 					return nil, err
@@ -526,6 +528,8 @@ func coreTools(a *App) []module.Tool {
 					var ids []string
 					for _, item := range batch {
 						item.Source, item.Blocking = "agent", false
+						ag := module.AgentOf(ctx)
+						item.Agent, item.ReplyTo = ag.Name, ag.ReplyTo
 						item.ExpiresAt = expires
 						shown, serr := a.cards.Show(ctx, item)
 						if serr != nil {
@@ -545,10 +549,19 @@ func coreTools(a *App) []module.Tool {
 				}
 				c := batch[0]
 				c.Source, c.Blocking = "agent", true
+				ag := module.AgentOf(ctx)
+				c.Agent, c.ReplyTo = ag.Name, ag.ReplyTo
 				c.ExpiresAt = expires
 				shown, err := a.cards.Show(ctx, c)
 				if err != nil {
 					return nil, err
+				}
+				if ag.Name != "" {
+					// An outside agent's (a seat's) question is not drawn in the embedded agent's
+					// panel; it is answered in the Cards window, so bring that up.
+					_, _ = a.desk.Open(ctx, "surface.cards", module.OpenOptions{
+						Args: map[string]any{"from_chat": true}, Reason: "A question from " + ag.Name,
+					})
 				}
 				done, err := a.cards.Await(ctx, shown.ID)
 				if err != nil {

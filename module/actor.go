@@ -33,6 +33,27 @@ func ActorOf(ctx context.Context) Actor {
 	return a
 }
 
+// AgentRef names an agent from outside the app that is acting through it (a seat behind a
+// seat host, over MCP): Name is how the owner knows it, ReplyTo is the asker's own handle for
+// routing an answer back (a seat host's session id). The embedded agent has none.
+type AgentRef struct {
+	Name    string
+	ReplyTo string
+}
+
+type agentKey struct{}
+
+// WithAgent returns a context that names the outside agent acting.
+func WithAgent(ctx context.Context, a AgentRef) context.Context {
+	return context.WithValue(ctx, agentKey{}, a)
+}
+
+// AgentOf names the outside agent acting, or the zero AgentRef when the context does not.
+func AgentOf(ctx context.Context) AgentRef {
+	a, _ := ctx.Value(agentKey{}).(AgentRef)
+	return a
+}
+
 // Delegate reports whether the actor acts for the owner rather than as the owner: the agent,
 // a reflex, or an outside client. The owner and an unnamed actor are not delegates.
 func (a Actor) Delegate() bool {

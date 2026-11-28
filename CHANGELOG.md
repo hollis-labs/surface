@@ -5,6 +5,18 @@ One version for the whole of Surface: the registry at the tag, the Go module and
 
 ## Unreleased
 
+## [0.21.5] - 2026-11-28
+
+- **Cards say which agent asked.** A card from an MCP client that names itself (`X-Surface-Agent`; a seat host sends
+  the seat) records it as `agent`, shown in the Cards window instead of "agent", with when it arrived. An optional
+  `X-Surface-Reply-To` is kept as `reply_to` (a seat host sends its session id) so the host can route the answer.
+- **A seat's answers go back to the seat.** A late answer to an outside agent's card is no longer queued for the
+  embedded agent; its host fetches it (`GET /api/cards/{id}`) and marks it delivered
+  (`POST /api/cards/{id}/delivered`). A seat's question is answered in the Cards window (which opens), not in the
+  embedded agent's panel. Migration `0004_cards_agent`.
+- **Cards window: newest first, pending only.** Open cards are listed newest first; answered and dismissed ones are
+  behind "Show".
+
 ## [0.21.4] - 2026-11-28
 
 - **Cards window: Clear all.** Dismisses every open card after a second click to confirm; an agent's questions close

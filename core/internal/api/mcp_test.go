@@ -167,3 +167,47 @@ func TestMCPConfirmAsksEveryTime(t *testing.T) {
 		}
 	}
 }
+
+// A seat's held questions carry who asked and where to send the answer; a late answer to one
+// is not queued for the embedded agent, and the seat's host marks it delivered.
+func TestMCPCardsCarryTheAskingAgent(t *testing.T) {
+	a, srv := mcpApp(t)
+	req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"card_ask","arguments":{"hold":true,"kind":"choice","title":"Q","payload":{"question":"Q?","options":[{"id":"y","label":"Yes"}]}}}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Surface-Agent", "Agent Designer")
+	req.Header.Set("X-Surface-Reply-To", "agent-designer.s1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	ctx := context.Background()
+	list, err := a.Cards().List(ctx, true)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("cards: %v %v", list, err)
+	}
+	c := list[0]
+	if c.Agent != "Agent Designer" || c.ReplyTo != "agent-designer.s1" || c.Status != "abandoned" {
+		t.Fatalf("card = %+v", c)
+	}
+	if _, err = a.Cards().Respond(ctx, c.ID, module.CardOutcome{Status: "submitted", Answers: []module.CardAnswer{{QuestionID: "choice", Value: "y"}}}); err != nil {
+		t.Fatal(err)
+	}
+	late, err := a.Cards().(interface {
+		LateAnswers(context.Context) ([]module.Card, error)
+	}).LateAnswers(ctx)
+	if err != nil || len(late) != 0 {
+		t.Fatalf("a seat's late answer is queued for the embedded agent: %v %v", late, err)
+	}
+	resp, err = http.Post(srv.URL+"/api/cards/"+c.ID+"/delivered", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var marked map[string]bool
+	_ = json.NewDecoder(resp.Body).Decode(&marked)
+	_ = resp.Body.Close()
+	if !marked["marked"] {
+		t.Fatalf("delivered: %d %v", resp.StatusCode, marked)
+	}
+}
